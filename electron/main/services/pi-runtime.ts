@@ -7,6 +7,7 @@ import type { FSWatcher } from "node:fs";
 import type { IPty } from "node-pty";
 import { spawn } from "node-pty";
 import type {
+  ModelRef,
   PiActivityStatus,
   PiRuntimeState,
   ResizeTerminalRequest,
@@ -18,6 +19,7 @@ type GlobalDataListener = (sessionPath: string, data: string) => void;
 
 /** Matches the suffix the bridge extension writes next to each session file. */
 const ACTIVITY_SUFFIX = ".e-pi-activity.json";
+const READY_TIMEOUT_MS = 30_000;
 
 function resolvePiEntry(): string {
   const indexPath = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
@@ -307,7 +309,9 @@ export class PiRuntime {
       });
 
       this.#watchActivity(instance);
+      await this.#waitUntilReady(instance, child);
       this.#setState(instance, {
+        ...instance.state,
         status: "running",
         sessionPath,
         cwd,
@@ -317,6 +321,13 @@ export class PiRuntime {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       debugLog("[runtime] #launch FAILED", { sessionPath, message });
+      const child = instance.process;
+      if (child) {
+        instance.dying = true;
+        child.kill();
+        await instance.stopPromise;
+        instance.dying = false;
+      }
       this.#setState(instance, {
         status: "error",
         sessionPath,
@@ -328,11 +339,49 @@ export class PiRuntime {
     }
   }
 
+  async #waitUntilReady(instance: Instance, child: IPty): Promise<void> {
+    const activityPath = join(
+      dirname(instance.sessionPath),
+      `${basename(instance.sessionPath)}${ACTIVITY_SUFFIX}`,
+    );
+    await new Promise<void>((resolve, reject) => {
+      let reading = false;
+      const finish = (error?: Error): void => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+        if (error) reject(error);
+        else resolve();
+      };
+      const check = (): void => {
+        if (instance.process !== child) {
+          finish(new Error("Pi exited before its terminal was ready."));
+          return;
+        }
+        if (reading) return;
+        reading = true;
+        void readFile(activityPath, "utf8")
+          .then((raw) => {
+            const status = (JSON.parse(raw) as { status?: unknown }).status;
+            if (status === "busy" || status === "idle") finish();
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            reading = false;
+          });
+      };
+      const interval = setInterval(check, 25);
+      const timeout = setTimeout(
+        () => finish(new Error("Pi terminal did not become ready in time.")),
+        READY_TIMEOUT_MS,
+      );
+      check();
+    });
+    debugLog("[runtime] terminal ready", { sessionPath: instance.sessionPath, pid: child.pid });
+  }
+
   /**
-   * Track the bridge's activity sidecar (`<session>.e-pi-activity.json`). The
-   * bridge writes "busy" on agent_start and "idle" on agent_settled, so the
-   * sidebar can distinguish a running process that is working from one that
-   * is waiting for input.
+   * Track the bridge's session-state sidecar (`<session>.e-pi-activity.json`).
+   * It reports agent activity and the model currently selected by this process.
    */
   #watchActivity(instance: Instance): void {
     const activityName = `${basename(instance.sessionPath)}${ACTIVITY_SUFFIX}`;
@@ -343,13 +392,28 @@ export class PiRuntime {
       reading = true;
       void readFile(activityPath, "utf8")
         .then((raw) => {
-          const parsed = JSON.parse(raw) as { status?: unknown };
+          const parsed = JSON.parse(raw) as {
+            status?: unknown;
+            model?: { provider?: unknown; id?: unknown };
+          };
           const activity =
             parsed.status === "busy" || parsed.status === "idle"
               ? (parsed.status as PiActivityStatus)
               : undefined;
-          if (activity !== instance.state.activity) {
-            this.#setState(instance, { ...instance.state, activity });
+          const model: ModelRef | undefined =
+            typeof parsed.model?.provider === "string" && typeof parsed.model.id === "string"
+              ? { provider: parsed.model.provider, id: parsed.model.id }
+              : undefined;
+          const modelChanged =
+            model !== undefined &&
+            (model.provider !== instance.state.model?.provider ||
+              model.id !== instance.state.model?.id);
+          if (activity !== instance.state.activity || modelChanged) {
+            this.#setState(instance, {
+              ...instance.state,
+              activity,
+              model: model ?? instance.state.model,
+            });
           }
         })
         .catch(() => {

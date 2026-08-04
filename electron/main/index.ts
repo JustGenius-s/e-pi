@@ -226,10 +226,11 @@ function registerHandlers(): void {
     return state;
   });
   ipcMain.handle("models:set-default", async (_event, request: SetDefaultModelRequest) => {
-    const state = await models.setDefault(request, activeCwd());
-    const activePath = runtime.activeSessionPath;
-    if (activePath && runtime.isRunning(activePath)) {
-      runtime.submit(activePath, `/model ${request.provider}/${request.id}`);
+    const targetPath = request.sessionPath ?? runtime.activeSessionPath;
+    const targetCwd = targetPath ? runtime.getStates()[targetPath]?.cwd : undefined;
+    const state = await models.setDefault(request, targetCwd ?? activeCwd());
+    if (targetPath && runtime.isRunning(targetPath)) {
+      runtime.submit(targetPath, `/model ${request.provider}/${request.id}`);
     }
     return state;
   });

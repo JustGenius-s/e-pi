@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { FolderOpen, Terminal, X } from "lucide-react";
+import { Terminal, X } from "lucide-react";
 import { AppDialogs } from "./components/AppDialogs";
 import { AppHeader } from "./components/AppHeader";
 import { Composer } from "./components/Composer";
@@ -9,7 +9,6 @@ import { SessionSidebar } from "./components/SessionSidebar";
 import { SkillPanel } from "./components/SkillPanel";
 import { clearTerminalBuffer, TerminalPanel } from "./components/TerminalPanel";
 import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
-import { Button } from "./components/ui/button";
 import { SidebarInset, SidebarProvider } from "./components/ui/sidebar";
 
 export function App() {
@@ -114,18 +113,19 @@ export function App() {
     return () => window.removeEventListener("keydown", listener);
   });
 
-  const createSession = async (cwd?: string) => {
+  const createSession = async (cwd?: string): Promise<SessionSummary | undefined> => {
     setError(undefined);
-    const targetCwd = cwd ?? (await window.ePi.app.chooseDirectory(activeCwd || undefined));
-    if (!targetCwd) return;
+    const targetCwd = cwd?.trim() || appInfo?.defaultCwd;
     try {
       const session = await window.ePi.sessions.create({ cwd: targetCwd });
-      window.ePi.app.log(`[app] createSession created=${session.path} cwd=${targetCwd}`);
+      window.ePi.app.log(`[app] createSession created=${session.path} cwd=${session.cwd}`);
       setSessions((current) => [session, ...current]);
       setActivePath(session.path);
       await activate(session.path);
+      return session;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+      return undefined;
     }
   };
 
@@ -168,16 +168,23 @@ export function App() {
     }
   };
 
-  const submit = async (text: string) => {
+  const submit = async (messages: string[]): Promise<boolean> => {
     setError(undefined);
-    if (!activePath) return;
-    window.ePi.app.log(
-      `[app] submit session=${activePath} status=${runtimeState?.status} text=${text.slice(0, 60)}`,
-    );
+    const sessionPath = activePath || (await createSession())?.path;
+    if (!sessionPath) return false;
     try {
-      await window.ePi.runtime.submit(activePath, text);
+      await messages.reduce(
+        (previous, message) =>
+          previous.then(() => {
+            window.ePi.app.log(`[app] submit session=${sessionPath} text=${message.slice(0, 60)}`);
+            return window.ePi.runtime.submit(sessionPath, message);
+          }),
+        Promise.resolve(),
+      );
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+      return false;
     }
   };
 
@@ -244,11 +251,8 @@ export function App() {
                   <div className="empty-terminal-icon">
                     <Terminal size={20} />
                   </div>
-                  <h3>Start a Pi session</h3>
-                  <p>Choose a working folder and let Pi take the terminal from there.</p>
-                  <Button onClick={() => void createSession()}>
-                    <FolderOpen size={15} /> Choose folder
-                  </Button>
+                  <h3>New session</h3>
+                  <p>{appInfo?.defaultCwd}</p>
                 </div>
               )}
             </div>
@@ -266,9 +270,11 @@ export function App() {
             <Composer
               sessionPath={activePath}
               status={runtimeState?.status ?? "idle"}
+              activity={runtimeState?.activity}
+              model={runtimeState?.model}
               cwd={activeCwd}
               disabled={
-                !activeSession ||
+                loading ||
                 runtimeState?.status === "starting" ||
                 runtimeState?.status === "stopping" ||
                 runtimeState?.status === "error" ||

@@ -15,8 +15,14 @@ const ACTIVITY_SUFFIX = ".e-pi-activity.json";
  * sessions that run in the background. `SessionManager.listAll` only picks up
  * `.jsonl` files, so the sidecar never appears as a session.
  */
+interface BridgeState {
+  status: "busy" | "idle";
+  model?: { provider: string; id: string };
+}
+
 let lastTarget = "";
-let lastStatus = "";
+let lastState = "";
+let currentState: BridgeState = { status: "idle" };
 let writeChain: Promise<void> = Promise.resolve();
 
 function activityTarget(sessionFile: string | undefined): string | undefined {
@@ -24,12 +30,16 @@ function activityTarget(sessionFile: string | undefined): string | undefined {
   return join(dirname(sessionFile), `${basename(sessionFile)}${ACTIVITY_SUFFIX}`);
 }
 
-function reportActivity(ctx: ExtensionContext, status: "busy" | "idle"): void {
+function reportState(ctx: ExtensionContext, patch: Partial<BridgeState>): void {
   const target = activityTarget(ctx.sessionManager.getSessionFile());
-  if (!target || (target === lastTarget && status === lastStatus)) return;
+  if (!target) return;
+  if (target !== lastTarget) currentState = { status: "idle" };
+  currentState = { ...currentState, ...patch };
+  const serializedState = JSON.stringify(currentState);
+  if (target === lastTarget && serializedState === lastState) return;
   lastTarget = target;
-  lastStatus = status;
-  const payload = JSON.stringify({ status, ts: Date.now() });
+  lastState = serializedState;
+  const payload = JSON.stringify({ ...currentState, ts: Date.now() });
   const tmp = `${target}.tmp`;
   writeChain = writeChain.then(async () => {
     await writeFile(tmp, payload, "utf8");
@@ -109,18 +119,25 @@ export default function ePiBridge(pi: ExtensionAPI): void {
     ctx.ui.setEditorComponent(
       (tui, theme, keybindings) => new DesktopEditor(tui, theme, keybindings),
     );
-    // Seed the sidecar so the main process knows the process is up.
-    reportActivity(ctx, "idle");
+    // Seed the sidecar with the session's restored model and idle state.
+    reportState(ctx, {
+      status: "idle",
+      model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined,
+    });
+  });
+
+  pi.on("model_select", (event, ctx) => {
+    reportState(ctx, { model: { provider: event.model.provider, id: event.model.id } });
   });
 
   pi.on("agent_start", (_event, ctx) => {
-    reportActivity(ctx, "busy");
+    reportState(ctx, { status: "busy" });
   });
 
   // agent_settled fires only when no retry, compaction retry, or queued
   // follow-up remains, so it is the right "fully done" signal for a status UI.
   pi.on("agent_settled", (_event, ctx) => {
-    reportActivity(ctx, "idle");
+    reportState(ctx, { status: "idle" });
   });
 
   pi.on("session_shutdown", (_event, ctx) => {

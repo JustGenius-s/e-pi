@@ -1,8 +1,10 @@
-import { ArrowUp, File, FolderOpen, Plus, Sparkles, Square, X } from "lucide-react";
+import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
   ModelManagementState,
   ModelRecord,
+  ModelRef,
+  PiActivityStatus,
   PiProcessStatus,
   SkillRecord,
 } from "../types/contracts";
@@ -38,9 +40,11 @@ import { Textarea } from "./ui/textarea";
 interface ComposerProps {
   sessionPath?: string;
   status: PiProcessStatus;
+  activity?: PiActivityStatus;
+  model?: ModelRef;
   disabled: boolean;
   cwd?: string;
-  onSubmit: (text: string) => void;
+  onSubmit: (messages: string[]) => Promise<boolean>;
   onInterrupt: () => void;
 }
 
@@ -65,6 +69,8 @@ function displayModel(model: ModelRecord): string {
 export function Composer({
   sessionPath,
   status,
+  activity,
+  model,
   disabled,
   cwd,
   onSubmit,
@@ -72,7 +78,7 @@ export function Composer({
 }: ComposerProps) {
   const [text, setText] = useState("");
   const [models, setModels] = useState<ModelManagementState>();
-  const [modelRef, setModelRef] = useState("");
+  const [pendingModel, setPendingModel] = useState<{ sessionPath?: string; ref: string }>();
   const [thinking, setThinking] = useState<ThinkingLevel>("medium");
   const [files, setFiles] = useState<string[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
@@ -81,30 +87,49 @@ export function Composer({
   const [skills, setSkills] = useState<SkillRecord[]>([]);
   const [selectedSkill, setSelectedSkill] = useState<SkillRecord>();
   const [dragging, setDragging] = useState(false);
-  const busy = status === "starting" || status === "stopping";
+  const [submitting, setSubmitting] = useState(false);
+  const busy = status === "starting" || status === "stopping" || submitting;
+  const hasContent = Boolean(text.trim() || files.length > 0 || selectedSkill);
+  const showStop = status === "running" && activity === "busy";
   const availableProviders =
     models?.providers
       .map((provider) => ({
         ...provider,
-        models: provider.models.filter((model) => model.available),
+        models: provider.models.filter((candidate) => candidate.available),
       }))
       .filter((provider) => provider.models.length > 0) ?? [];
   const availableModels = availableProviders.flatMap((provider) => provider.models);
+  const actualModelRef = model
+    ? `${model.provider}/${model.id}`
+    : !sessionPath && models?.defaultModel
+      ? `${models.defaultModel.provider}/${models.defaultModel.id}`
+      : "";
+  const modelRef =
+    pendingModel && pendingModel.sessionPath === sessionPath ? pendingModel.ref : actualModelRef;
   const selectedModel = availableModels.find(
-    (model) => `${model.provider}/${model.id}` === modelRef,
+    (candidate) => `${candidate.provider}/${candidate.id}` === modelRef,
   );
+  const selectedModelLabel = selectedModel ? displayModel(selectedModel) : (model?.id ?? "Model");
   const selectedThinking = THINKING_LEVELS.find((level) => level.value === thinking);
 
   useEffect(() => {
     window.ePi.models
       .list()
-      .then((state) => {
-        setModels(state);
-        if (state.defaultModel)
-          setModelRef(`${state.defaultModel.provider}/${state.defaultModel.id}`);
-      })
+      .then(setModels)
       .catch(() => undefined);
-  }, []);
+  }, [cwd]);
+
+  useEffect(() => {
+    setPendingModel(undefined);
+  }, [sessionPath, model?.provider, model?.id]);
+
+  useEffect(() => {
+    if (!pendingModel) return;
+    const timeout = window.setTimeout(() => {
+      setPendingModel((current) => (current === pendingModel ? undefined : current));
+    }, 5_000);
+    return () => window.clearTimeout(timeout);
+  }, [pendingModel]);
 
   useEffect(() => {
     setFiles([]);
@@ -163,14 +188,14 @@ export function Composer({
     const prompt = [regular.map((path) => `Attached path: ${path}`).join("\n"), value]
       .filter(Boolean)
       .join("\n");
+    const messages: string[] = [];
     if (selectedSkill && images.length === 0) {
       // pi natively loads the skill and appends the prompt as "User: <args>"
-      onSubmit([`/skill:${selectedSkill.name}`, prompt].filter(Boolean).join(" "));
+      messages.push([`/skill:${selectedSkill.name}`, prompt].filter(Boolean).join(" "));
     } else {
       if (selectedSkill) {
         // images go through /e-pi-attach (sendUserMessage), so load the skill natively first
-        if (sessionPath)
-          await window.ePi.runtime.submit(sessionPath, `/skill:${selectedSkill.name}`);
+        messages.push(`/skill:${selectedSkill.name}`);
       }
       if (images.length > 0) {
         const payload = btoa(
@@ -183,26 +208,28 @@ export function Composer({
             ),
           ),
         );
-        if (sessionPath) await window.ePi.runtime.submit(sessionPath, `/e-pi-attach ${payload}`);
+        messages.push(`/e-pi-attach ${payload}`);
       } else {
-        onSubmit(prompt);
+        messages.push(prompt);
       }
     }
+    setSubmitting(true);
+    const submitted = await onSubmit(messages).finally(() => setSubmitting(false));
+    if (!submitted) return;
     setText("");
     setFiles([]);
     setSelectedSkill(undefined);
   };
 
   const changeModel = async (value: string) => {
-    setModelRef(value);
+    setPendingModel({ sessionPath, ref: value });
     const [provider, ...idParts] = value.split("/");
     const id = idParts.join("/");
-    if (provider && id) {
-      try {
-        await window.ePi.models.setDefault({ provider, id });
-      } catch {
-        /* settings panel reports auth errors */
-      }
+    if (!provider || !id) return;
+    try {
+      setModels(await window.ePi.models.setDefault({ provider, id, sessionPath }));
+    } catch {
+      setPendingModel(undefined);
     }
   };
 
@@ -327,11 +354,7 @@ export function Composer({
             void submit();
           }
         }}
-        placeholder={
-          disabled
-            ? "Select a session to start writing"
-            : "Ask Pi to inspect, change, or explain..."
-        }
+        placeholder="Ask Pi to inspect, change, or explain..."
         disabled={disabled || busy}
         rows={1}
       />
@@ -402,7 +425,7 @@ export function Composer({
             <MenubarMenu>
               <MenubarTrigger className="composer-config-trigger">
                 <span className="composer-config-values">
-                  <strong>{selectedModel ? displayModel(selectedModel) : "Model"}</strong>
+                  <strong>{selectedModelLabel}</strong>
                   <span>{selectedThinking?.label ?? "Medium"}</span>
                 </span>
               </MenubarTrigger>
@@ -419,12 +442,12 @@ export function Composer({
                           <MenubarGroup key={provider.id}>
                             {index > 0 ? <MenubarSeparator /> : null}
                             <MenubarLabel>{provider.name || provider.id}</MenubarLabel>
-                            {provider.models.map((model) => (
+                            {provider.models.map((candidate) => (
                               <MenubarRadioItem
-                                key={`${model.provider}/${model.id}`}
-                                value={`${model.provider}/${model.id}`}
+                                key={`${candidate.provider}/${candidate.id}`}
+                                value={`${candidate.provider}/${candidate.id}`}
                               >
-                                {displayModel(model)}
+                                {displayModel(candidate)}
                               </MenubarRadioItem>
                             ))}
                           </MenubarGroup>
@@ -454,27 +477,17 @@ export function Composer({
           </Menubar>
         </div>
         <div className="composer-actions">
-          {status === "running" ? (
-            <Button
-              className="composer-stop"
-              variant="ghost"
-              size="icon-sm"
-              onClick={onInterrupt}
-              aria-label="Interrupt Pi"
-              title="Stop"
-            >
-              <Square size={13} fill="currentColor" />
-            </Button>
-          ) : null}
           <Button
             className="composer-send"
             size="sm"
-            onClick={() => void submit()}
-            disabled={(!text.trim() && files.length === 0 && !selectedSkill) || disabled || busy}
-            aria-label="Send message"
+            data-action={showStop ? "stop" : "send"}
+            onClick={showStop ? onInterrupt : () => void submit()}
+            disabled={!showStop && (!hasContent || disabled || busy)}
+            aria-label={showStop ? "Interrupt Pi" : "Send message"}
+            title={showStop ? "Stop" : "Send"}
           >
-            <ArrowUp size={15} />
-            <span>Send</span>
+            <span>{showStop ? "Stop" : "Send"}</span>
+            {showStop ? <Square size={13} fill="currentColor" /> : <ArrowRight size={15} />}
           </Button>
         </div>
       </div>

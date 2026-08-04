@@ -3,6 +3,11 @@ export type PiProcessStatus = "idle" | "starting" | "running" | "stopping" | "ex
 /** Agent activity inside a running pi process (reported by the bridge extension). */
 export type PiActivityStatus = "busy" | "idle";
 
+export interface ModelRef {
+  provider: string;
+  id: string;
+}
+
 export interface AppInfo {
   platform: NodeJS.Platform;
   arch: string;
@@ -33,6 +38,8 @@ export interface PiRuntimeState {
   generation: number;
   /** Agent activity while the process is running: "busy" (streaming/working) or "idle". */
   activity?: PiActivityStatus;
+  /** Model currently selected inside this session's Pi process. */
+  model?: ModelRef;
   pid?: number;
   exitCode?: number;
   signal?: number;
@@ -108,10 +115,7 @@ export interface ModelProviderRecord {
 
 export interface ModelManagementState {
   providers: ModelProviderRecord[];
-  defaultModel?: {
-    provider: string;
-    id: string;
-  };
+  defaultModel?: ModelRef;
   error?: string;
 }
 
@@ -161,9 +165,9 @@ export interface ModelLoginResponse {
   value: string;
 }
 
-export interface SetDefaultModelRequest {
-  provider: string;
-  id: string;
+export interface SetDefaultModelRequest extends ModelRef {
+  /** Session that should switch immediately; defaults to the active session. */
+  sessionPath?: string;
 }
 
 export interface CustomModelDefinition {
