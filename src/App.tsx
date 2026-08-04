@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Terminal, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
 import { AppDialogs } from "./components/AppDialogs";
 import { AppHeader } from "./components/AppHeader";
 import { Composer } from "./components/Composer";
@@ -8,8 +9,8 @@ import { PackagePanel } from "./components/PackagePanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SkillPanel } from "./components/SkillPanel";
 import { clearTerminalBuffer, TerminalPanel } from "./components/TerminalPanel";
-import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
 import { SidebarInset, SidebarProvider } from "./components/ui/sidebar";
+import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
 
 export function App() {
   const [appInfo, setAppInfo] = useState<AppInfo>();
@@ -26,10 +27,7 @@ export function App() {
   const [removeTarget, setRemoveTarget] = useState<SessionSummary>();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const activeSession = useMemo(
-    () => sessions.find((session) => session.path === activePath),
-    [activePath, sessions],
-  );
+  const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;
   const activeCwd = activeSession?.cwd || appInfo?.defaultCwd || "";
 
@@ -38,10 +36,7 @@ export function App() {
     setError(undefined);
     const target = runtimeStates[path];
     const needsFreshStart =
-      !target ||
-      target.status === "idle" ||
-      target.status === "exited" ||
-      target.status === "error";
+      !target || target.status === "idle" || target.status === "exited" || target.status === "error";
     if (needsFreshStart) clearTerminalBuffer(path);
     await window.ePi.runtime.start(path);
   };
@@ -60,11 +55,7 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([
-      window.ePi.app.getInfo(),
-      window.ePi.sessions.list(),
-      window.ePi.runtime.getStates(),
-    ])
+    Promise.all([window.ePi.app.getInfo(), window.ePi.sessions.list(), window.ePi.runtime.getStates()])
       .then(([info, nextSessions, states]) => {
         if (!active) return;
         setAppInfo(info);
@@ -73,9 +64,7 @@ export function App() {
         const initial = nextSessions[0]?.path;
         setActivePath(initial);
         setLoading(false);
-        window.ePi.app.log(
-          `[app] init sessions=${nextSessions.length} states=${Object.keys(states).length}`,
-        );
+        window.ePi.app.log(`[app] init sessions=${nextSessions.length} states=${Object.keys(states).length}`);
         if (initial) {
           void window.ePi.runtime.start(initial).catch((reason: unknown) => {
             setError(reason instanceof Error ? reason.message : String(reason));
@@ -88,9 +77,7 @@ export function App() {
         setLoading(false);
       });
     const stopState = window.ePi.runtime.onState((state) => {
-      window.ePi.app.log(
-        `[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`,
-      );
+      window.ePi.app.log(`[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
       setRuntimeStates((current) => ({ ...current, [state.sessionPath]: state }));
     });
     return () => {
@@ -222,11 +209,7 @@ export function App() {
   // swallow clicks on their top area. Disable the topbar drag region while
   // any modal layer is open.
   const modalOpen =
-    packageOpen ||
-    skillOpen ||
-    settingsOpen ||
-    renameTarget !== undefined ||
-    removeTarget !== undefined;
+    packageOpen || skillOpen || settingsOpen || renameTarget !== undefined || removeTarget !== undefined;
 
   return (
     <div className="app-shell" data-modal-open={modalOpen ? "" : undefined}>
@@ -318,18 +301,8 @@ export function App() {
         appInfo={appInfo}
       />
 
-      <PackagePanel
-        open={packageOpen}
-        cwd={activeCwd}
-        onOpenChange={setPackageOpen}
-        onReloadPi={onReloadPi}
-      />
-      <SkillPanel
-        open={skillOpen}
-        cwd={activeCwd}
-        onOpenChange={setSkillOpen}
-        onReloadPi={onReloadPi}
-      />
+      <PackagePanel open={packageOpen} cwd={activeCwd} onOpenChange={setPackageOpen} onReloadPi={onReloadPi} />
+      <SkillPanel open={skillOpen} cwd={activeCwd} onOpenChange={setSkillOpen} onReloadPi={onReloadPi} />
     </div>
   );
 }

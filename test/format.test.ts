@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
-import {
-  compactPath,
-  pathBaseName,
-  sessionTitle,
-  statusLabel,
-  statusTone,
-} from "../src/lib/format";
+
+import { compactPath, pathBaseName, sessionTitle, statusLabel, statusTone } from "../src/lib/format";
 import type { SessionSummary } from "../src/types/contracts";
 
 const session: SessionSummary = {
@@ -27,9 +22,7 @@ describe("format helpers", () => {
 
   it("preserves short paths and compacts long paths", () => {
     expect(compactPath("/tmp/pi")).toBe("/tmp/pi");
-    expect(compactPath("/Users/developer/Projects/a/very/long/path/e-pi", 32)).toBe(
-      "/Users/.../path/e-pi",
-    );
+    expect(compactPath("/Users/developer/Projects/a/very/long/path/e-pi", 32)).toBe("/Users/.../path/e-pi");
   });
 
   it("extracts the last path segment", () => {

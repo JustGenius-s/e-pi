@@ -1,7 +1,8 @@
 import { Folder, FolderOpen, Package, Plus, Settings2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import type { PiRuntimeState, SessionSummary } from "../types/contracts";
+
 import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
+import type { PiRuntimeState, SessionSummary } from "../types/contracts";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -53,7 +54,7 @@ const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", 
 
 /**
  * Map a 6-dot braille char onto the left two columns of a 3x3 grid:
- *   dot 1-3 -> column 0 (rows 0-2), dot 4-6 -> column 1 (rows 0-2)
+ * dot 1-3 -> column 0 (rows 0-2), dot 4-6 -> column 1 (rows 0-2)
  * Returns 9 booleans, row-major. The third column stays off, so the spinner
  * and the done/error square share the same 3x3 canvas and dot size.
  */
@@ -273,36 +274,25 @@ export function SessionSidebar({
                                 >
                                   <ActivityIndicator runtime={runtime} />
                                   <span className="session-label">{title}</span>
-                                  <time dateTime={session.modifiedAt}>
-                                    {relativeTime(session.modifiedAt)}
-                                  </time>
+                                  <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
                                 </SidebarMenuButton>
                               </ContextMenuTrigger>
                               <ContextMenuContent>
-                                <ContextMenuItem onSelect={() => onRename(session)}>
-                                  Rename chat
-                                </ContextMenuItem>
+                                <ContextMenuItem onSelect={() => onRename(session)}>Rename chat</ContextMenuItem>
                                 <ContextMenuSeparator />
                                 {platform === "darwin" && (
-                                  <ContextMenuItem
-                                    onSelect={() => session.cwd && onOpenFolder(session.cwd)}
-                                  >
+                                  <ContextMenuItem onSelect={() => session.cwd && onOpenFolder(session.cwd)}>
                                     Open in Finder
                                   </ContextMenuItem>
                                 )}
-                                <ContextMenuItem
-                                  onSelect={() => session.cwd && onCopyText(session.cwd)}
-                                >
+                                <ContextMenuItem onSelect={() => session.cwd && onCopyText(session.cwd)}>
                                   Copy working directory
                                 </ContextMenuItem>
                                 <ContextMenuItem onSelect={() => onCopyText(session.path)}>
                                   Copy session
                                 </ContextMenuItem>
                                 <ContextMenuSeparator />
-                                <ContextMenuItem
-                                  variant="destructive"
-                                  onSelect={() => onRemove(session)}
-                                >
+                                <ContextMenuItem variant="destructive" onSelect={() => onRemove(session)}>
                                   Archive chat
                                 </ContextMenuItem>
                               </ContextMenuContent>

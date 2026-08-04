@@ -1,15 +1,11 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from "electron";
 import { randomUUID } from "node:crypto";
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+
 import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
-import { ModelService } from "./services/model-service";
-import { PackageService } from "./services/package-service";
-import { debugLog, resetDebugLog } from "./services/debug-log";
-import { PiRuntime } from "./services/pi-runtime";
-import { SessionService } from "./services/session-service";
-import { SkillService } from "./services/skill-service";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from "electron";
+
 import type {
   CreateSessionRequest,
   CustomProviderRemoveRequest,
@@ -25,6 +21,12 @@ import type {
   SkillMutation,
   SkillSetEnabledRequest,
 } from "../../src/types/contracts";
+import { debugLog, resetDebugLog } from "./services/debug-log";
+import { ModelService } from "./services/model-service";
+import { PackageService } from "./services/package-service";
+import { PiRuntime } from "./services/pi-runtime";
+import { SessionService } from "./services/session-service";
+import { SkillService } from "./services/skill-service";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const runtime = new PiRuntime();
@@ -170,9 +172,7 @@ function registerHandlers(): void {
     return runtime.start(path, cwd);
   });
   ipcMain.handle("runtime:stop", (_event, sessionPath?: string) => runtime.stop(sessionPath));
-  ipcMain.on("runtime:write", (_event, sessionPath: string, data: string) =>
-    runtime.write(sessionPath, data),
-  );
+  ipcMain.on("runtime:write", (_event, sessionPath: string, data: string) => runtime.write(sessionPath, data));
   ipcMain.handle("runtime:submit", (_event, sessionPath: string, text: string) => {
     debugLog("[ipc] runtime:submit", { sessionPath, text: text.slice(0, 80) });
     return runtime.submit(sessionPath, text);
@@ -187,28 +187,16 @@ function registerHandlers(): void {
     packages.checkUpdates(cwd || activeCwd(), force),
   );
   ipcMain.handle("packages:search", (_event, query: string) => packages.searchRemote(query));
-  ipcMain.handle("packages:install", (_event, request: PackageMutation) =>
-    packages.install(request),
-  );
+  ipcMain.handle("packages:install", (_event, request: PackageMutation) => packages.install(request));
   ipcMain.handle("packages:remove", (_event, request: PackageMutation) => packages.remove(request));
-  ipcMain.handle("packages:update", (_event, request: PackageUpdateRequest) =>
-    packages.update(request),
-  );
+  ipcMain.handle("packages:update", (_event, request: PackageUpdateRequest) => packages.update(request));
 
   ipcMain.handle("skills:list", (_event, cwd: string) => skills.list(cwd || activeCwd()));
-  ipcMain.handle("skills:read", (_event, cwd: string, filePath: string) =>
-    skills.read(cwd || activeCwd(), filePath),
-  );
-  ipcMain.handle("skills:create", async (_event, request: SkillCreateRequest) =>
-    skills.create(request),
-  );
-  ipcMain.handle("skills:add-path", async (_event, request: SkillAddPathRequest) =>
-    skills.addPath(request),
-  );
+  ipcMain.handle("skills:read", (_event, cwd: string, filePath: string) => skills.read(cwd || activeCwd(), filePath));
+  ipcMain.handle("skills:create", async (_event, request: SkillCreateRequest) => skills.create(request));
+  ipcMain.handle("skills:add-path", async (_event, request: SkillAddPathRequest) => skills.addPath(request));
   ipcMain.handle("skills:remove", async (_event, request: SkillMutation) => skills.remove(request));
-  ipcMain.handle("skills:set-enabled", async (_event, request: SkillSetEnabledRequest) =>
-    skills.setEnabled(request),
-  );
+  ipcMain.handle("skills:set-enabled", async (_event, request: SkillSetEnabledRequest) => skills.setEnabled(request));
 
   ipcMain.handle("models:list", () => models.list(activeCwd()));
   ipcMain.handle("models:login", async (_event, request: ModelLoginRequest) => {
@@ -239,9 +227,7 @@ function registerHandlers(): void {
     return state;
   });
   ipcMain.handle("models:custom-list", () => models.listCustomProviders());
-  ipcMain.handle("models:custom-save", (_event, request: CustomProviderRequest) =>
-    models.saveCustomProvider(request),
-  );
+  ipcMain.handle("models:custom-save", (_event, request: CustomProviderRequest) => models.saveCustomProvider(request));
   ipcMain.handle("models:custom-remove", (_event, request: CustomProviderRemoveRequest) =>
     models.removeCustomProvider(request),
   );

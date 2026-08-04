@@ -1,5 +1,5 @@
-import type { ContextUsageState, SessionUsageState } from "../types/contracts";
 import { formatTokens } from "../lib/format";
+import type { ContextUsageState, SessionUsageState } from "../types/contracts";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
 
 interface SessionStatsProps {
@@ -17,12 +17,7 @@ export function SessionStats({ context, usage, cacheHitRate }: SessionStatsProps
   const hasCache = usage.cacheRead > 0 || usage.cacheWrite > 0;
   const percent = context?.percent ?? null;
   const filled = percent != null ? Math.min(100, Math.max(0, percent)) : 0;
-  const tone =
-    percent != null && percent > 90
-      ? "danger"
-      : percent != null && percent > 75
-        ? "warn"
-        : undefined;
+  const tone = percent != null && percent > 90 ? "danger" : percent != null && percent > 75 ? "warn" : undefined;
   const ringRadius = 9;
   const ringCircumference = 2 * Math.PI * ringRadius;
   return (

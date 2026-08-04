@@ -1,11 +1,7 @@
 import { Check, Package, RefreshCw, Search, Trash2 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import type {
-  PackageProgress,
-  PackageRecord,
-  PackageUpdateInfo,
-  RemotePackageInfo,
-} from "../types/contracts";
+
+import type { PackageProgress, PackageRecord, PackageUpdateInfo, RemotePackageInfo } from "../types/contracts";
 import { IconButton } from "./IconButton";
 import {
   AlertDialog,
@@ -35,12 +31,7 @@ interface PackagePanelProps {
  * Memoized: re-renders of App (e.g. per-session runtime state updates) must
  * not disturb the panel's Tabs/Select/AlertDialog focus and open states.
  */
-export const PackagePanel = memo(function PackagePanel({
-  open,
-  cwd,
-  onOpenChange,
-  onReloadPi,
-}: PackagePanelProps) {
+export const PackagePanel = memo(function PackagePanel({ open, cwd, onOpenChange, onReloadPi }: PackagePanelProps) {
   const [tab, setTab] = useState<"installed" | "browse">("installed");
   const [packages, setPackages] = useState<PackageRecord[]>([]);
   const [updates, setUpdates] = useState<PackageUpdateInfo[]>([]);
@@ -115,10 +106,7 @@ export const PackagePanel = memo(function PackagePanel({
 
   // Packages already installed in this workspace (any scope), matched by
   // bare npm name so `npm:@scope/name` and `@scope/name` both line up.
-  const installedNames = useMemo(
-    () => new Set(packages.map((item) => item.source.replace(/^npm:/, ""))),
-    [packages],
-  );
+  const installedNames = useMemo(() => new Set(packages.map((item) => item.source.replace(/^npm:/, ""))), [packages]);
 
   // Debounced registry search while the panel is open. Runs on open and on
   // query change only — the active tab never re-triggers network work, so
@@ -156,11 +144,7 @@ export const PackagePanel = memo(function PackagePanel({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent
-        className="package-drawer"
-        showCloseButton={false}
-        aria-describedby="package-drawer-description"
-      >
+      <SheetContent className="package-drawer" showCloseButton={false} aria-describedby="package-drawer-description">
         <SheetDescription id="package-drawer-description" className="sr-only">
           Install and manage Pi packages for the current workspace.
         </SheetDescription>
@@ -215,10 +199,7 @@ export const PackagePanel = memo(function PackagePanel({
                       onClick={() => refreshUpdates(true)}
                       disabled={busy || checkingUpdates || packages.length === 0}
                     >
-                      <RefreshCw
-                        size={14}
-                        className={checkingUpdates ? "package-spin" : undefined}
-                      />
+                      <RefreshCw size={14} className={checkingUpdates ? "package-spin" : undefined} />
                     </IconButton>
                     <IconButton
                       label="Update all packages"
@@ -243,8 +224,7 @@ export const PackagePanel = memo(function PackagePanel({
                   <div className="package-list">
                     {packages.map((item) => {
                       const updateInfo = updates.find(
-                        (candidate) =>
-                          candidate.source === item.source && candidate.scope === item.scope,
+                        (candidate) => candidate.source === item.source && candidate.scope === item.scope,
                       );
                       return (
                         <div className="package-row" key={`${item.scope}:${item.source}`}>
@@ -263,20 +243,13 @@ export const PackagePanel = memo(function PackagePanel({
                                 className="package-update-badge"
                                 title={`Update available${updateInfo.latestVersion ? `: v${updateInfo.latestVersion}` : ""}`}
                               >
-                                ↑{" "}
-                                {updateInfo.latestVersion
-                                  ? `v${updateInfo.latestVersion}`
-                                  : "Update"}
+                                ↑ {updateInfo.latestVersion ? `v${updateInfo.latestVersion}` : "Update"}
                               </span>
                             ) : null}
                             <div className="package-row-actions">
                               <IconButton
                                 label={`Update ${item.source}`}
-                                onClick={() =>
-                                  void run(() =>
-                                    window.ePi.packages.update({ cwd, source: item.source }),
-                                  )
-                                }
+                                onClick={() => void run(() => window.ePi.packages.update({ cwd, source: item.source }))}
                                 disabled={busy}
                               >
                                 <RefreshCw size={14} />
@@ -292,8 +265,7 @@ export const PackagePanel = memo(function PackagePanel({
                                     <AlertDialogTitle>Remove package?</AlertDialogTitle>
                                     <AlertDialogDescription>
                                       {item.source} will be removed from the{" "}
-                                      {item.scope === "project" ? "project" : "global"} package
-                                      list.
+                                      {item.scope === "project" ? "project" : "global"} package list.
                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
@@ -356,9 +328,7 @@ export const PackagePanel = memo(function PackagePanel({
                 </div>
                 {!searching && remotePackages.length === 0 ? (
                   <div className="package-empty">
-                    {searchQuery.trim()
-                      ? "No packages found"
-                      : "Search for Pi packages published on npm"}
+                    {searchQuery.trim() ? "No packages found" : "Search for Pi packages published on npm"}
                   </div>
                 ) : (
                   <div className="package-list">
@@ -374,8 +344,7 @@ export const PackagePanel = memo(function PackagePanel({
                             {pkg.author || pkg.date ? (
                               <span className="package-remote-meta">
                                 {pkg.author ? `${pkg.author} · ` : ""}
-                                {pkg.date ? `${new Date(pkg.date).toLocaleDateString()} · ` : ""}v
-                                {pkg.version}
+                                {pkg.date ? `${new Date(pkg.date).toLocaleDateString()} · ` : ""}v{pkg.version}
                               </span>
                             ) : null}
                           </div>

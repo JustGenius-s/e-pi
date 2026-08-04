@@ -1,4 +1,3 @@
-import { useEffect, useMemo, useState } from "react";
 import {
   Check,
   CircleCheck,
@@ -12,6 +11,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+
 import type {
   CustomModelDefinition,
   CustomProviderConfig,
@@ -20,6 +21,7 @@ import type {
   ModelManagementState,
   ModelProviderRecord,
 } from "../types/contracts";
+import { IconButton } from "./IconButton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,15 +34,7 @@ import {
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
-import { IconButton } from "./IconButton";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 
@@ -68,12 +62,7 @@ function loginLabel(type: ModelAuthType): string {
   return type === "oauth" ? "Account sign-in" : "API key";
 }
 
-const API_TYPES = [
-  "openai-completions",
-  "anthropic-messages",
-  "openai-responses",
-  "google-generative-ai",
-] as const;
+const API_TYPES = ["openai-completions", "anthropic-messages", "openai-responses", "google-generative-ai"] as const;
 
 interface CustomProviderDraft {
   id: string;
@@ -102,10 +91,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
     setLoading(true);
     setError(undefined);
     try {
-      const [next, custom] = await Promise.all([
-        window.ePi.models.list(),
-        window.ePi.models.customList(),
-      ]);
+      const [next, custom] = await Promise.all([window.ePi.models.list(), window.ePi.models.customList()]);
       setState(next);
       setCustomProviders(custom);
       setSelectedProviderId((current) => {
@@ -136,9 +122,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
         setState(next);
         setSelectedProviderId((current) => {
           if (current && next.providers.some((provider) => provider.id === current)) return current;
-          return (
-            next.providers.find((provider) => provider.configured)?.id ?? next.providers[0]?.id
-          );
+          return next.providers.find((provider) => provider.configured)?.id ?? next.providers[0]?.id;
         });
       })
       .catch((reason: unknown) => {
@@ -208,9 +192,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
 
   const provider = state?.providers.find((item) => item.id === selectedProviderId);
   const custom = customProviders.find((item) => item.id === provider?.id);
-  const defaultModelRef = state?.defaultModel
-    ? `${state.defaultModel.provider}/${state.defaultModel.id}`
-    : undefined;
+  const defaultModelRef = state?.defaultModel ? `${state.defaultModel.provider}/${state.defaultModel.id}` : undefined;
 
   const startLogin = (target: ModelProviderRecord, authType: ModelAuthType) => {
     setError(undefined);
@@ -243,9 +225,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
     if (!login?.prompt || !value.trim()) return;
     window.ePi.models.respondToLogin({ promptId: login.prompt.promptId, value: value.trim() });
     setLogin((current) =>
-      current
-        ? { ...current, prompt: undefined, message: "Saving credential...", value: "" }
-        : current,
+      current ? { ...current, prompt: undefined, message: "Saving credential...", value: "" } : current,
     );
   };
 
@@ -306,18 +286,14 @@ export function ModelSettings({ active }: ModelSettingsProps) {
       current
         ? {
             ...current,
-            models: current.models.map((model, i) =>
-              i === index ? { ...model, ...patch } : model,
-            ),
+            models: current.models.map((model, i) => (i === index ? { ...model, ...patch } : model)),
           }
         : current,
     );
   };
 
   const addDraftModel = () => {
-    setCustomDraft((current) =>
-      current ? { ...current, models: [...current.models, { id: "" }] } : current,
-    );
+    setCustomDraft((current) => (current ? { ...current, models: [...current.models, { id: "" }] } : current));
   };
 
   const removeDraftModel = (index: number) => {
@@ -496,11 +472,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
                 {login.prompt?.promptType === "select" ? (
                   <div className="model-login-options">
                     {login.prompt.options?.map((option) => (
-                      <Button
-                        key={option.id}
-                        variant="outline"
-                        onClick={() => answerPrompt(option.id)}
-                      >
+                      <Button key={option.id} variant="outline" onClick={() => answerPrompt(option.id)}>
                         {option.label}
                       </Button>
                     ))}
@@ -519,9 +491,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
                       value={login.value}
                       placeholder={login.prompt.placeholder}
                       onChange={(event) =>
-                        setLogin((current) =>
-                          current ? { ...current, value: event.target.value } : current,
-                        )
+                        setLogin((current) => (current ? { ...current, value: event.target.value } : current))
                       }
                     />
                     <Button type="submit" disabled={!login.value.trim()}>
@@ -561,11 +531,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
                       type="button"
                     >
                       <span className="model-row-check">
-                        {busyModel === ref ? (
-                          <LoaderCircle className="spin" />
-                        ) : selected ? (
-                          <Check />
-                        ) : null}
+                        {busyModel === ref ? <LoaderCircle className="spin" /> : selected ? <Check /> : null}
                       </span>
                       <span className="model-row-name">{model.name}</span>
                       <span className="model-row-meta">
@@ -583,10 +549,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
         )}
       </section>
 
-      <Dialog
-        open={Boolean(customDraft)}
-        onOpenChange={(next) => !next && setCustomDraft(undefined)}
-      >
+      <Dialog open={Boolean(customDraft)} onOpenChange={(next) => !next && setCustomDraft(undefined)}>
         <DialogContent className="custom-provider-dialog">
           <DialogHeader>
             <DialogTitle>
@@ -620,10 +583,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
               <div className="custom-field-row">
                 <label className="custom-field">
                   <span>API type</span>
-                  <Select
-                    value={customDraft.api}
-                    onValueChange={(value) => updateDraft({ api: value })}
-                  >
+                  <Select value={customDraft.api} onValueChange={(value) => updateDraft({ api: value })}>
                     <SelectTrigger aria-label="API type">
                       <SelectValue placeholder="API type" />
                     </SelectTrigger>
@@ -665,9 +625,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
                   </Button>
                 </div>
                 {customDraft.models.length === 0 ? (
-                  <div className="custom-models-empty">
-                    No models — the provider will only expose overrides.
-                  </div>
+                  <div className="custom-models-empty">No models — the provider will only expose overrides.</div>
                 ) : (
                   customDraft.models.map((model, index) => (
                     <div className="custom-model-row" key={model.id || index}>
@@ -690,9 +648,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
                         aria-label={`Model ${index + 1} context window`}
                         onChange={(event) =>
                           updateDraftModel(index, {
-                            contextWindow: event.target.value
-                              ? Number(event.target.value)
-                              : undefined,
+                            contextWindow: event.target.value ? Number(event.target.value) : undefined,
                           })
                         }
                       />
@@ -710,9 +666,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
                       <label className="custom-model-reasoning">
                         <Checkbox
                           checked={Boolean(model.reasoning)}
-                          onCheckedChange={(checked) =>
-                            updateDraftModel(index, { reasoning: Boolean(checked) })
-                          }
+                          onCheckedChange={(checked) => updateDraftModel(index, { reasoning: Boolean(checked) })}
                         />
                         <span>reasoning</span>
                       </label>
@@ -735,12 +689,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
             </Button>
             <Button
               onClick={() => void saveCustom()}
-              disabled={
-                !customDraft?.id.trim() ||
-                !customDraft?.baseUrl.trim() ||
-                !customDraft?.api ||
-                busyCustom
-              }
+              disabled={!customDraft?.id.trim() || !customDraft?.baseUrl.trim() || !customDraft?.api || busyCustom}
             >
               {busyCustom ? <LoaderCircle className="spin" /> : null}
               Save provider
@@ -749,16 +698,11 @@ export function ModelSettings({ active }: ModelSettingsProps) {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog
-        open={Boolean(customRemove)}
-        onOpenChange={(next) => !next && setCustomRemove(undefined)}
-      >
+      <AlertDialog open={Boolean(customRemove)} onOpenChange={(next) => !next && setCustomRemove(undefined)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove custom provider?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {customRemove} will be removed from ~/.pi/models.json.
-            </AlertDialogDescription>
+            <AlertDialogDescription>{customRemove} will be removed from ~/.pi/models.json.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>

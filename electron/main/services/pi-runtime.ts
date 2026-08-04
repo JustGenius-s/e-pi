@@ -1,11 +1,13 @@
-import { app } from "electron";
 import { existsSync, rmSync, watch } from "node:fs";
+import type { FSWatcher } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { FSWatcher } from "node:fs";
+
+import { app } from "electron";
 import type { IPty } from "node-pty";
 import { spawn } from "node-pty";
+
 import type {
   ContextUsageState,
   ModelRef,
@@ -140,8 +142,7 @@ export class PiRuntime {
     const active = this.#activeSessionPath;
     const live = [...this.#instances.values()].filter(
       (instance) =>
-        instance.process !== undefined &&
-        (instance.state.status === "running" || instance.state.status === "starting"),
+        instance.process !== undefined && (instance.state.status === "running" || instance.state.status === "starting"),
     );
     await Promise.all(live.map((instance) => this.stop(instance.sessionPath)));
     await Promise.all(live.map((instance) => this.start(instance.sessionPath, instance.cwd)));
@@ -299,11 +300,7 @@ export class PiRuntime {
           activity: undefined,
           exitCode,
           signal,
-          error: wasStopping
-            ? undefined
-            : exitCode === 0
-              ? undefined
-              : `Pi exited with code ${exitCode}.`,
+          error: wasStopping ? undefined : exitCode === 0 ? undefined : `Pi exited with code ${exitCode}.`,
         });
         instance.resolveStop?.();
         instance.resolveStop = undefined;
@@ -342,10 +339,7 @@ export class PiRuntime {
   }
 
   async #waitUntilReady(instance: Instance, child: IPty): Promise<void> {
-    const activityPath = join(
-      dirname(instance.sessionPath),
-      `${basename(instance.sessionPath)}${ACTIVITY_SUFFIX}`,
-    );
+    const activityPath = join(dirname(instance.sessionPath), `${basename(instance.sessionPath)}${ACTIVITY_SUFFIX}`);
     await new Promise<void>((resolve, reject) => {
       let reading = false;
       const finish = (error?: Error): void => {
@@ -408,9 +402,7 @@ export class PiRuntime {
             cacheHitRate?: unknown;
           };
           const activity =
-            parsed.status === "busy" || parsed.status === "idle"
-              ? (parsed.status as PiActivityStatus)
-              : undefined;
+            parsed.status === "busy" || parsed.status === "idle" ? (parsed.status as PiActivityStatus) : undefined;
           const model: ModelRef | undefined =
             typeof parsed.model?.provider === "string" && typeof parsed.model.id === "string"
               ? { provider: parsed.model.provider, id: parsed.model.id }
@@ -420,8 +412,7 @@ export class PiRuntime {
               ? {
                   tokens: typeof parsed.context.tokens === "number" ? parsed.context.tokens : null,
                   contextWindow: parsed.context.contextWindow,
-                  percent:
-                    typeof parsed.context.percent === "number" ? parsed.context.percent : null,
+                  percent: typeof parsed.context.percent === "number" ? parsed.context.percent : null,
                 }
               : undefined;
           const u = parsed.usage;
@@ -440,8 +431,7 @@ export class PiRuntime {
                   cost: u.cost,
                 }
               : undefined;
-          const cacheHitRate =
-            typeof parsed.cacheHitRate === "number" ? parsed.cacheHitRate : undefined;
+          const cacheHitRate = typeof parsed.cacheHitRate === "number" ? parsed.cacheHitRate : undefined;
           const signature = JSON.stringify({ activity, model, context, usage, cacheHitRate });
           const previous = JSON.stringify({
             activity: instance.state.activity,

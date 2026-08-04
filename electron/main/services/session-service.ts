@@ -1,5 +1,7 @@
-import { SessionManager, type SessionInfo } from "@earendil-works/pi-coding-agent";
 import { writeFile } from "node:fs/promises";
+
+import { SessionManager, type SessionInfo } from "@earendil-works/pi-coding-agent";
+
 import type { SessionSummary } from "../../../src/types/contracts";
 
 function normalizeText(value: string): string {

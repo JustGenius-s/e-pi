@@ -1,6 +1,7 @@
-import { app } from "electron";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+
+import { app } from "electron";
 
 let logPath: string | undefined;
 

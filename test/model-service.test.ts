@@ -1,6 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 let testAgentDir = "";
@@ -150,8 +151,6 @@ describe("ModelService custom providers", () => {
       }),
     ).rejects.toThrow(/Base URL/);
 
-    await expect(service.removeCustomProvider({ providerId: "missing" })).rejects.toThrow(
-      /Unknown/,
-    );
+    await expect(service.removeCustomProvider({ providerId: "missing" })).rejects.toThrow(/Unknown/);
   });
 });

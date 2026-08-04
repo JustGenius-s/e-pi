@@ -1,13 +1,13 @@
 "use client";
 
-import * as React from "react";
 import { PanelLeft } from "lucide-react";
 import { Slot } from "radix-ui";
+import * as React from "react";
 
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { cn } from "@/lib/utils";
 
 type SidebarState = "expanded" | "collapsed";
 
@@ -19,8 +19,7 @@ const SIDEBAR_WIDTH_DEFAULT = 320;
 // otherwise override the new default) are ignored.
 const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width-v2";
 
-const clampSidebarWidth = (width: number) =>
-  Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, width));
+const clampSidebarWidth = (width: number) => Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, width));
 
 function readSavedSidebarWidth(): number {
   try {
@@ -195,9 +194,7 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"button">) {
   const { state, setOpen, toggleSidebar, getWidth, applyWidth } = useSidebar();
   const [resizing, setResizing] = React.useState(false);
-  const drag = React.useRef<{ startX: number; startWidth: number; moved: number } | undefined>(
-    undefined,
-  );
+  const drag = React.useRef<{ startX: number; startWidth: number; moved: number } | undefined>(undefined);
   /** A real drag must not also fire the click-to-toggle. */
   const suppressClick = React.useRef(false);
 
@@ -276,9 +273,7 @@ function SidebarFooter({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function SidebarContent({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div data-slot="sidebar-content" className={cn("sidebar-content", className)} {...props} />
-  );
+  return <div data-slot="sidebar-content" className={cn("sidebar-content", className)} {...props} />;
 }
 
 function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
@@ -286,33 +281,15 @@ function SidebarGroup({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function SidebarGroupLabel({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="sidebar-group-label"
-      className={cn("sidebar-group-label", className)}
-      {...props}
-    />
-  );
+  return <div data-slot="sidebar-group-label" className={cn("sidebar-group-label", className)} {...props} />;
 }
 
 function SidebarGroupAction({ className, ...props }: React.ComponentProps<"button">) {
-  return (
-    <button
-      data-slot="sidebar-group-action"
-      className={cn("sidebar-group-action", className)}
-      {...props}
-    />
-  );
+  return <button data-slot="sidebar-group-action" className={cn("sidebar-group-action", className)} {...props} />;
 }
 
 function SidebarGroupContent({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="sidebar-group-content"
-      className={cn("sidebar-group-content", className)}
-      {...props}
-    />
-  );
+  return <div data-slot="sidebar-group-content" className={cn("sidebar-group-content", className)} {...props} />;
 }
 
 function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
@@ -320,9 +297,7 @@ function SidebarMenu({ className, ...props }: React.ComponentProps<"ul">) {
 }
 
 function SidebarMenuItem({ className, ...props }: React.ComponentProps<"li">) {
-  return (
-    <li data-slot="sidebar-menu-item" className={cn("sidebar-menu-item", className)} {...props} />
-  );
+  return <li data-slot="sidebar-menu-item" className={cn("sidebar-menu-item", className)} {...props} />;
 }
 
 function SidebarMenuButton({
@@ -374,13 +349,7 @@ function SidebarMenuAction({
 }
 
 function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"span">) {
-  return (
-    <span
-      data-slot="sidebar-menu-badge"
-      className={cn("sidebar-menu-badge", className)}
-      {...props}
-    />
-  );
+  return <span data-slot="sidebar-menu-badge" className={cn("sidebar-menu-badge", className)} {...props} />;
 }
 
 function SidebarInput({ className, ...props }: React.ComponentProps<typeof Input>) {

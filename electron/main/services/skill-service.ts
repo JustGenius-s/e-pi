@@ -1,14 +1,11 @@
-import { shell } from "electron";
-import { basename, dirname, resolve } from "node:path";
-import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import {
-  getAgentDir,
-  loadSkills,
-  parseFrontmatter,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { homedir } from "node:os";
+import { basename, dirname, resolve } from "node:path";
+
+import { getAgentDir, loadSkills, parseFrontmatter, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { shell } from "electron";
 import { stringify } from "yaml";
+
 import type {
   SkillAddPathRequest,
   SkillCreateRequest,
@@ -20,8 +17,10 @@ import type {
 
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-/** User skills shared across agent harnesses (also scanned by the pi CLI).
- *  Resolved lazily so tests can redirect homedir(). */
+/**
+ * User skills shared across agent harnesses (also scanned by the pi CLI).
+ * Resolved lazily so tests can redirect homedir().
+ */
 function userAgentsSkillsDir(): string {
   return resolve(homedir(), ".agents", "skills");
 }
@@ -45,9 +44,7 @@ export class SkillService {
     // Mirror the CLI's discovery: user skills also live in ~/.agents/skills,
     // and trusted projects contribute .agents/skills from cwd and ancestors
     // (up to the git repo root). loadSkills() has no knowledge of either.
-    const projectAgentsSkillDirs = this.#projectAgentsSkillDirs(cwd).filter(
-      (dir) => dir !== userAgentsSkillsDir(),
-    );
+    const projectAgentsSkillDirs = this.#projectAgentsSkillDirs(cwd).filter((dir) => dir !== userAgentsSkillsDir());
     const { skills } = loadSkills({
       cwd,
       agentDir: getAgentDir(),
@@ -59,9 +56,7 @@ export class SkillService {
         // ~/.agents/skills only yields skills from subdirectories — root-level
         // .md files are ignored there, per the CLI's discovery rules.
         .filter((skill) => dirname(skill.filePath) !== userAgentsSkillsDir())
-        .map((skill) =>
-          this.#toRecord(skill, userSkillsDir, projectSkillsDir, projectAgentsSkillDirs),
-        )
+        .map((skill) => this.#toRecord(skill, userSkillsDir, projectSkillsDir, projectAgentsSkillDirs))
         .sort((a, b) => a.name.localeCompare(b.name))
     );
   }

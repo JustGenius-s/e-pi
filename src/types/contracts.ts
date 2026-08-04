@@ -102,7 +102,7 @@ export interface RemotePackageInfo {
   date?: string;
   author?: string;
   keywords?: string[];
-  /** npm search popularity score (0-1). */
+  /** Npm search popularity score (0-1). */
   popularity?: number;
 }
 

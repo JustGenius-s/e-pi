@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
+
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 let testAgentDir = "";
@@ -26,15 +27,12 @@ vi.mock("node:os", async (importOriginal) => {
 });
 
 import { SettingsManager } from "@earendil-works/pi-coding-agent";
+
 import { SkillService } from "../electron/main/services/skill-service";
 
 function writeSkill(dir: string, name: string, description: string): void {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(
-    join(dir, "SKILL.md"),
-    `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n`,
-    "utf8",
-  );
+  writeFileSync(join(dir, "SKILL.md"), `---\nname: ${name}\ndescription: ${description}\n---\n\n# ${name}\n`, "utf8");
 }
 
 describe("SkillService", () => {
@@ -83,12 +81,12 @@ describe("SkillService", () => {
   });
 
   it("rejects invalid skill names", async () => {
-    await expect(
-      service.create({ cwd, scope: "project", name: "My Skill!", description: "Nope." }),
-    ).rejects.toThrow(/lowercase/);
-    await expect(
-      service.create({ cwd, scope: "project", name: "-leading", description: "Nope." }),
-    ).rejects.toThrow(/lowercase/);
+    await expect(service.create({ cwd, scope: "project", name: "My Skill!", description: "Nope." })).rejects.toThrow(
+      /lowercase/,
+    );
+    await expect(service.create({ cwd, scope: "project", name: "-leading", description: "Nope." })).rejects.toThrow(
+      /lowercase/,
+    );
   });
 
   it("disables and re-enables a skill via frontmatter", async () => {
@@ -157,11 +155,7 @@ describe("SkillService", () => {
       projectDir = join(root, "project");
 
       // ~/.pi/agent/skills (user, classic location)
-      writeSkill(
-        join(testAgentDir, "skills", "pi-user-skill"),
-        "pi-user-skill",
-        "from pi agent dir",
-      );
+      writeSkill(join(testAgentDir, "skills", "pi-user-skill"), "pi-user-skill", "from pi agent dir");
       // ~/.agents/skills (user, shared across harnesses) + a root .md that must be ignored
       writeSkill(
         join(testHomeDir, ".agents", "skills", "agents-user-skill"),
@@ -171,11 +165,7 @@ describe("SkillService", () => {
       writeFileSync(join(testHomeDir, ".agents", "skills", "README.md"), "not a skill\n", "utf8");
       // Project: .pi/skills and .agents/skills (trusted project, git repo root at project/)
       mkdirSync(join(projectDir, ".git"), { recursive: true });
-      writeSkill(
-        join(projectDir, ".pi", "skills", "proj-pi-skill"),
-        "proj-pi-skill",
-        "from .pi/skills",
-      );
+      writeSkill(join(projectDir, ".pi", "skills", "proj-pi-skill"), "proj-pi-skill", "from .pi/skills");
       writeSkill(
         join(projectDir, ".agents", "skills", "proj-agents-skill"),
         "proj-agents-skill",
@@ -217,11 +207,7 @@ describe("SkillService", () => {
       writeSkill(join(testAgentDir, "skills", "disabled-skill"), "disabled-skill", "turned off");
       const filePath = join(testAgentDir, "skills", "disabled-skill", "SKILL.md");
       const content = readFileSync(filePath, "utf8");
-      writeFileSync(
-        filePath,
-        content.replace("---\nname:", "---\ndisable-model-invocation: true\nname:"),
-        "utf8",
-      );
+      writeFileSync(filePath, content.replace("---\nname:", "---\ndisable-model-invocation: true\nname:"), "utf8");
       const record = service.list(projectDir).find((item) => item.name === "disabled-skill");
       expect(record?.enabled).toBe(false);
     });

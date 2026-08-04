@@ -1,5 +1,6 @@
 import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
+
 import type {
   ContextUsageState,
   ModelManagementState,
@@ -113,11 +114,8 @@ export function Composer({
     : !sessionPath && models?.defaultModel
       ? `${models.defaultModel.provider}/${models.defaultModel.id}`
       : "";
-  const modelRef =
-    pendingModel && pendingModel.sessionPath === sessionPath ? pendingModel.ref : actualModelRef;
-  const selectedModel = availableModels.find(
-    (candidate) => `${candidate.provider}/${candidate.id}` === modelRef,
-  );
+  const modelRef = pendingModel && pendingModel.sessionPath === sessionPath ? pendingModel.ref : actualModelRef;
+  const selectedModel = availableModels.find((candidate) => `${candidate.provider}/${candidate.id}` === modelRef);
   const selectedModelLabel = selectedModel ? displayModel(selectedModel) : (model?.id ?? "Model");
   const selectedThinking = THINKING_LEVELS.find((level) => level.value === thinking);
 
@@ -194,9 +192,7 @@ export function Composer({
     if ((!value && files.length === 0 && !selectedSkill) || disabled || busy) return;
     const images = files.filter(isImage);
     const regular = files.filter((path) => !isImage(path));
-    const prompt = [regular.map((path) => `Attached path: ${path}`).join("\n"), value]
-      .filter(Boolean)
-      .join("\n");
+    const prompt = [regular.map((path) => `Attached path: ${path}`).join("\n"), value].filter(Boolean).join("\n");
     const messages: string[] = [];
     if (selectedSkill && images.length === 0) {
       // pi natively loads the skill and appends the prompt as "User: <args>"
@@ -259,9 +255,7 @@ export function Composer({
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        attachFiles(
-          Array.from(event.dataTransfer.files).map((file) => window.ePi.app.getPathForFile(file)),
-        );
+        attachFiles(Array.from(event.dataTransfer.files).map((file) => window.ePi.app.getPathForFile(file)));
       }}
     >
       {files.length > 0 || selectedSkill ? (
@@ -283,12 +277,7 @@ export function Composer({
             const image = isImage(path);
             const thumb = image ? thumbnails[path] : undefined;
             return (
-              <span
-                className="composer-attachment"
-                data-image={image ? "true" : undefined}
-                key={path}
-                title={path}
-              >
+              <span className="composer-attachment" data-image={image ? "true" : undefined} key={path} title={path}>
                 {image ? (
                   <button
                     type="button"
@@ -332,11 +321,7 @@ export function Composer({
         <DialogContent className="max-w-[min(1100px,calc(100vw-4rem))] p-2 sm:max-w-none">
           <DialogTitle className="sr-only">Image preview</DialogTitle>
           {previewUrl ? (
-            <img
-              className="composer-preview-img"
-              src={previewUrl}
-              alt={preview?.split(/[\\/]/).pop() ?? "Preview"}
-            />
+            <img className="composer-preview-img" src={previewUrl} alt={preview?.split(/[\\/]/).pop() ?? "Preview"} />
           ) : null}
         </DialogContent>
       </Dialog>
@@ -413,11 +398,7 @@ export function Composer({
                       }
                     >
                       {skills.map((skill) => (
-                        <DropdownMenuRadioItem
-                          key={skill.filePath}
-                          value={skill.filePath}
-                          title={skill.description}
-                        >
+                        <DropdownMenuRadioItem key={skill.filePath} value={skill.filePath} title={skill.description}>
                           {skill.name}
                         </DropdownMenuRadioItem>
                       ))}
@@ -443,10 +424,7 @@ export function Composer({
                   <MenubarSub>
                     <MenubarSubTrigger>Model</MenubarSubTrigger>
                     <MenubarSubContent className="composer-model-menu">
-                      <MenubarRadioGroup
-                        value={modelRef}
-                        onValueChange={(value) => void changeModel(value)}
-                      >
+                      <MenubarRadioGroup value={modelRef} onValueChange={(value) => void changeModel(value)}>
                         {availableProviders.map((provider, index) => (
                           <MenubarGroup key={provider.id}>
                             {index > 0 ? <MenubarSeparator /> : null}
@@ -467,10 +445,7 @@ export function Composer({
                   <MenubarSub>
                     <MenubarSubTrigger>Thinking strength</MenubarSubTrigger>
                     <MenubarSubContent>
-                      <MenubarRadioGroup
-                        value={thinking}
-                        onValueChange={(value) => void changeThinking(value)}
-                      >
+                      <MenubarRadioGroup value={thinking} onValueChange={(value) => void changeThinking(value)}>
                         {THINKING_LEVELS.map((level) => (
                           <MenubarRadioItem key={level.value} value={level.value}>
                             <span>{level.label}</span>
@@ -486,9 +461,7 @@ export function Composer({
           </Menubar>
         </div>
         <div className="composer-actions">
-          {usage ? (
-            <SessionStats context={context} usage={usage} cacheHitRate={cacheHitRate} />
-          ) : null}
+          {usage ? <SessionStats context={context} usage={usage} cacheHitRate={cacheHitRate} /> : null}
           <Button
             className="composer-send"
             size="sm"

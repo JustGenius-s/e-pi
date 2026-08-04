@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+
 import type {
   AppInfo,
   CreateSessionRequest,
@@ -52,29 +53,21 @@ const api: EPiApi = {
     list: () => ipcRenderer.invoke("sessions:list") as Promise<SessionSummary[]>,
     create: (request: CreateSessionRequest) =>
       ipcRenderer.invoke("sessions:create", request) as Promise<SessionSummary>,
-    rename: (request: RenameSessionRequest) =>
-      ipcRenderer.invoke("sessions:rename", request) as Promise<void>,
+    rename: (request: RenameSessionRequest) => ipcRenderer.invoke("sessions:rename", request) as Promise<void>,
     remove: (path: string) => ipcRenderer.invoke("sessions:remove", path) as Promise<void>,
   },
   runtime: {
-    getStates: () =>
-      ipcRenderer.invoke("runtime:get-states") as Promise<Record<string, PiRuntimeState>>,
-    start: (sessionPath: string) =>
-      ipcRenderer.invoke("runtime:start", sessionPath) as Promise<void>,
-    stop: (sessionPath?: string) =>
-      ipcRenderer.invoke("runtime:stop", sessionPath) as Promise<void>,
-    write: (sessionPath: string, data: string) =>
-      ipcRenderer.send("runtime:write", sessionPath, data),
+    getStates: () => ipcRenderer.invoke("runtime:get-states") as Promise<Record<string, PiRuntimeState>>,
+    start: (sessionPath: string) => ipcRenderer.invoke("runtime:start", sessionPath) as Promise<void>,
+    stop: (sessionPath?: string) => ipcRenderer.invoke("runtime:stop", sessionPath) as Promise<void>,
+    write: (sessionPath: string, data: string) => ipcRenderer.send("runtime:write", sessionPath, data),
     submit: (sessionPath: string, text: string) =>
       ipcRenderer.invoke("runtime:submit", sessionPath, text) as Promise<void>,
     interrupt: (sessionPath: string) => ipcRenderer.send("runtime:interrupt", sessionPath),
-    resize: (sessionPath: string, size: ResizeTerminalRequest) =>
-      ipcRenderer.send("runtime:resize", sessionPath, size),
+    resize: (sessionPath: string, size: ResizeTerminalRequest) => ipcRenderer.send("runtime:resize", sessionPath, size),
     onAnyData: (listener: (sessionPath: string, data: string) => void) => {
-      const handler = (
-        _event: Electron.IpcRendererEvent,
-        payload: { sessionPath: string; data: string },
-      ) => listener(payload.sessionPath, payload.data);
+      const handler = (_event: Electron.IpcRendererEvent, payload: { sessionPath: string; data: string }) =>
+        listener(payload.sessionPath, payload.data);
       ipcRenderer.on("runtime:data", handler);
       return () => ipcRenderer.removeListener("runtime:data", handler);
     },
@@ -84,26 +77,19 @@ const api: EPiApi = {
     list: (cwd: string) => ipcRenderer.invoke("packages:list", cwd) as Promise<PackageRecord[]>,
     checkUpdates: (cwd: string, force?: boolean) =>
       ipcRenderer.invoke("packages:check-updates", cwd, force) as Promise<PackageUpdateInfo[]>,
-    search: (query: string) =>
-      ipcRenderer.invoke("packages:search", query) as Promise<RemotePackageInfo[]>,
-    install: (request: PackageMutation) =>
-      ipcRenderer.invoke("packages:install", request) as Promise<PackageRecord[]>,
-    remove: (request: PackageMutation) =>
-      ipcRenderer.invoke("packages:remove", request) as Promise<PackageRecord[]>,
+    search: (query: string) => ipcRenderer.invoke("packages:search", query) as Promise<RemotePackageInfo[]>,
+    install: (request: PackageMutation) => ipcRenderer.invoke("packages:install", request) as Promise<PackageRecord[]>,
+    remove: (request: PackageMutation) => ipcRenderer.invoke("packages:remove", request) as Promise<PackageRecord[]>,
     update: (request: PackageUpdateRequest) =>
       ipcRenderer.invoke("packages:update", request) as Promise<PackageRecord[]>,
-    onProgress: (listener: (progress: PackageProgress) => void) =>
-      subscribe("packages:progress", listener),
+    onProgress: (listener: (progress: PackageProgress) => void) => subscribe("packages:progress", listener),
   },
   models: {
     list: () => ipcRenderer.invoke("models:list") as Promise<ModelManagementState>,
-    login: (request: ModelLoginRequest) =>
-      ipcRenderer.invoke("models:login", request) as Promise<ModelManagementState>,
-    respondToLogin: (response: ModelLoginResponse) =>
-      ipcRenderer.send("models:login-response", response),
+    login: (request: ModelLoginRequest) => ipcRenderer.invoke("models:login", request) as Promise<ModelManagementState>,
+    respondToLogin: (response: ModelLoginResponse) => ipcRenderer.send("models:login-response", response),
     cancelLogin: () => ipcRenderer.send("models:cancel-login"),
-    logout: (providerId: string) =>
-      ipcRenderer.invoke("models:logout", providerId) as Promise<ModelManagementState>,
+    logout: (providerId: string) => ipcRenderer.invoke("models:logout", providerId) as Promise<ModelManagementState>,
     setDefault: (request: SetDefaultModelRequest) =>
       ipcRenderer.invoke("models:set-default", request) as Promise<ModelManagementState>,
     customList: () => ipcRenderer.invoke("models:custom-list") as Promise<CustomProviderConfig[]>,
@@ -111,19 +97,14 @@ const api: EPiApi = {
       ipcRenderer.invoke("models:custom-save", request) as Promise<CustomProviderConfig[]>,
     customRemove: (request: CustomProviderRemoveRequest) =>
       ipcRenderer.invoke("models:custom-remove", request) as Promise<CustomProviderConfig[]>,
-    onLoginEvent: (listener: (event: ModelLoginEvent) => void) =>
-      subscribe("models:login-event", listener),
+    onLoginEvent: (listener: (event: ModelLoginEvent) => void) => subscribe("models:login-event", listener),
   },
   skills: {
     list: (cwd: string) => ipcRenderer.invoke("skills:list", cwd) as Promise<SkillRecord[]>,
-    read: (cwd: string, filePath: string) =>
-      ipcRenderer.invoke("skills:read", cwd, filePath) as Promise<string>,
-    create: (request: SkillCreateRequest) =>
-      ipcRenderer.invoke("skills:create", request) as Promise<SkillRecord[]>,
-    addPath: (request: SkillAddPathRequest) =>
-      ipcRenderer.invoke("skills:add-path", request) as Promise<SkillRecord[]>,
-    remove: (request: SkillMutation) =>
-      ipcRenderer.invoke("skills:remove", request) as Promise<SkillRecord[]>,
+    read: (cwd: string, filePath: string) => ipcRenderer.invoke("skills:read", cwd, filePath) as Promise<string>,
+    create: (request: SkillCreateRequest) => ipcRenderer.invoke("skills:create", request) as Promise<SkillRecord[]>,
+    addPath: (request: SkillAddPathRequest) => ipcRenderer.invoke("skills:add-path", request) as Promise<SkillRecord[]>,
+    remove: (request: SkillMutation) => ipcRenderer.invoke("skills:remove", request) as Promise<SkillRecord[]>,
     setEnabled: (request: SkillSetEnabledRequest) =>
       ipcRenderer.invoke("skills:set-enabled", request) as Promise<SkillRecord[]>,
   },

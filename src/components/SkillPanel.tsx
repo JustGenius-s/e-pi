@@ -1,13 +1,6 @@
+import { FolderOpen, FolderPlus, LoaderCircle, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  FolderOpen,
-  FolderPlus,
-  LoaderCircle,
-  Plus,
-  RefreshCw,
-  Search,
-  Trash2,
-} from "lucide-react";
+
 import type { SkillRecord, SkillScope } from "../types/contracts";
 import { IconButton } from "./IconButton";
 import {
@@ -22,14 +15,7 @@ import {
 } from "./ui/alert-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -81,9 +67,7 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
         setSkills(next);
         if (!opts?.keepSelection) {
           setSelectedPath((current) =>
-            current && next.some((skill) => skill.filePath === current)
-              ? current
-              : next[0]?.filePath,
+            current && next.some((skill) => skill.filePath === current) ? current : next[0]?.filePath,
           );
         }
       } catch (reason) {
@@ -127,9 +111,7 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return skills;
-    return skills.filter((skill) =>
-      `${skill.name} ${skill.description}`.toLowerCase().includes(normalized),
-    );
+    return skills.filter((skill) => `${skill.name} ${skill.description}`.toLowerCase().includes(normalized));
   }, [query, skills]);
 
   const validName = SKILL_NAME_PATTERN.test(newName.trim());
@@ -237,11 +219,7 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
               <h3>
                 Skills <span>{skills.length}</span>
               </h3>
-              <IconButton
-                label="Refresh skills"
-                onClick={() => void refresh({ keepSelection: true })}
-                disabled={busy}
-              >
+              <IconButton label="Refresh skills" onClick={() => void refresh({ keepSelection: true })} disabled={busy}>
                 <RefreshCw size={14} />
               </IconButton>
             </div>
@@ -255,11 +233,7 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
             ) : (
               <ScrollArea className="skill-panel-list" type="auto">
                 {filtered.map((skill) => (
-                  <div
-                    className="skill-panel-item"
-                    data-active={skill.filePath === selectedPath}
-                    key={skill.filePath}
-                  >
+                  <div className="skill-panel-item" data-active={skill.filePath === selectedPath} key={skill.filePath}>
                     <button
                       className="skill-panel-select"
                       onClick={() => setSelectedPath(skill.filePath)}
@@ -280,9 +254,7 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
 
                     {skill.filePath === selectedPath ? (
                       <div className="skill-panel-detail">
-                        {skill.description ? (
-                          <p className="skill-description">{skill.description}</p>
-                        ) : null}
+                        {skill.description ? <p className="skill-description">{skill.description}</p> : null}
 
                         <div className="skill-status">
                           <span className="skill-status-label">Enabled</span>
@@ -357,9 +329,7 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Create a skill</DialogTitle>
-              <DialogDescription>
-                A new skill directory with a SKILL.md will be created.
-              </DialogDescription>
+              <DialogDescription>A new skill directory with a SKILL.md will be created.</DialogDescription>
             </DialogHeader>
             <div className="skill-create-form">
               <Tabs
@@ -381,9 +351,7 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
                   placeholder="my-skill"
                   aria-invalid={newName.length > 0 && !validName}
                 />
-                {newName.length > 0 && !validName ? (
-                  <small>Lowercase letters, numbers, and hyphens only.</small>
-                ) : null}
+                {newName.length > 0 && !validName ? <small>Lowercase letters, numbers, and hyphens only.</small> : null}
               </label>
               <label>
                 <span>Description</span>
@@ -399,20 +367,14 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
               <Button variant="outline" onClick={() => setCreateOpen(false)}>
                 Cancel
               </Button>
-              <Button
-                onClick={() => void create()}
-                disabled={!validName || !newDescription.trim() || busy}
-              >
+              <Button onClick={() => void create()} disabled={!validName || !newDescription.trim() || busy}>
                 Create skill
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        <AlertDialog
-          open={Boolean(removeTarget)}
-          onOpenChange={(next) => !next && setRemoveTarget(undefined)}
-        >
+        <AlertDialog open={Boolean(removeTarget)} onOpenChange={(next) => !next && setRemoveTarget(undefined)}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete skill?</AlertDialogTitle>

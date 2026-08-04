@@ -1,10 +1,7 @@
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import {
-  CustomEditor,
-  type ExtensionAPI,
-  type ExtensionContext,
-} from "@earendil-works/pi-coding-agent";
+
+import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 
 const ACTIVITY_SUFFIX = ".e-pi-activity.json";
@@ -68,11 +65,7 @@ function computeUsageFromEntries(ctx: ExtensionContext): BridgeUsage {
   for (const entry of ctx.sessionManager.getEntries()) {
     if (entry.type === "message" && entry.message.role === "assistant") {
       addUsage(totals, entry.message.usage);
-    } else if (
-      entry.type === "message" &&
-      entry.message.role === "toolResult" &&
-      entry.message.usage
-    ) {
+    } else if (entry.type === "message" && entry.message.role === "toolResult" && entry.message.usage) {
       addUsage(totals, entry.message.usage);
     } else if ((entry.type === "branch_summary" || entry.type === "compaction") && entry.usage) {
       addUsage(totals, entry.usage);
@@ -188,9 +181,10 @@ export default function ePiBridge(pi: ExtensionAPI): void {
           };
         }),
       );
-      const content: Array<
-        { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
-      > = [{ type: "text", text: prompt }, ...imageBlocks];
+      const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
+        { type: "text", text: prompt },
+        ...imageBlocks,
+      ];
       pi.sendUserMessage(content);
     },
   });
@@ -198,9 +192,7 @@ export default function ePiBridge(pi: ExtensionAPI): void {
   pi.on("session_start", (_event, ctx) => {
     ctx.ui.setHeader(() => new EmptyComponent());
     ctx.ui.setFooter(() => new EmptyComponent());
-    ctx.ui.setEditorComponent(
-      (tui, theme, keybindings) => new DesktopEditor(tui, theme, keybindings),
-    );
+    ctx.ui.setEditorComponent((tui, theme, keybindings) => new DesktopEditor(tui, theme, keybindings));
     // Reseed usage from the session file so totals survive process restarts.
     sessionUsage = computeUsageFromEntries(ctx);
     sessionCacheHitRate = latestCacheHitRate(ctx);

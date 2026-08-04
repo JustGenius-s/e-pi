@@ -1,5 +1,6 @@
-import type { AppInfo, SessionSummary } from "../types/contracts";
 import { sessionTitle } from "../lib/format";
+import type { AppInfo, SessionSummary } from "../types/contracts";
+import { ModelSettings } from "./ModelSettings";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -11,16 +12,8 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "./ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
-import { ModelSettings } from "./ModelSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 interface AppDialogsProps {
@@ -56,9 +49,7 @@ export function AppDialogs({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename session</DialogTitle>
-            <DialogDescription>
-              Give this session a short name so it is easier to find later.
-            </DialogDescription>
+            <DialogDescription>Give this session a short name so it is easier to find later.</DialogDescription>
           </DialogHeader>
           <Input
             autoFocus
@@ -88,8 +79,7 @@ export function AppDialogs({
           <AlertDialogHeader>
             <AlertDialogTitle>Archive session?</AlertDialogTitle>
             <AlertDialogDescription>
-              {removeTarget ? sessionTitle(removeTarget) : "This session"} will be moved to the
-              system Trash.
+              {removeTarget ? sessionTitle(removeTarget) : "This session"} will be moved to the system Trash.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

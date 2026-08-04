@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+
 import { getAgentDir, ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
+
 import type {
   CustomProviderConfig,
   CustomProviderRemoveRequest,
@@ -145,11 +147,7 @@ export class ModelService {
     return this.#snapshot(runtime, cwd);
   }
 
-  async login(
-    request: ModelLoginRequest,
-    cwd: string,
-    onEvent: LoginEventListener,
-  ): Promise<ModelManagementState> {
+  async login(request: ModelLoginRequest, cwd: string, onEvent: LoginEventListener): Promise<ModelManagementState> {
     if (this.#loginController) throw new Error("Another provider login is already in progress.");
 
     const runtime = await this.#createRuntime();
@@ -309,9 +307,7 @@ export class ModelService {
     return this.listCustomProviders();
   }
 
-  async removeCustomProvider(
-    request: CustomProviderRemoveRequest,
-  ): Promise<CustomProviderConfig[]> {
+  async removeCustomProvider(request: CustomProviderRemoveRequest): Promise<CustomProviderConfig[]> {
     const file = await readModelsFile();
     if (!(request.providerId in file.providers)) {
       throw new Error(`Unknown custom provider: ${request.providerId}`);
@@ -327,14 +323,9 @@ export class ModelService {
 
   async #snapshot(runtime: ModelRuntime, cwd: string): Promise<ModelManagementState> {
     const credentials = new Map(
-      (await runtime.listCredentials()).map((credential) => [
-        credential.providerId,
-        credential.type,
-      ]),
+      (await runtime.listCredentials()).map((credential) => [credential.providerId, credential.type]),
     );
-    const availableModels = new Set(
-      runtime.getAvailableSnapshot().map((model) => `${model.provider}/${model.id}`),
-    );
+    const availableModels = new Set(runtime.getAvailableSnapshot().map((model) => `${model.provider}/${model.id}`));
     const providers = runtime
       .getProviders()
       .map((provider) => {
@@ -375,10 +366,7 @@ export class ModelService {
 
     return {
       providers,
-      defaultModel:
-        defaultProvider && defaultModel
-          ? { provider: defaultProvider, id: defaultModel }
-          : undefined,
+      defaultModel: defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
       error: runtime.getError(),
     };
   }

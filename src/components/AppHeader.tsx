@@ -1,5 +1,5 @@
-import type { SessionSummary } from "../types/contracts";
 import { sessionTitle } from "../lib/format";
+import type { SessionSummary } from "../types/contracts";
 import { SidebarTrigger } from "./ui/sidebar";
 
 interface AppHeaderProps {

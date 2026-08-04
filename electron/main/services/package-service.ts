@@ -2,12 +2,10 @@ import { execFile } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
+
+import { DefaultPackageManager, getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
 import { net } from "electron";
-import {
-  DefaultPackageManager,
-  getAgentDir,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+
 import type {
   PackageMutation,
   PackageProgress,
@@ -48,12 +46,7 @@ function normalizePackageSource(source: string): string {
   const trimmed = source.trim();
   if (!trimmed) return trimmed;
   if (/^(npm:|git:|github:|http:|https:|ssh:|file:)/i.test(trimmed)) return trimmed;
-  if (
-    trimmed.startsWith("/") ||
-    trimmed.startsWith("./") ||
-    trimmed.startsWith("../") ||
-    trimmed.startsWith("~/")
-  ) {
+  if (trimmed.startsWith("/") || trimmed.startsWith("./") || trimmed.startsWith("../") || trimmed.startsWith("~/")) {
     return trimmed;
   }
   // npm package spec: [@scope/]name[@version]
@@ -102,8 +95,7 @@ export class PackageService {
     const updates = await Promise.all(
       available.map(async (info) => ({
         ...info,
-        latestVersion:
-          info.type === "npm" ? await this.#latestNpmVersion(cwd, info.displayName) : undefined,
+        latestVersion: info.type === "npm" ? await this.#latestNpmVersion(cwd, info.displayName) : undefined,
       })),
     );
     this.#updatesCache = { key: cwd, at: now, updates };
@@ -118,11 +110,7 @@ export class PackageService {
   async searchRemote(query: string): Promise<RemotePackageInfo[]> {
     const key = query.trim().toLowerCase();
     const now = Date.now();
-    if (
-      this.#searchCache &&
-      this.#searchCache.key === key &&
-      now - this.#searchCache.at < SEARCH_TTL_MS
-    ) {
+    if (this.#searchCache && this.#searchCache.key === key && now - this.#searchCache.at < SEARCH_TTL_MS) {
       return this.#searchCache.results;
     }
     const text = key ? `keywords:pi-package ${key}` : "keywords:pi-package";
