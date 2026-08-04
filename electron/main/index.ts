@@ -40,7 +40,9 @@ function sendToRenderer(channel: string, payload: unknown): void {
   }
 }
 function activeCwd(): string {
-  return runtime.state.cwd ?? app.getPath("home");
+  const activePath = runtime.activeSessionPath;
+  const state = activePath ? runtime.getStates()[activePath] : undefined;
+  return state?.cwd ?? app.getPath("home");
 }
 
 async function cleanupStalePastedImages(): Promise<void> {
@@ -54,9 +56,9 @@ async function cleanupStalePastedImages(): Promise<void> {
 }
 
 async function reloadActiveRuntime(): Promise<void> {
-  const state = runtime.state;
-  if (state.status !== "running" || !state.sessionPath || !state.cwd) return;
-  await runtime.start(state.sessionPath, state.cwd);
+  // Auth/config changed: restart every live session so all processes pick up
+  // the new providers, models, and credentials.
+  await runtime.reloadAll();
 }
 
 const IMAGE_MIME: Record<string, string> = {
@@ -142,34 +144,43 @@ function registerHandlers(): void {
     return sessions.create(request.cwd?.trim() || activeCwd());
   });
   ipcMain.handle("sessions:rename", async (_event, request: { path: string; name: string }) => {
-    const wasActive = runtime.state.sessionPath === request.path;
-    if (wasActive) await runtime.stop();
+    const activePath = runtime.activeSessionPath;
+    const cwd = sessions.getCwd(request.path);
+    const wasRunning = runtime.isRunning(request.path);
+    // A running pi has the session file open; stop it so rename never races
+    // with pi's own appends, then restart it in the background.
+    if (wasRunning) await runtime.stop(request.path);
     try {
       sessions.rename(request.path, request.name);
     } finally {
-      if (wasActive) await runtime.start(request.path, sessions.getCwd(request.path));
+      if (wasRunning) await runtime.start(request.path, cwd);
+      runtime.setActiveSession(activePath);
     }
   });
   ipcMain.handle("sessions:remove", async (_event, path: string) => {
-    const wasActive = runtime.state.sessionPath === path;
-    if (wasActive) await runtime.stop();
+    await runtime.stop(path);
+    runtime.forget(path);
     await shell.trashItem(path);
   });
 
-  ipcMain.handle("runtime:get-state", () => runtime.state);
+  ipcMain.handle("runtime:get-states", () => runtime.getStates());
   ipcMain.handle("runtime:start", async (_event, path: string) => {
     const cwd = sessions.getCwd(path);
     debugLog("[ipc] runtime:start", { path, cwd });
     return runtime.start(path, cwd);
   });
-  ipcMain.handle("runtime:stop", () => runtime.stop());
-  ipcMain.on("runtime:write", (_event, data: string) => runtime.write(data));
-  ipcMain.handle("runtime:submit", (_event, text: string) => {
-    debugLog("[ipc] runtime:submit", { text: text.slice(0, 80) });
-    return runtime.submit(text);
+  ipcMain.handle("runtime:stop", (_event, sessionPath?: string) => runtime.stop(sessionPath));
+  ipcMain.on("runtime:write", (_event, sessionPath: string, data: string) =>
+    runtime.write(sessionPath, data),
+  );
+  ipcMain.handle("runtime:submit", (_event, sessionPath: string, text: string) => {
+    debugLog("[ipc] runtime:submit", { sessionPath, text: text.slice(0, 80) });
+    return runtime.submit(sessionPath, text);
   });
-  ipcMain.on("runtime:interrupt", () => runtime.interrupt());
-  ipcMain.on("runtime:resize", (_event, size: ResizeTerminalRequest) => runtime.resize(size));
+  ipcMain.on("runtime:interrupt", (_event, sessionPath: string) => runtime.interrupt(sessionPath));
+  ipcMain.on("runtime:resize", (_event, sessionPath: string, size: ResizeTerminalRequest) =>
+    runtime.resize(sessionPath, size),
+  );
 
   ipcMain.handle("packages:list", (_event, cwd: string) => packages.list(cwd || activeCwd()));
   ipcMain.handle("packages:install", (_event, request: PackageMutation) =>
@@ -216,8 +227,9 @@ function registerHandlers(): void {
   });
   ipcMain.handle("models:set-default", async (_event, request: SetDefaultModelRequest) => {
     const state = await models.setDefault(request, activeCwd());
-    if (runtime.state.status === "running") {
-      runtime.submit(`/model ${request.provider}/${request.id}`);
+    const activePath = runtime.activeSessionPath;
+    if (activePath && runtime.isRunning(activePath)) {
+      runtime.submit(activePath, `/model ${request.provider}/${request.id}`);
     }
     return state;
   });
@@ -280,7 +292,7 @@ function createWindow(): void {
   });
 }
 
-runtime.onData((data) => sendToRenderer("runtime:data", data));
+runtime.onGlobalData((sessionPath, data) => sendToRenderer("runtime:data", { sessionPath, data }));
 runtime.onState((state) => sendToRenderer("runtime:state", state));
 packages.setProgressListener((progress) => sendToRenderer("packages:progress", progress));
 

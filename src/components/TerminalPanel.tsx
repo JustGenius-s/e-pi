@@ -1,18 +1,48 @@
 import { useEffect, useRef } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import type { PiRuntimeState } from "../types/contracts";
 
 interface TerminalPanelProps {
   sessionKey: string;
-  runtimeState: PiRuntimeState;
 }
 
-export function TerminalPanel({ sessionKey, runtimeState }: TerminalPanelProps) {
+/**
+ * Scrollback per session, kept across terminal unmount/remount (switching to
+ * another session destroys the xterm instance). A hidden session keeps
+ * accumulating output in the background via the app-lifetime feeder below, so
+ * switching back replays exactly what the process printed while hidden.
+ */
+const MAX_BUFFER_CHARS = 400_000;
+const buffers = new Map<string, string>();
+
+export function clearTerminalBuffer(sessionKey: string): void {
+  buffers.delete(sessionKey);
+}
+
+function appendTerminalBuffer(sessionKey: string, data: string): void {
+  const next = (buffers.get(sessionKey) ?? "") + data;
+  buffers.set(sessionKey, next.length > MAX_BUFFER_CHARS ? next.slice(-MAX_BUFFER_CHARS) : next);
+}
+
+let feederStarted = false;
+
+/**
+ * App-lifetime subscription: buffer every session's output regardless of which
+ * terminal is visible, so nothing is lost while a session runs in the
+ * background. Only starts once the first TerminalPanel mounts.
+ */
+function ensureBufferFeeder(): void {
+  if (feederStarted) return;
+  feederStarted = true;
+  window.ePi.runtime.onAnyData((sessionPath, data) => appendTerminalBuffer(sessionPath, data));
+}
+
+export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!hostRef.current) return;
+    ensureBufferFeeder();
 
     // xterm paints its own canvas, so use the rendered workspace color instead
     // of leaving the terminal on a separate hard-coded background.
@@ -58,7 +88,7 @@ export function TerminalPanel({ sessionKey, runtimeState }: TerminalPanelProps) 
     const fitTerminal = () => {
       try {
         fit.fit();
-        window.ePi.runtime.resize({ cols: terminal.cols, rows: terminal.rows });
+        window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
       } catch {
         // The terminal can be measured before its parent is visible.
       }
@@ -67,21 +97,23 @@ export function TerminalPanel({ sessionKey, runtimeState }: TerminalPanelProps) 
     resizeObserver.observe(hostRef.current);
     fitTerminal();
 
-    const stopData = window.ePi.runtime.onData((data) => terminal.write(data));
-    const input = terminal.onData((data) => window.ePi.runtime.write(data));
-    if (runtimeState.status === "running") {
-      terminal.write("\x1b[2J\x1b[H");
-    }
+    let disposed = false;
+    const replay = buffers.get(sessionKey);
+    if (replay) terminal.write(replay);
+
+    const stopData = window.ePi.runtime.onAnyData((path, data) => {
+      if (disposed || path !== sessionKey) return;
+      terminal.write(data);
+    });
+    const input = terminal.onData((data) => window.ePi.runtime.write(sessionKey, data));
 
     return () => {
+      disposed = true;
       stopData();
       input.dispose();
       resizeObserver.disconnect();
       terminal.dispose();
     };
-    // The terminal instance is bound to the session; runtime status is only read
-    // once at mount to clear the screen, so it is intentionally not a dependency.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey]);
 
   return <div className="terminal-panel" ref={hostRef} aria-label="Pi terminal output" />;

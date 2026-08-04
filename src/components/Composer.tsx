@@ -36,6 +36,7 @@ import {
 import { Textarea } from "./ui/textarea";
 
 interface ComposerProps {
+  sessionPath?: string;
   status: PiProcessStatus;
   disabled: boolean;
   cwd?: string;
@@ -61,7 +62,14 @@ function displayModel(model: ModelRecord): string {
   return model.name || model.id;
 }
 
-export function Composer({ status, disabled, cwd, onSubmit, onInterrupt }: ComposerProps) {
+export function Composer({
+  sessionPath,
+  status,
+  disabled,
+  cwd,
+  onSubmit,
+  onInterrupt,
+}: ComposerProps) {
   const [text, setText] = useState("");
   const [models, setModels] = useState<ModelManagementState>();
   const [modelRef, setModelRef] = useState("");
@@ -161,7 +169,8 @@ export function Composer({ status, disabled, cwd, onSubmit, onInterrupt }: Compo
     } else {
       if (selectedSkill) {
         // images go through /e-pi-attach (sendUserMessage), so load the skill natively first
-        await window.ePi.runtime.submit(`/skill:${selectedSkill.name}`);
+        if (sessionPath)
+          await window.ePi.runtime.submit(sessionPath, `/skill:${selectedSkill.name}`);
       }
       if (images.length > 0) {
         const payload = btoa(
@@ -174,7 +183,7 @@ export function Composer({ status, disabled, cwd, onSubmit, onInterrupt }: Compo
             ),
           ),
         );
-        await window.ePi.runtime.submit(`/e-pi-attach ${payload}`);
+        if (sessionPath) await window.ePi.runtime.submit(sessionPath, `/e-pi-attach ${payload}`);
       } else {
         onSubmit(prompt);
       }
@@ -199,7 +208,7 @@ export function Composer({ status, disabled, cwd, onSubmit, onInterrupt }: Compo
 
   const changeThinking = async (value: string) => {
     setThinking(value as ThinkingLevel);
-    await window.ePi.runtime.submit(`/e-pi-thinking ${value}`);
+    if (sessionPath) await window.ePi.runtime.submit(sessionPath, `/e-pi-thinking ${value}`);
   };
 
   return (

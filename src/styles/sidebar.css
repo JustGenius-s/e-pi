@@ -192,7 +192,37 @@
 
 .session-menu-button {
   min-height: 38px;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.session-status-dot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--muted-foreground);
+  opacity: 0.55;
+}
+
+.session-status-dot.live {
+  background: #74d6a5;
+  opacity: 1;
+  box-shadow: 0 0 4px #74d6a566;
+}
+
+.session-status-dot.busy {
+  background: #e3c47a;
+  opacity: 1;
+}
+
+.session-status-dot.danger {
+  background: #ed8b92;
+  opacity: 1;
+}
+
+.session-status-dot.muted {
+  background: var(--muted-foreground);
+  opacity: 0.35;
 }
 
 .session-menu-button time {

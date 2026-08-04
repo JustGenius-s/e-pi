@@ -1,7 +1,14 @@
 import { Folder, FolderOpen, Package, Plus, Settings2, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { SessionSummary } from "../types/contracts";
-import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
+import type { PiRuntimeState, SessionSummary } from "../types/contracts";
+import {
+  compactPath,
+  pathBaseName,
+  relativeTime,
+  sessionTitle,
+  statusLabel,
+  statusTone,
+} from "../lib/format";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -26,6 +33,8 @@ import {
 interface SessionSidebarProps {
   sessions: SessionSummary[];
   activePath?: string;
+  /** Live process state per session path; lets the sidebar show background activity. */
+  runtimeStates?: Record<string, PiRuntimeState>;
   homeCwd?: string;
   platform?: NodeJS.Platform;
   onSelect: (session: SessionSummary) => void;
@@ -49,6 +58,7 @@ const UNKNOWN_FOLDER = "Unknown folder";
 export function SessionSidebar({
   sessions,
   activePath,
+  runtimeStates,
   homeCwd,
   platform,
   onSelect,
@@ -172,6 +182,9 @@ export function SessionSidebar({
                       {project.sessions.map((session) => {
                         const active = session.path === activePath;
                         const title = sessionTitle(session);
+                        const runtime = runtimeStates?.[session.path];
+                        const tone = runtime ? statusTone(runtime.status) : "muted";
+                        const statusTitle = runtime ? statusLabel(runtime.status) : "Not running";
                         return (
                           <SidebarMenuItem key={session.path} className="session-menu-item">
                             <ContextMenu>
@@ -184,6 +197,11 @@ export function SessionSidebar({
                                   onClick={() => onSelect(session)}
                                 >
                                   <span className="session-label">{title}</span>
+                                  <span
+                                    className={`session-status-dot ${tone}`}
+                                    title={statusTitle}
+                                    aria-label={statusTitle}
+                                  />
                                   <time dateTime={session.modifiedAt}>
                                     {relativeTime(session.modifiedAt)}
                                   </time>

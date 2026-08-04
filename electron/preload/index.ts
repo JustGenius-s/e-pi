@@ -55,15 +55,27 @@ const api: EPiApi = {
     remove: (path: string) => ipcRenderer.invoke("sessions:remove", path) as Promise<void>,
   },
   runtime: {
-    getState: () => ipcRenderer.invoke("runtime:get-state") as Promise<PiRuntimeState>,
+    getStates: () =>
+      ipcRenderer.invoke("runtime:get-states") as Promise<Record<string, PiRuntimeState>>,
     start: (sessionPath: string) =>
       ipcRenderer.invoke("runtime:start", sessionPath) as Promise<void>,
-    stop: () => ipcRenderer.invoke("runtime:stop") as Promise<void>,
-    write: (data: string) => ipcRenderer.send("runtime:write", data),
-    submit: (text: string) => ipcRenderer.invoke("runtime:submit", text) as Promise<void>,
-    interrupt: () => ipcRenderer.send("runtime:interrupt"),
-    resize: (size: ResizeTerminalRequest) => ipcRenderer.send("runtime:resize", size),
-    onData: (listener: (data: string) => void) => subscribe("runtime:data", listener),
+    stop: (sessionPath?: string) =>
+      ipcRenderer.invoke("runtime:stop", sessionPath) as Promise<void>,
+    write: (sessionPath: string, data: string) =>
+      ipcRenderer.send("runtime:write", sessionPath, data),
+    submit: (sessionPath: string, text: string) =>
+      ipcRenderer.invoke("runtime:submit", sessionPath, text) as Promise<void>,
+    interrupt: (sessionPath: string) => ipcRenderer.send("runtime:interrupt", sessionPath),
+    resize: (sessionPath: string, size: ResizeTerminalRequest) =>
+      ipcRenderer.send("runtime:resize", sessionPath, size),
+    onAnyData: (listener: (sessionPath: string, data: string) => void) => {
+      const handler = (
+        _event: Electron.IpcRendererEvent,
+        payload: { sessionPath: string; data: string },
+      ) => listener(payload.sessionPath, payload.data);
+      ipcRenderer.on("runtime:data", handler);
+      return () => ipcRenderer.removeListener("runtime:data", handler);
+    },
     onState: (listener: (state: PiRuntimeState) => void) => subscribe("runtime:state", listener),
   },
   packages: {

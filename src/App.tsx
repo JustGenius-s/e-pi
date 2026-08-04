@@ -7,7 +7,7 @@ import { IconButton } from "./components/IconButton";
 import { PackagePanel } from "./components/PackagePanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SkillPanel } from "./components/SkillPanel";
-import { TerminalPanel } from "./components/TerminalPanel";
+import { clearTerminalBuffer, TerminalPanel } from "./components/TerminalPanel";
 import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
 import { Button } from "./components/ui/button";
 import { SidebarInset, SidebarProvider } from "./components/ui/sidebar";
@@ -16,7 +16,8 @@ export function App() {
   const [appInfo, setAppInfo] = useState<AppInfo>();
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [activePath, setActivePath] = useState<string>();
-  const [runtimeState, setRuntimeState] = useState<PiRuntimeState>({ status: "idle" });
+  /** Per-session process states; sessions run concurrently and never stop each other. */
+  const [runtimeStates, setRuntimeStates] = useState<Record<string, PiRuntimeState>>({});
   const [packageOpen, setPackageOpen] = useState(false);
   const [skillOpen, setSkillOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -30,7 +31,21 @@ export function App() {
     () => sessions.find((session) => session.path === activePath),
     [activePath, sessions],
   );
-  const activeCwd = runtimeState.cwd || activeSession?.cwd || appInfo?.defaultCwd || "";
+  const runtimeState = activePath ? runtimeStates[activePath] : undefined;
+  const activeCwd = activeSession?.cwd || appInfo?.defaultCwd || "";
+
+  /** Bring a session to the front and ensure its pi process is running. */
+  const activate = async (path: string): Promise<void> => {
+    setError(undefined);
+    const target = runtimeStates[path];
+    const needsFreshStart =
+      !target ||
+      target.status === "idle" ||
+      target.status === "exited" ||
+      target.status === "error";
+    if (needsFreshStart) clearTerminalBuffer(path);
+    await window.ePi.runtime.start(path);
+  };
 
   const refreshSessions = async () => {
     try {
@@ -49,18 +64,24 @@ export function App() {
     Promise.all([
       window.ePi.app.getInfo(),
       window.ePi.sessions.list(),
-      window.ePi.runtime.getState(),
+      window.ePi.runtime.getStates(),
     ])
-      .then(([info, nextSessions, state]) => {
+      .then(([info, nextSessions, states]) => {
         if (!active) return;
         setAppInfo(info);
         setSessions(nextSessions);
-        setRuntimeState(state);
-        setActivePath(state.sessionPath || nextSessions[0]?.path);
+        setRuntimeStates(states);
+        const initial = nextSessions[0]?.path;
+        setActivePath(initial);
         setLoading(false);
         window.ePi.app.log(
-          `[app] init sessions=${nextSessions.length} state=${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`,
+          `[app] init sessions=${nextSessions.length} states=${Object.keys(states).length}`,
         );
+        if (initial) {
+          void window.ePi.runtime.start(initial).catch((reason: unknown) => {
+            setError(reason instanceof Error ? reason.message : String(reason));
+          });
+        }
       })
       .catch((reason: unknown) => {
         if (!active) return;
@@ -71,28 +92,14 @@ export function App() {
       window.ePi.app.log(
         `[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`,
       );
-      setRuntimeState(state);
+      setRuntimeStates((current) => ({ ...current, [state.sessionPath]: state }));
     });
     return () => {
       active = false;
       stopState();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  useEffect(() => {
-    if (loading || !activePath || runtimeState.sessionPath === activePath) {
-      window.ePi.app.log(
-        `[app] switch effect SKIP loading=${loading} activePath=${activePath} sessionPath=${runtimeState.sessionPath}`,
-      );
-      return;
-    }
-    window.ePi.app.log(
-      `[app] switch effect START activePath=${activePath} prevSessionPath=${runtimeState.sessionPath}`,
-    );
-    void window.ePi.runtime.start(activePath).catch((reason: unknown) => {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    });
-  }, [activePath, loading, runtimeState.sessionPath]);
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -116,6 +123,7 @@ export function App() {
       window.ePi.app.log(`[app] createSession created=${session.path} cwd=${targetCwd}`);
       setSessions((current) => [session, ...current]);
       setActivePath(session.path);
+      await activate(session.path);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -125,6 +133,7 @@ export function App() {
     setError(undefined);
     window.ePi.app.log(`[app] selectSession ${session.path}`);
     setActivePath(session.path);
+    void activate(session.path);
   };
 
   const renameSession = async (session: SessionSummary) => {
@@ -161,9 +170,12 @@ export function App() {
 
   const submit = async (text: string) => {
     setError(undefined);
-    window.ePi.app.log(`[app] submit status=${runtimeState.status} text=${text.slice(0, 60)}`);
+    if (!activePath) return;
+    window.ePi.app.log(
+      `[app] submit session=${activePath} status=${runtimeState?.status} text=${text.slice(0, 60)}`,
+    );
     try {
-      await window.ePi.runtime.submit(text);
+      await window.ePi.runtime.submit(activePath, text);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -183,8 +195,9 @@ export function App() {
     if (!activePath) return;
     setError(undefined);
     try {
-      await window.ePi.runtime.stop();
-      await window.ePi.runtime.start(activePath);
+      await window.ePi.runtime.stop(activePath);
+      clearTerminalBuffer(activePath);
+      await activate(activePath);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -203,6 +216,7 @@ export function App() {
           <SessionSidebar
             sessions={sessions}
             activePath={activePath}
+            runtimeStates={runtimeStates}
             homeCwd={appInfo?.defaultCwd}
             platform={appInfo?.platform}
             onSelect={selectSession}
@@ -224,7 +238,7 @@ export function App() {
                   <div className="skeleton-line" />
                 </div>
               ) : activeSession ? (
-                <TerminalPanel sessionKey={activeSession.path} runtimeState={runtimeState} />
+                <TerminalPanel sessionKey={activeSession.path} />
               ) : (
                 <div className="workspace-empty">
                   <div className="empty-terminal-icon">
@@ -250,17 +264,18 @@ export function App() {
             ) : null}
 
             <Composer
-              status={runtimeState.status}
+              sessionPath={activePath}
+              status={runtimeState?.status ?? "idle"}
               cwd={activeCwd}
               disabled={
                 !activeSession ||
-                runtimeState.status === "starting" ||
-                runtimeState.status === "stopping" ||
-                runtimeState.status === "error" ||
-                runtimeState.status === "exited"
+                runtimeState?.status === "starting" ||
+                runtimeState?.status === "stopping" ||
+                runtimeState?.status === "error" ||
+                runtimeState?.status === "exited"
               }
               onSubmit={submit}
-              onInterrupt={() => window.ePi.runtime.interrupt()}
+              onInterrupt={() => activePath && window.ePi.runtime.interrupt(activePath)}
             />
           </SidebarInset>
         </div>

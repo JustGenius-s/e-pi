@@ -7,8 +7,8 @@ import { spawn } from "node-pty";
 import type { PiRuntimeState, ResizeTerminalRequest } from "../../../src/types/contracts";
 import { debugLog } from "./debug-log";
 
-type DataListener = (data: string) => void;
 type StateListener = (state: PiRuntimeState) => void;
+type GlobalDataListener = (sessionPath: string, data: string) => void;
 
 function resolvePiEntry(): string {
   const indexPath = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
@@ -25,79 +25,214 @@ function copyState(state: PiRuntimeState): PiRuntimeState {
   return { ...state };
 }
 
-interface StartRequest {
+/**
+ * One live pi process, bound to one session file. Sessions are fully
+ * independent: switching the visible session never stops another session's
+ * process, so agent runs continue in the background.
+ */
+interface Instance {
   sessionPath: string;
   cwd: string;
+  generation: number;
+  state: PiRuntimeState;
+  process?: IPty;
+  stopPromise?: Promise<void>;
+  resolveStop?: (() => void) | undefined;
+  /** Shutdown initiated; trailing output of the dying process must not reach the terminal. */
+  dying: boolean;
 }
 
+/**
+ * Pool of per-session pi processes. `start(sessionPath)` lazily spawns (or
+ * reuses) the process for that session and never touches any other session,
+ * so multiple sessions can run concurrently.
+ */
 export class PiRuntime {
-  #process: IPty | undefined;
-  #state: PiRuntimeState = { status: "idle" };
-  #dataListeners = new Set<DataListener>();
+  #instances = new Map<string, Instance>();
   #stateListeners = new Set<StateListener>();
-  #stopPromise: Promise<void> | undefined;
-  #resolveStop: (() => void) | undefined;
-  /**
-   * Serializes start() calls. Rapid session switches must never interleave:
-   * two concurrent starts would both stop the same old process, spawn two pi
-   * processes, and leave #process pointing at the wrong one — later prompts
-   * would then be written into the wrong session file.
-   */
-  #startChain: Promise<void> = Promise.resolve();
-  #latestStart: StartRequest | undefined;
-  /** Processes whose shutdown has been initiated; their trailing output must not reach the terminal. */
-  #dying = new WeakSet<IPty>();
+  #globalDataListeners = new Set<GlobalDataListener>();
+  #activeSessionPath: string | undefined;
+  /** Serializes lifecycle operations (start/stop) per session. */
+  #chains = new Map<string, Promise<void>>();
 
-  get state(): PiRuntimeState {
-    return copyState(this.#state);
+  get activeSessionPath(): string | undefined {
+    return this.#activeSessionPath;
   }
 
-  onData(listener: DataListener): () => void {
-    this.#dataListeners.add(listener);
-    return () => this.#dataListeners.delete(listener);
+  getStates(): Record<string, PiRuntimeState> {
+    const result: Record<string, PiRuntimeState> = {};
+    for (const instance of this.#instances.values()) {
+      result[instance.sessionPath] = copyState(instance.state);
+    }
+    return result;
+  }
+
+  isRunning(sessionPath: string): boolean {
+    const instance = this.#instances.get(sessionPath);
+    return (
+      instance !== undefined &&
+      instance.process !== undefined &&
+      (instance.state.status === "running" || instance.state.status === "starting")
+    );
   }
 
   onState(listener: StateListener): () => void {
     this.#stateListeners.add(listener);
-    listener(this.state);
+    for (const instance of this.#instances.values()) listener(copyState(instance.state));
     return () => this.#stateListeners.delete(listener);
+  }
+
+  /** Restore which session is considered active (e.g. after background ops). */
+  setActiveSession(sessionPath: string | undefined): void {
+    this.#activeSessionPath = sessionPath;
+  }
+
+  /** Forward every session's output to a single listener (used to bridge IPC). */
+  onGlobalData(listener: GlobalDataListener): () => void {
+    this.#globalDataListeners.add(listener);
+    return () => this.#globalDataListeners.delete(listener);
   }
 
   async start(sessionPath: string, cwd: string): Promise<void> {
     debugLog("[runtime] start() begin", { sessionPath, cwd });
-    this.#latestStart = { sessionPath, cwd };
-    const requested = this.#latestStart;
-    const run = this.#startChain.then(async () => {
-      // A newer start() was requested while we were queued; it will take over.
-      if (this.#latestStart !== requested) {
-        debugLog("[runtime] start() SUPERSEDED while queued", { sessionPath });
-        return;
-      }
-      await this.stop();
-      // A newer start() arrived while we waited for the old process to exit.
-      if (this.#latestStart !== requested) {
-        debugLog("[runtime] start() SUPERSEDED after stop", { sessionPath });
-        return;
-      }
-      await this.#launch(requested.sessionPath, requested.cwd);
-    });
-    this.#startChain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    await run;
+    this.#activeSessionPath = sessionPath;
+    await this.#chain(sessionPath, () => this.#ensureRunning(sessionPath, cwd));
     debugLog("[runtime] start() done", { sessionPath });
   }
 
-  async #launch(sessionPath: string, cwd: string): Promise<void> {
-    debugLog("[runtime] #launch begin", { sessionPath, cwd });
-    this.#setState({ status: "starting", sessionPath, cwd });
+  /** Stop one session's process, or all sessions when `sessionPath` is omitted. */
+  async stop(sessionPath?: string): Promise<void> {
+    if (sessionPath) {
+      await this.#chain(sessionPath, async () => {
+        const instance = this.#instances.get(sessionPath);
+        if (!instance) return;
+        if (this.#activeSessionPath === sessionPath) this.#activeSessionPath = undefined;
+        await this.#stopInstance(instance);
+      });
+      return;
+    }
+    await Promise.all([...this.#instances.keys()].map((path) => this.stop(path)));
+  }
+
+  /** Forget a session entirely (e.g. after it was archived). */
+  forget(sessionPath: string): void {
+    if (!this.#instances.delete(sessionPath)) return;
+    if (this.#activeSessionPath === sessionPath) this.#activeSessionPath = undefined;
+  }
+
+  /** Stop and restart every live session (e.g. after auth/config changes). */
+  async reloadAll(): Promise<void> {
+    const active = this.#activeSessionPath;
+    const live = [...this.#instances.values()].filter(
+      (instance) =>
+        instance.process !== undefined &&
+        (instance.state.status === "running" || instance.state.status === "starting"),
+    );
+    await Promise.all(live.map((instance) => this.stop(instance.sessionPath)));
+    await Promise.all(live.map((instance) => this.start(instance.sessionPath, instance.cwd)));
+    if (active) this.#activeSessionPath = active;
+  }
+
+  write(sessionPath: string, data: string): void {
+    const instance = this.#instances.get(sessionPath);
+    if (!instance || instance.state.status !== "running") {
+      debugLog("[runtime] write DROPPED (not running)", {
+        sessionPath,
+        status: instance?.state.status,
+        len: data.length,
+      });
+      return;
+    }
+    instance.process?.write(data);
+  }
+
+  submit(sessionPath: string, text: string): void {
+    const instance = this.#instances.get(sessionPath);
+    if (!instance || instance.state.status !== "running") {
+      debugLog("[runtime] submit REJECTED (not running)", {
+        sessionPath,
+        status: instance?.state.status,
+        text: text.slice(0, 60),
+      });
+      throw new Error(`Pi is not ready (${instance?.state.status ?? "idle"}).`);
+    }
+    const normalized = text.replace(/\r\n/g, "\n");
+    if (!normalized.trim()) return;
+    debugLog("[runtime] submit", {
+      sessionPath,
+      pid: instance.process?.pid,
+      text: normalized.slice(0, 60),
+    });
+    instance.process?.write(`\x1b[200~${normalized}\x1b[201~\r`);
+  }
+
+  interrupt(sessionPath: string): void {
+    const instance = this.#instances.get(sessionPath);
+    if (!instance || instance.state.status !== "running") return;
+    instance.process?.write("\x1b");
+  }
+
+  resize(sessionPath: string, { cols, rows }: ResizeTerminalRequest): void {
+    const instance = this.#instances.get(sessionPath);
+    if (!instance?.process) return;
+    instance.process.resize(Math.max(20, Math.floor(cols)), Math.max(8, Math.floor(rows)));
+  }
+
+  #placeholder(sessionPath: string, cwd: string): Instance {
+    return {
+      sessionPath,
+      cwd,
+      generation: 0,
+      state: { status: "idle", sessionPath, cwd, generation: 0 },
+      dying: false,
+    };
+  }
+
+  #chain(sessionPath: string, operation: () => Promise<void>): Promise<void> {
+    const previous = this.#chains.get(sessionPath) ?? Promise.resolve();
+    const run = previous.then(operation);
+    this.#chains.set(
+      sessionPath,
+      run.then(
+        () => undefined,
+        () => undefined,
+      ),
+    );
+    return run;
+  }
+
+  async #ensureRunning(sessionPath: string, cwd: string): Promise<void> {
+    let instance = this.#instances.get(sessionPath);
+    if (!instance) {
+      instance = this.#placeholder(sessionPath, cwd);
+      this.#instances.set(sessionPath, instance);
+    }
+    // A placeholder may not know the session's real cwd yet; the caller does.
+    instance.cwd = cwd;
+    if (
+      instance.process !== undefined &&
+      (instance.state.status === "running" ||
+        instance.state.status === "starting" ||
+        instance.state.status === "stopping")
+    ) {
+      // Already live, or winding down (a newer start queued behind this one
+      // will relaunch after stop completes).
+      return;
+    }
+    await this.#launch(instance);
+  }
+
+  async #launch(instance: Instance): Promise<void> {
+    const { sessionPath, cwd } = instance;
+    instance.generation += 1;
+    const generation = instance.generation;
+    this.#setState(instance, { status: "starting", sessionPath, cwd, generation });
 
     try {
       const customNodeBinary = process.env.PI_NODE_BINARY?.trim();
       const nodeBinary = customNodeBinary || process.execPath;
       const args = [resolvePiEntry(), "--session", sessionPath, "--extension", resolveBridgePath()];
-      debugLog("[runtime] spawning pi", { args, cwd });
+      debugLog("[runtime] spawning pi", { args, cwd, sessionPath });
 
       const child = spawn(nodeBinary, args, {
         name: "xterm-256color",
@@ -113,35 +248,30 @@ export class PiRuntime {
         },
       });
 
-      this.#process = child;
-      this.#stopPromise = new Promise<void>((resolve) => {
-        this.#resolveStop = resolve;
+      instance.process = child;
+      instance.stopPromise = new Promise<void>((resolve) => {
+        instance.resolveStop = resolve;
       });
       child.onData((data) => {
-        // Stale/dying processes must not paint into the terminal of the
-        // session that replaced them (e.g. pi prints a "To resume this
-        // session" farewell on Ctrl-D which would otherwise show up, or a
-        // large session is still streaming its initial render).
-        if (this.#dying.has(child) || this.#process !== child) return;
-        for (const listener of this.#dataListeners) listener(data);
+        // A dying process must not paint into the terminal (e.g. pi prints a
+        // "To resume this session" farewell on Ctrl-D).
+        if (instance.dying) return;
+        for (const listener of this.#globalDataListeners) listener(sessionPath, data);
       });
       child.onExit(({ exitCode, signal }) => {
-        // A superseded process must not clobber the state of the current one.
-        if (this.#process !== child) {
-          debugLog("[runtime] onExit IGNORED (stale process)", { pid: child.pid, exitCode });
-          return;
-        }
         debugLog("[runtime] onExit", {
+          sessionPath,
           pid: child.pid,
           exitCode,
           signal,
-          status: this.#state.status,
+          status: instance.state.status,
         });
-        this.#process = undefined;
-        const wasStopping = this.#state.status === "stopping";
-        this.#setState({
-          ...this.#state,
+        instance.process = undefined;
+        const wasStopping = instance.state.status === "stopping";
+        this.#setState(instance, {
+          ...instance.state,
           status: "exited",
+          cwd,
           pid: undefined,
           exitCode,
           signal,
@@ -151,87 +281,70 @@ export class PiRuntime {
               ? undefined
               : `Pi exited with code ${exitCode}.`,
         });
-        this.#resolveStop?.();
-        this.#resolveStop = undefined;
-        this.#stopPromise = undefined;
+        instance.resolveStop?.();
+        instance.resolveStop = undefined;
+        instance.stopPromise = undefined;
       });
 
-      this.#setState({ status: "running", sessionPath, cwd, pid: child.pid });
+      this.#setState(instance, {
+        status: "running",
+        sessionPath,
+        cwd,
+        generation,
+        pid: child.pid,
+      });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       debugLog("[runtime] #launch FAILED", { sessionPath, message });
-      this.#setState({ status: "error", sessionPath, cwd, error: message });
+      this.#setState(instance, {
+        status: "error",
+        sessionPath,
+        cwd,
+        generation,
+        error: message,
+      });
       throw error;
     }
   }
 
-  async stop(): Promise<void> {
-    const child = this.#process;
+  async #stopInstance(instance: Instance): Promise<void> {
+    const child = instance.process;
     if (!child) {
-      debugLog("[runtime] stop() no process");
+      debugLog("[runtime] stop() no process", { sessionPath: instance.sessionPath });
       return;
     }
-    debugLog("[runtime] stop() begin", { pid: child.pid, status: this.#state.status });
-    if (this.#state.status !== "stopping") {
-      this.#setState({ ...this.#state, status: "stopping" });
-      this.#dying.add(child);
-      debugLog("[runtime] stop() sending Ctrl-D", { pid: child.pid });
+    debugLog("[runtime] stop() begin", {
+      sessionPath: instance.sessionPath,
+      pid: child.pid,
+      status: instance.state.status,
+    });
+    if (instance.state.status !== "stopping") {
+      this.#setState(instance, { ...instance.state, status: "stopping" });
+      instance.dying = true;
+      debugLog("[runtime] stop() sending Ctrl-D", { sessionPath: instance.sessionPath });
       child.write("\x04");
       setTimeout(() => {
-        if (this.#process === child) {
-          debugLog("[runtime] stop() kill fallback", { pid: child.pid });
+        if (instance.process === child) {
+          debugLog("[runtime] stop() kill fallback", { sessionPath: instance.sessionPath });
           child.kill();
         }
       }, 1_500).unref();
     }
-    await this.#stopPromise;
-    debugLog("[runtime] stop() done");
+    await instance.stopPromise;
+    instance.dying = false;
+    debugLog("[runtime] stop() done", { sessionPath: instance.sessionPath });
   }
 
-  write(data: string): void {
-    if (this.#state.status !== "running") {
-      debugLog("[runtime] write DROPPED (not running)", {
-        status: this.#state.status,
-        len: data.length,
-      });
-      return;
-    }
-    this.#process?.write(data);
-  }
-
-  submit(text: string): void {
-    if (this.#state.status !== "running") {
-      debugLog("[runtime] submit REJECTED (not running)", {
-        status: this.#state.status,
-        text: text.slice(0, 60),
-      });
-      throw new Error(`Pi is not ready (${this.#state.status}).`);
-    }
-    const normalized = text.replace(/\r\n/g, "\n");
-    if (!normalized.trim()) return;
-    debugLog("[runtime] submit", { pid: this.#process?.pid, text: normalized.slice(0, 60) });
-    this.#process?.write(`\x1b[200~${normalized}\x1b[201~\r`);
-  }
-
-  interrupt(): void {
-    if (this.#state.status !== "running") return;
-    this.#process?.write("\x1b");
-  }
-
-  resize({ cols, rows }: ResizeTerminalRequest): void {
-    if (!this.#process) return;
-    this.#process.resize(Math.max(20, Math.floor(cols)), Math.max(8, Math.floor(rows)));
-  }
-
-  #setState(next: PiRuntimeState): void {
-    this.#state = next;
+  #setState(instance: Instance, next: PiRuntimeState): void {
+    instance.state = next;
     debugLog("[runtime] state", {
       status: next.status,
       sessionPath: next.sessionPath,
       pid: next.pid,
       cwd: next.cwd,
+      generation: next.generation,
     });
-    const snapshot = this.state;
+    const snapshot = copyState(next);
     for (const listener of this.#stateListeners) listener(snapshot);
   }
 }

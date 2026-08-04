@@ -23,8 +23,11 @@ export interface SessionSummary {
 
 export interface PiRuntimeState {
   status: PiProcessStatus;
-  sessionPath?: string;
+  /** Session path this state belongs to. Always set once the session is known. */
+  sessionPath: string;
   cwd?: string;
+  /** Monotonic counter; increments every time the session's pi process is (re)launched. */
+  generation: number;
   pid?: number;
   exitCode?: number;
   signal?: number;
@@ -224,14 +227,17 @@ export interface EPiApi {
     remove(path: string): Promise<void>;
   };
   runtime: {
-    getState(): Promise<PiRuntimeState>;
+    getStates(): Promise<Record<string, PiRuntimeState>>;
+    /** Ensure the session's pi process is running; does not stop other sessions. */
     start(sessionPath: string): Promise<void>;
-    stop(): Promise<void>;
-    write(data: string): void;
-    submit(text: string): Promise<void>;
-    interrupt(): void;
-    resize(size: ResizeTerminalRequest): void;
-    onData(listener: (data: string) => void): () => void;
+    /** Stop one session's process, or all sessions when omitted. */
+    stop(sessionPath?: string): Promise<void>;
+    write(sessionPath: string, data: string): void;
+    submit(sessionPath: string, text: string): Promise<void>;
+    interrupt(sessionPath: string): void;
+    resize(sessionPath: string, size: ResizeTerminalRequest): void;
+    /** Subscribe to output of every session. */
+    onAnyData(listener: (sessionPath: string, data: string) => void): () => void;
     onState(listener: (state: PiRuntimeState) => void): () => void;
   };
   packages: {
