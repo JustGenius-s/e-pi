@@ -12,7 +12,9 @@ import type {
   PackageMutation,
   PackageProgress,
   PackageRecord,
+  PackageUpdateInfo,
   PackageUpdateRequest,
+  RemotePackageInfo,
   EPiApi,
   PiRuntimeState,
   RenameSessionRequest,
@@ -80,6 +82,10 @@ const api: EPiApi = {
   },
   packages: {
     list: (cwd: string) => ipcRenderer.invoke("packages:list", cwd) as Promise<PackageRecord[]>,
+    checkUpdates: (cwd: string, force?: boolean) =>
+      ipcRenderer.invoke("packages:check-updates", cwd, force) as Promise<PackageUpdateInfo[]>,
+    search: (query: string) =>
+      ipcRenderer.invoke("packages:search", query) as Promise<RemotePackageInfo[]>,
     install: (request: PackageMutation) =>
       ipcRenderer.invoke("packages:install", request) as Promise<PackageRecord[]>,
     remove: (request: PackageMutation) =>

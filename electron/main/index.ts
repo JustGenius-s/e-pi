@@ -183,6 +183,10 @@ function registerHandlers(): void {
   );
 
   ipcMain.handle("packages:list", (_event, cwd: string) => packages.list(cwd || activeCwd()));
+  ipcMain.handle("packages:check-updates", (_event, cwd: string, force?: boolean) =>
+    packages.checkUpdates(cwd || activeCwd(), force),
+  );
+  ipcMain.handle("packages:search", (_event, query: string) => packages.searchRemote(query));
   ipcMain.handle("packages:install", (_event, request: PackageMutation) =>
     packages.install(request),
   );

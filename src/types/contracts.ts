@@ -75,6 +75,35 @@ export interface PackageRecord {
   scope: "user" | "project";
   filtered: boolean;
   installedPath?: string;
+  /** Installed version (from the package's package.json), when available. */
+  version?: string;
+  /** True when a newer version is available on the registry/remote. */
+  hasUpdate?: boolean;
+  /** Latest version on the registry, when known. */
+  latestVersion?: string;
+}
+
+/** A configured package that has a newer version available. */
+export interface PackageUpdateInfo {
+  source: string;
+  displayName: string;
+  type: "npm" | "git";
+  scope: "user" | "project";
+  /** Latest version on the registry, when resolvable. */
+  latestVersion?: string;
+}
+
+/** A package found via the npm registry search. */
+export interface RemotePackageInfo {
+  name: string;
+  description?: string;
+  version: string;
+  /** ISO date of the latest publish. */
+  date?: string;
+  author?: string;
+  keywords?: string[];
+  /** npm search popularity score (0-1). */
+  popularity?: number;
 }
 
 export type PackageAction = "install" | "remove" | "update" | "clone" | "pull";
@@ -275,6 +304,10 @@ export interface EPiApi {
   };
   packages: {
     list(cwd: string): Promise<PackageRecord[]>;
+    /** Check the registry/remotes for available updates; cached briefly in the main process. */
+    checkUpdates(cwd: string, force?: boolean): Promise<PackageUpdateInfo[]>;
+    /** Search the npm registry for Pi packages (`keywords:pi-package` filtered). */
+    search(query: string): Promise<RemotePackageInfo[]>;
     install(request: PackageMutation): Promise<PackageRecord[]>;
     remove(request: PackageMutation): Promise<PackageRecord[]>;
     update(request: PackageUpdateRequest): Promise<PackageRecord[]>;

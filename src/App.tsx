@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Terminal, X } from "lucide-react";
 import { AppDialogs } from "./components/AppDialogs";
 import { AppHeader } from "./components/AppHeader";
@@ -210,6 +210,13 @@ export function App() {
     }
   };
 
+  // Keep a stable reload callback for the memoized panels: App re-renders on
+  // every runtime-state update, and a fresh `reloadPi` reference would defeat
+  // PackagePanel/SkillPanel memoization, re-rendering their Tabs/Select trees.
+  const reloadPiRef = useRef(reloadPi);
+  reloadPiRef.current = reloadPi;
+  const onReloadPi = useCallback(() => reloadPiRef.current(), []);
+
   return (
     <div className="app-shell">
       <SidebarProvider className="app-content">
@@ -304,13 +311,13 @@ export function App() {
         open={packageOpen}
         cwd={activeCwd}
         onOpenChange={setPackageOpen}
-        onReloadPi={reloadPi}
+        onReloadPi={onReloadPi}
       />
       <SkillPanel
         open={skillOpen}
         cwd={activeCwd}
         onOpenChange={setSkillOpen}
-        onReloadPi={reloadPi}
+        onReloadPi={onReloadPi}
       />
     </div>
   );
