@@ -12,6 +12,15 @@ export function pathBaseName(path: string): string {
   return parts[parts.length - 1] ?? path;
 }
 
+/** Compact token count for status displays: 850, 9.4k, 23k, 1.2M. */
+export function formatTokens(count: number): string {
+  if (count < 1_000) return count.toString();
+  if (count < 10_000) return `${(count / 1_000).toFixed(1)}k`;
+  if (count < 1_000_000) return `${Math.round(count / 1_000)}k`;
+  if (count < 10_000_000) return `${(count / 1_000_000).toFixed(1)}M`;
+  return `${Math.round(count / 1_000_000)}M`;
+}
+
 export function sessionTitle(session: SessionSummary): string {
   return session.name || session.firstMessage || "New session";
 }

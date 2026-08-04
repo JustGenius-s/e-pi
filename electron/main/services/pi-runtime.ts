@@ -7,10 +7,12 @@ import type { FSWatcher } from "node:fs";
 import type { IPty } from "node-pty";
 import { spawn } from "node-pty";
 import type {
+  ContextUsageState,
   ModelRef,
   PiActivityStatus,
   PiRuntimeState,
   ResizeTerminalRequest,
+  SessionUsageState,
 } from "../../../src/types/contracts";
 import { debugLog } from "./debug-log";
 
@@ -395,6 +397,15 @@ export class PiRuntime {
           const parsed = JSON.parse(raw) as {
             status?: unknown;
             model?: { provider?: unknown; id?: unknown };
+            context?: { tokens?: unknown; contextWindow?: unknown; percent?: unknown };
+            usage?: {
+              input?: unknown;
+              output?: unknown;
+              cacheRead?: unknown;
+              cacheWrite?: unknown;
+              cost?: unknown;
+            };
+            cacheHitRate?: unknown;
           };
           const activity =
             parsed.status === "busy" || parsed.status === "idle"
@@ -404,15 +415,51 @@ export class PiRuntime {
             typeof parsed.model?.provider === "string" && typeof parsed.model.id === "string"
               ? { provider: parsed.model.provider, id: parsed.model.id }
               : undefined;
-          const modelChanged =
-            model !== undefined &&
-            (model.provider !== instance.state.model?.provider ||
-              model.id !== instance.state.model?.id);
-          if (activity !== instance.state.activity || modelChanged) {
+          const context: ContextUsageState | undefined =
+            typeof parsed.context?.contextWindow === "number"
+              ? {
+                  tokens: typeof parsed.context.tokens === "number" ? parsed.context.tokens : null,
+                  contextWindow: parsed.context.contextWindow,
+                  percent:
+                    typeof parsed.context.percent === "number" ? parsed.context.percent : null,
+                }
+              : undefined;
+          const u = parsed.usage;
+          const usage: SessionUsageState | undefined =
+            u !== undefined &&
+            typeof u.input === "number" &&
+            typeof u.output === "number" &&
+            typeof u.cacheRead === "number" &&
+            typeof u.cacheWrite === "number" &&
+            typeof u.cost === "number"
+              ? {
+                  input: u.input,
+                  output: u.output,
+                  cacheRead: u.cacheRead,
+                  cacheWrite: u.cacheWrite,
+                  cost: u.cost,
+                }
+              : undefined;
+          const cacheHitRate =
+            typeof parsed.cacheHitRate === "number" ? parsed.cacheHitRate : undefined;
+          const signature = JSON.stringify({ activity, model, context, usage, cacheHitRate });
+          const previous = JSON.stringify({
+            activity: instance.state.activity,
+            model: instance.state.model,
+            context: instance.state.context,
+            usage: instance.state.usage,
+            cacheHitRate: instance.state.cacheHitRate,
+          });
+          if (signature !== previous) {
+            // Keep the last known value when the sidecar lacks one (e.g. during
+            // a mid-session rewrite) to avoid flicker in the renderer.
             this.#setState(instance, {
               ...instance.state,
               activity,
               model: model ?? instance.state.model,
+              context: context ?? instance.state.context,
+              usage: usage ?? instance.state.usage,
+              cacheHitRate: cacheHitRate ?? instance.state.cacheHitRate,
             });
           }
         })

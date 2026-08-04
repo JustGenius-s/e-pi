@@ -268,6 +268,9 @@ export function App() {
               status={runtimeState?.status ?? "idle"}
               activity={runtimeState?.activity}
               model={runtimeState?.model}
+              context={runtimeState?.context}
+              usage={runtimeState?.usage}
+              cacheHitRate={runtimeState?.cacheHitRate}
               cwd={activeCwd}
               disabled={
                 loading ||

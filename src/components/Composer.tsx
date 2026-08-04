@@ -1,13 +1,16 @@
 import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type {
+  ContextUsageState,
   ModelManagementState,
   ModelRecord,
   ModelRef,
   PiActivityStatus,
   PiProcessStatus,
+  SessionUsageState,
   SkillRecord,
 } from "../types/contracts";
+import { SessionStats } from "./SessionStats";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
 import {
@@ -42,6 +45,9 @@ interface ComposerProps {
   status: PiProcessStatus;
   activity?: PiActivityStatus;
   model?: ModelRef;
+  context?: ContextUsageState;
+  usage?: SessionUsageState;
+  cacheHitRate?: number;
   disabled: boolean;
   cwd?: string;
   onSubmit: (messages: string[]) => Promise<boolean>;
@@ -71,6 +77,9 @@ export function Composer({
   status,
   activity,
   model,
+  context,
+  usage,
+  cacheHitRate,
   disabled,
   cwd,
   onSubmit,
@@ -477,6 +486,9 @@ export function Composer({
           </Menubar>
         </div>
         <div className="composer-actions">
+          {usage ? (
+            <SessionStats context={context} usage={usage} cacheHitRate={cacheHitRate} />
+          ) : null}
           <Button
             className="composer-send"
             size="sm"

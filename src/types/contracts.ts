@@ -8,6 +8,24 @@ export interface ModelRef {
   id: string;
 }
 
+/** Estimated context usage for the active model (reported by the bridge extension). */
+export interface ContextUsageState {
+  /** Estimated context tokens, or null when unknown (e.g. right after compaction). */
+  tokens: number | null;
+  contextWindow: number;
+  /** Context usage as percentage of the window, or null when tokens are unknown. */
+  percent: number | null;
+}
+
+/** Cumulative token usage for a session (reported by the bridge extension). */
+export interface SessionUsageState {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: number;
+}
+
 export interface AppInfo {
   platform: NodeJS.Platform;
   arch: string;
@@ -40,6 +58,12 @@ export interface PiRuntimeState {
   activity?: PiActivityStatus;
   /** Model currently selected inside this session's Pi process. */
   model?: ModelRef;
+  /** Context usage of the active model; reported while the process is running. */
+  context?: ContextUsageState;
+  /** Cumulative token usage for this session; reported while the process is running. */
+  usage?: SessionUsageState;
+  /** Cache hit rate (0-100) of the latest assistant response; undefined before the first one. */
+  cacheHitRate?: number;
   pid?: number;
   exitCode?: number;
   signal?: number;

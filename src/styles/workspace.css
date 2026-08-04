@@ -286,7 +286,146 @@
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
+  gap: 10px;
+}
+
+.context-indicator {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  cursor: default;
+  outline: none;
+  line-height: 0;
+}
+
+.context-ring {
+  display: block;
+  border-radius: 50%;
+}
+
+.context-ring-track {
+  fill: none;
+  stroke: var(--input);
+  stroke-width: 2.5;
+}
+
+.context-ring-fill {
+  fill: none;
+  stroke: var(--foreground);
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  transition:
+    stroke-dasharray 300ms ease,
+    stroke 150ms ease;
+}
+
+.context-ring[data-tone="warn"] .context-ring-fill {
+  stroke: var(--chart-1);
+}
+
+.context-ring[data-tone="danger"] .context-ring-fill {
+  stroke: var(--destructive);
+}
+
+.context-ring[data-unknown="true"] .context-ring-track {
+  stroke: var(--border);
+}
+
+.context-card {
+  width: 236px;
+  padding: 11px 12px 10px;
+  border-radius: 11px;
+  background: var(--popover);
+  box-shadow: var(--shadow-xl);
+}
+
+.context-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 10.5px;
+}
+
+.context-card-head span {
+  color: var(--muted-foreground);
+}
+
+.context-card-head strong {
+  font-family: "SFMono-Regular", monospace;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.context-card-head strong[data-tone="warn"] {
+  color: var(--chart-1);
+}
+
+.context-card-head strong[data-tone="danger"] {
+  color: var(--destructive);
+}
+
+.context-card-bar {
+  height: 4px;
+  margin-top: 7px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--input);
+}
+
+.context-card-bar-fill {
+  height: 100%;
+  border-radius: 2px;
+  background: var(--foreground);
+  transition:
+    width 300ms ease,
+    background 150ms ease;
+}
+
+.context-card-bar-fill[data-tone="warn"] {
+  background: var(--chart-1);
+}
+
+.context-card-bar-fill[data-tone="danger"] {
+  background: var(--destructive);
+}
+
+.context-card-meta {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-family: "SFMono-Regular", monospace;
+  font-size: 9px;
+}
+
+.context-card-divider {
+  height: 1px;
+  margin: 9px 0 7px;
+  background: var(--border);
+}
+
+.context-card-rows {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.context-card-rows > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.context-card-rows dt {
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.context-card-rows dd {
+  margin: 0;
+  color: var(--foreground);
+  font-family: "SFMono-Regular", monospace;
+  font-size: 10px;
 }
 
 .composer-tools > [data-slot="button"] {
