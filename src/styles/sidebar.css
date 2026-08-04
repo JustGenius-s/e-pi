@@ -357,6 +357,14 @@
   border: 0;
   background: transparent;
   cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+/* While the rail is being dragged, drop the width transition so the sidebar
+   tracks the pointer 1:1 instead of lagging behind by 180ms. */
+.sidebar-layout:has(.sidebar-rail[data-resizing="true"]) .sidebar-root {
+  transition: none;
 }
 
 .sidebar-rail:hover::after {

@@ -11,11 +11,44 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 
 type SidebarState = "expanded" | "collapsed";
 
+/** Drag-to-resize bounds for the sidebar rail (px). */
+const SIDEBAR_WIDTH_MIN = 256;
+const SIDEBAR_WIDTH_MAX = 520;
+const SIDEBAR_WIDTH_DEFAULT = 320;
+// v2: old key was bumped so previously saved test widths (which would
+// otherwise override the new default) are ignored.
+const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width-v2";
+
+const clampSidebarWidth = (width: number) =>
+  Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, width));
+
+function readSavedSidebarWidth(): number {
+  try {
+    // getItem returns null when the key is absent — Number(null) is 0, which
+    // would clamp to the minimum. Only accept real stored values.
+    const saved = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    if (saved !== null) {
+      const parsed = Number(saved);
+      if (Number.isFinite(parsed)) return clampSidebarWidth(parsed);
+    }
+  } catch {
+    // Storage unavailable (tests, hardened environments) — use the default.
+  }
+  return SIDEBAR_WIDTH_DEFAULT;
+}
+
 interface SidebarContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   state: SidebarState;
+  /** Current target sidebar width in px (what --sidebar-width resolves to). */
+  getWidth: () => number;
+  /**
+   * Update the sidebar width. Live drags pass persist=false (direct DOM
+   * update, no re-render); the drag end commits with persist=true.
+   */
+  applyWidth: (width: number, persist: boolean) => void;
 }
 
 const SidebarContext = React.createContext<SidebarContextValue | null>(null);
@@ -51,13 +84,41 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => setOpen(!open), [open, setOpen]);
   const state: SidebarState = open ? "expanded" : "collapsed";
 
+  const [width, setWidth] = React.useState(readSavedSidebarWidth);
+  const widthRef = React.useRef(width);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
+  const getWidth = React.useCallback(() => widthRef.current, []);
+  const applyWidth = React.useCallback((next: number, persist: boolean) => {
+    const clamped = clampSidebarWidth(next);
+    widthRef.current = clamped;
+    // Live drags mutate the CSS variable directly so React never re-renders
+    // per pointermove (the wrapper re-renders often; a stale style prop would
+    // otherwise reset the width mid-drag, but React only writes style props
+    // that actually changed, so the direct mutation survives until commit).
+    wrapperRef.current?.style.setProperty("--sidebar-width", `${clamped}px`);
+    if (persist) {
+      setWidth(clamped);
+      try {
+        window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(clamped)));
+      } catch {
+        // Storage unavailable — width just won't survive a restart.
+      }
+    }
+  }, []);
+
+  const contextValue = React.useMemo(
+    () => ({ open, setOpen, toggleSidebar, state, getWidth, applyWidth }),
+    [open, setOpen, toggleSidebar, state, getWidth, applyWidth],
+  );
+
   return (
-    <SidebarContext.Provider value={{ open, setOpen, toggleSidebar, state }}>
+    <SidebarContext.Provider value={contextValue}>
       <div
+        ref={wrapperRef}
         data-slot="sidebar-wrapper"
         style={
           {
-            "--sidebar-width": "16rem",
+            "--sidebar-width": `${width}px`,
             "--sidebar-width-icon": "3rem",
             ...style,
           } as React.CSSProperties
@@ -132,13 +193,67 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 }
 
 function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"button">) {
-  const { toggleSidebar } = useSidebar();
+  const { state, setOpen, toggleSidebar, getWidth, applyWidth } = useSidebar();
+  const [resizing, setResizing] = React.useState(false);
+  const drag = React.useRef<{ startX: number; startWidth: number; moved: number } | undefined>(
+    undefined,
+  );
+  /** A real drag must not also fire the click-to-toggle. */
+  const suppressClick = React.useRef(false);
+
   return (
     <button
       data-slot="sidebar-rail"
+      data-resizing={resizing ? "true" : undefined}
       aria-label="Toggle sidebar"
       tabIndex={-1}
+      onPointerDown={(event) => {
+        if (event.button !== 0) return;
+        event.preventDefault();
+        // Dragging the edge of a collapsed sidebar expands it first, like
+        // most IDEs, so the drag starts from the target (expanded) width.
+        if (state === "collapsed") setOpen(true);
+        drag.current = {
+          startX: event.clientX,
+          startWidth: getWidth(),
+          moved: 0,
+        };
+        suppressClick.current = false;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        setResizing(true);
+      }}
+      onPointerMove={(event) => {
+        const active = drag.current;
+        if (!active) return;
+        const delta = event.clientX - active.startX;
+        active.moved = Math.max(active.moved, Math.abs(delta));
+        applyWidth(active.startWidth + delta, false);
+      }}
+      onPointerUp={(event) => {
+        const active = drag.current;
+        if (!active) return;
+        drag.current = undefined;
+        setResizing(false);
+        if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+          event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        // Commit the final width to React state and localStorage so it
+        // survives re-renders and restarts.
+        if (active.moved >= 1) {
+          applyWidth(active.startWidth + (event.clientX - active.startX), true);
+        }
+        suppressClick.current = active.moved >= 4;
+      }}
+      onPointerCancel={() => {
+        drag.current = undefined;
+        setResizing(false);
+      }}
       onClick={(event) => {
+        if (suppressClick.current) {
+          suppressClick.current = false;
+          event.preventDefault();
+          return;
+        }
         onClick?.(event);
         if (!event.defaultPrevented) toggleSidebar();
       }}
