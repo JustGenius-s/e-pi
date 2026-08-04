@@ -195,14 +195,14 @@
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
-/* Activity glyph before the session title (braille spinner / dot-matrix square). */
+/* Activity glyph before the session title: 3x3 dot-matrix canvas shared by
+ * the blue braille spinner and the done/error squares, so sizes always match. */
 .session-activity {
   display: inline-flex;
   width: 12px;
   flex-shrink: 0;
   justify-content: center;
   align-items: center;
-  font-size: 11px;
   line-height: 1;
   user-select: none;
 }
@@ -219,11 +219,10 @@
   color: #ed8b92;
 }
 
-/* 3x3 dot-matrix square: 9 lit dots inheriting the parent's color. */
 .session-activity-matrix {
   display: grid;
-  width: 11px;
-  height: 11px;
+  width: 10px;
+  height: 10px;
   grid-template-columns: repeat(3, 1fr);
   grid-template-rows: repeat(3, 1fr);
   gap: 1px;
@@ -231,6 +230,9 @@
 
 .session-activity-matrix i {
   border-radius: 1px;
+}
+
+.session-activity-matrix i[data-on] {
   background: currentColor;
 }
 
