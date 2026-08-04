@@ -1,5 +1,6 @@
 import { shell } from "electron";
 import { basename, dirname, resolve } from "node:path";
+import { homedir } from "node:os";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import {
   getAgentDir,
@@ -19,20 +20,67 @@ import type {
 
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/** User skills shared across agent harnesses (also scanned by the pi CLI).
+ *  Resolved lazily so tests can redirect homedir(). */
+function userAgentsSkillsDir(): string {
+  return resolve(homedir(), ".agents", "skills");
+}
+
+/** Nearest ancestor of `startDir` that contains a `.git` entry (dir or file). */
+function findGitRepoRoot(startDir: string): string | undefined {
+  let dir = startDir;
+  while (true) {
+    if (existsSync(resolve(dir, ".git"))) return dir;
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+}
+
 export class SkillService {
   list(cwd: string): SkillRecord[] {
     const settings = this.#settings(cwd);
     const userSkillsDir = resolve(getAgentDir(), "skills");
     const projectSkillsDir = resolve(cwd, ".pi", "skills");
+    // Mirror the CLI's discovery: user skills also live in ~/.agents/skills,
+    // and trusted projects contribute .agents/skills from cwd and ancestors
+    // (up to the git repo root). loadSkills() has no knowledge of either.
+    const projectAgentsSkillDirs = this.#projectAgentsSkillDirs(cwd).filter(
+      (dir) => dir !== userAgentsSkillsDir(),
+    );
     const { skills } = loadSkills({
       cwd,
       agentDir: getAgentDir(),
-      skillPaths: settings.getSkillPaths(),
+      skillPaths: [
+        ...settings.getSkillPaths(),
+        userAgentsSkillsDir(),
+        ...projectAgentsSkillDirs,
+      ],
       includeDefaults: true,
     });
     return skills
-      .map((skill) => this.#toRecord(skill, userSkillsDir, projectSkillsDir))
+      // ~/.agents/skills only yields skills from subdirectories — root-level
+      // .md files are ignored there, per the CLI's discovery rules.
+      .filter((skill) => dirname(skill.filePath) !== userAgentsSkillsDir())
+      .map((skill) =>
+        this.#toRecord(skill, userSkillsDir, projectSkillsDir, projectAgentsSkillDirs),
+      )
       .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  /** `.agents/skills` in cwd and each ancestor up to the git repo root. */
+  #projectAgentsSkillDirs(cwd: string): string[] {
+    const dirs: string[] = [];
+    const repoRoot = findGitRepoRoot(resolve(cwd));
+    let dir = resolve(cwd);
+    while (true) {
+      dirs.push(resolve(dir, ".agents", "skills"));
+      if (repoRoot && dir === repoRoot) break;
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    return dirs;
   }
 
   read(cwd: string, filePath: string): string {
@@ -148,15 +196,16 @@ export class SkillService {
     },
     userSkillsDir: string,
     projectSkillsDir: string,
+    projectAgentsSkillDirs: string[],
   ): SkillRecord {
-    const source: SkillSource =
-      skill.sourceInfo.scope === "project"
-        ? "project"
-        : skill.sourceInfo.scope === "user"
-          ? "user"
-          : "path";
-    const managed =
-      this.#isUnder(userSkillsDir, skill.baseDir) || this.#isUnder(projectSkillsDir, skill.baseDir);
+    // Classify by location, not by loadSkills' sourceInfo: skills from
+    // ~/.agents/skills arrive with scope "path" but are user-managed.
+    const userDirs = [userSkillsDir, userAgentsSkillsDir()];
+    const projectDirs = [projectSkillsDir, ...projectAgentsSkillDirs];
+    const underUser = this.#isUnderAny(userDirs, skill.baseDir);
+    const underProject = this.#isUnderAny(projectDirs, skill.baseDir);
+    const source: SkillSource = underUser ? "user" : underProject ? "project" : "path";
+    const managed = underUser || underProject;
     return {
       name: skill.name,
       description: skill.description,
@@ -166,6 +215,10 @@ export class SkillService {
       enabled: !skill.disableModelInvocation,
       managed,
     };
+  }
+
+  #isUnderAny(roots: string[], target: string): boolean {
+    return roots.some((root) => this.#isUnder(root, target));
   }
 
   #isUnder(root: string, target: string): boolean {
