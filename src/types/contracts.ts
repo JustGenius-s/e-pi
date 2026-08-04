@@ -209,8 +209,10 @@ export interface EPiApi {
   app: {
     getInfo(): Promise<AppInfo>;
     chooseDirectory(defaultPath?: string): Promise<string | undefined>;
-    chooseFiles(options?: { imagesOnly?: boolean }): Promise<string[]>;
+    chooseFiles(): Promise<string[]>;
     getPathForFile(file: File): string;
+    pasteImage(): Promise<string | null>;
+    imageData(filePath: string, maxSize?: number): Promise<string | null>;
     openPath(path: string): Promise<void>;
   };
   sessions: {

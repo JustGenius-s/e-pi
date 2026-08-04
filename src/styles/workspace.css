@@ -220,6 +220,51 @@
   white-space: nowrap;
 }
 
+.composer-attachment[data-image="true"] {
+  height: 50px;
+  gap: 8px;
+  padding: 5px;
+}
+
+.composer-attachment button.composer-attachment-thumb {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  padding: 0;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 5px;
+  background: var(--muted);
+  cursor: zoom-in;
+}
+
+.composer-attachment button.composer-attachment-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.composer-attachment button.composer-attachment-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  padding: 0;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-attachment button.composer-attachment-name[aria-label^="Preview"] {
+  cursor: zoom-in;
+}
+
 .composer-attachment > span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -238,6 +283,19 @@
 .composer-attachment button:hover {
   color: var(--foreground);
   background: var(--accent);
+}
+.composer-skill {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--accent) 75%, var(--secondary));
+}
+
+.composer-preview-img {
+  display: block;
+  max-width: min(1060px, 92vw);
+  max-height: 80vh;
+  margin: 0 auto;
+  object-fit: contain;
+  border-radius: 4px;
 }
 
 .composer-toolbar {
@@ -263,6 +321,24 @@
 }
 .composer-tools > [data-slot="button"]:hover {
   color: var(--foreground);
+}
+
+.composer-add-menu {
+  width: 190px;
+}
+.composer-add-menu [data-slot="dropdown-menu-item"],
+.composer-add-menu [data-slot="dropdown-menu-sub-trigger"] {
+  min-height: 36px;
+  font-size: 12px;
+}
+.composer-skill-menu {
+  width: 260px;
+  max-height: min(420px, var(--radix-dropdown-menu-content-available-height));
+  overflow-y: auto;
+}
+.composer-skill-menu [data-slot="dropdown-menu-radio-item"] {
+  min-height: 34px;
+  font-size: 12px;
 }
 
 .composer-divider {

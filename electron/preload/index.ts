@@ -37,9 +37,11 @@ const api: EPiApi = {
     getInfo: () => ipcRenderer.invoke("app:get-info") as Promise<AppInfo>,
     chooseDirectory: (defaultPath?: string) =>
       ipcRenderer.invoke("app:choose-directory", defaultPath) as Promise<string | undefined>,
-    chooseFiles: (options?: { imagesOnly?: boolean }) =>
-      ipcRenderer.invoke("app:choose-files", options) as Promise<string[]>,
+    chooseFiles: () => ipcRenderer.invoke("app:choose-files") as Promise<string[]>,
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
+    pasteImage: () => ipcRenderer.invoke("app:paste-image") as Promise<string | null>,
+    imageData: (filePath: string, maxSize?: number) =>
+      ipcRenderer.invoke("app:image-data", filePath, maxSize) as Promise<string | null>,
     openPath: (path: string) => ipcRenderer.invoke("app:open-path", path) as Promise<void>,
   },
   sessions: {

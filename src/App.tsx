@@ -229,6 +229,7 @@ export function App() {
 
             <Composer
               status={runtimeState.status}
+              cwd={activeCwd}
               disabled={
                 !activeSession ||
                 runtimeState.status === "error" ||

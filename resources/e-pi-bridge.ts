@@ -41,23 +41,24 @@ export default function ePiBridge(pi: ExtensionAPI): void {
       if (!args?.trim()) return;
       const payload = JSON.parse(Buffer.from(args.trim(), "base64").toString("utf8")) as {
         text: string;
-        files: string[];
         images: string[];
       };
+      const prompt = payload.text || "Review the attached images.";
       const imageBlocks = await Promise.all(
         payload.images.map(async (path) => {
           const data = (await readFile(path)).toString("base64");
           const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
           return {
             type: "image" as const,
-            source: { type: "base64" as const, mediaType: imageMime[ext] || "image/png", data },
+            data,
+            mimeType: imageMime[ext] || "image/png",
           };
         }),
       );
       const content: Array<
         | { type: "text"; text: string }
-        | { type: "image"; source: { type: "base64"; mediaType: string; data: string } }
-      > = [{ type: "text", text: payload.text || "Review the attached files." }, ...imageBlocks];
+        | { type: "image"; data: string; mimeType: string }
+      > = [{ type: "text", text: prompt }, ...imageBlocks];
       pi.sendUserMessage(content);
     },
   });

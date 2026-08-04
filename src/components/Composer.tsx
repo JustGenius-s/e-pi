@@ -1,7 +1,24 @@
-import { ArrowUp, ImagePlus, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, File, FolderOpen, Plus, Sparkles, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
-import type { ModelManagementState, ModelRecord, PiProcessStatus } from "../types/contracts";
+import type {
+  ModelManagementState,
+  ModelRecord,
+  PiProcessStatus,
+  SkillRecord,
+} from "../types/contracts";
 import { Button } from "./ui/button";
+import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import {
   Menubar,
   MenubarContent,
@@ -21,6 +38,7 @@ import { Textarea } from "./ui/textarea";
 interface ComposerProps {
   status: PiProcessStatus;
   disabled: boolean;
+  cwd?: string;
   onSubmit: (text: string) => void;
   onInterrupt: () => void;
 }
@@ -36,16 +54,24 @@ const THINKING_LEVELS: Array<{ value: ThinkingLevel; label: string; note: string
   { value: "max", label: "Max", note: "As deep as possible" },
 ];
 
+const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
+const isImage = (path: string) => IMAGE_EXT.test(path);
+
 function displayModel(model: ModelRecord): string {
   return model.name || model.id;
 }
 
-export function Composer({ status, disabled, onSubmit, onInterrupt }: ComposerProps) {
+export function Composer({ status, disabled, cwd, onSubmit, onInterrupt }: ComposerProps) {
   const [text, setText] = useState("");
   const [models, setModels] = useState<ModelManagementState>();
   const [modelRef, setModelRef] = useState("");
   const [thinking, setThinking] = useState<ThinkingLevel>("medium");
   const [files, setFiles] = useState<string[]>([]);
+  const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
+  const [preview, setPreview] = useState<string>();
+  const [previewUrl, setPreviewUrl] = useState<string>();
+  const [skills, setSkills] = useState<SkillRecord[]>([]);
+  const [selectedSkill, setSelectedSkill] = useState<SkillRecord>();
   const [dragging, setDragging] = useState(false);
   const busy = status === "starting" || status === "stopping";
   const availableProviders =
@@ -72,34 +98,90 @@ export function Composer({ status, disabled, onSubmit, onInterrupt }: ComposerPr
       .catch(() => undefined);
   }, []);
 
-  const attachFiles = async (paths: string[], imagesOnly = false) => {
-    const valid = paths.filter((path) => !imagesOnly || /\.(png|jpe?g|gif|webp|bmp)$/i.test(path));
-    setFiles((current) => [...new Set([...current, ...valid])]);
+  useEffect(() => {
+    setFiles([]);
+    setSelectedSkill(undefined);
+    if (!cwd) {
+      setSkills([]);
+      return;
+    }
+    window.ePi.skills
+      .list(cwd)
+      .then(setSkills)
+      .catch(() => setSkills([]));
+  }, [cwd]);
+
+  useEffect(() => {
+    for (const path of files.filter(isImage)) {
+      if (thumbnails[path]) continue;
+      void window.ePi.app
+        .imageData(path, 64)
+        .then((dataUrl) => {
+          if (dataUrl) setThumbnails((current) => ({ ...current, [path]: dataUrl }));
+        })
+        .catch(() => undefined);
+    }
+  }, [files, thumbnails]);
+
+  useEffect(() => {
+    if (!preview) {
+      setPreviewUrl(undefined);
+      return;
+    }
+    void window.ePi.app
+      .imageData(preview)
+      .then((dataUrl) => setPreviewUrl(dataUrl ?? undefined))
+      .catch(() => setPreviewUrl(undefined));
+  }, [preview]);
+
+  const attachFiles = (paths: string[]) => {
+    setFiles((current) => [...new Set([...current, ...paths.filter(Boolean)])]);
   };
 
-  const chooseFiles = async (imagesOnly = false) => {
-    const paths = await window.ePi.app.chooseFiles({ imagesOnly });
-    await attachFiles(paths, imagesOnly);
+  const chooseFiles = async () => {
+    attachFiles(await window.ePi.app.chooseFiles());
+  };
+
+  const chooseFolder = async () => {
+    const path = await window.ePi.app.chooseDirectory(cwd);
+    if (path) attachFiles([path]);
   };
 
   const submit = async () => {
     const value = text.trim();
-    if ((!value && files.length === 0) || disabled || busy) return;
-    const images = files.filter((path) => /\.(png|jpe?g|gif|webp|bmp)$/i.test(path));
-    const regular = files.filter((path) => !images.includes(path));
-    const prompt = [regular.map((path) => `Attached file: ${path}`).join("\n"), value]
+    if ((!value && files.length === 0 && !selectedSkill) || disabled || busy) return;
+    const images = files.filter(isImage);
+    const regular = files.filter((path) => !isImage(path));
+    const prompt = [regular.map((path) => `Attached path: ${path}`).join("\n"), value]
       .filter(Boolean)
       .join("\n");
-    if (files.length > 0) {
-      const payload = btoa(
-        unescape(encodeURIComponent(JSON.stringify({ text: prompt, files: [], images }))),
-      );
-      await window.ePi.runtime.submit(`/e-pi-attach ${payload}`);
+    if (selectedSkill && images.length === 0) {
+      // pi natively loads the skill and appends the prompt as "User: <args>"
+      onSubmit([`/skill:${selectedSkill.name}`, prompt].filter(Boolean).join(" "));
     } else {
-      onSubmit(prompt);
+      if (selectedSkill) {
+        // images go through /e-pi-attach (sendUserMessage), so load the skill natively first
+        await window.ePi.runtime.submit(`/skill:${selectedSkill.name}`);
+      }
+      if (images.length > 0) {
+        const payload = btoa(
+          unescape(
+            encodeURIComponent(
+              JSON.stringify({
+                text: prompt,
+                images,
+              }),
+            ),
+          ),
+        );
+        await window.ePi.runtime.submit(`/e-pi-attach ${payload}`);
+      } else {
+        onSubmit(prompt);
+      }
     }
     setText("");
     setFiles([]);
+    setSelectedSkill(undefined);
   };
 
   const changeModel = async (value: string) => {
@@ -132,32 +214,104 @@ export function Composer({ status, disabled, onSubmit, onInterrupt }: ComposerPr
       onDrop={(event) => {
         event.preventDefault();
         setDragging(false);
-        void attachFiles(
+        attachFiles(
           Array.from(event.dataTransfer.files).map((file) => window.ePi.app.getPathForFile(file)),
         );
       }}
     >
-      {files.length > 0 ? (
-        <div className="composer-attachments" aria-label="Attachments">
-          {files.map((path) => (
-            <span className="composer-attachment" key={path}>
-              <Paperclip size={12} />
-              <span>{path.split(/[\\/]/).pop()}</span>
+      {files.length > 0 || selectedSkill ? (
+        <div className="composer-attachments" aria-label="Attached context">
+          {selectedSkill ? (
+            <span className="composer-attachment composer-skill" title={selectedSkill.description}>
+              <Sparkles size={12} />
+              <span>{selectedSkill.name}</span>
               <button
                 type="button"
-                onClick={() => setFiles((current) => current.filter((item) => item !== path))}
-                aria-label={`Remove ${path}`}
+                onClick={() => setSelectedSkill(undefined)}
+                aria-label={`Remove ${selectedSkill.name} skill`}
               >
                 <X size={12} />
               </button>
             </span>
-          ))}
+          ) : null}
+          {files.map((path) => {
+            const image = isImage(path);
+            const thumb = image ? thumbnails[path] : undefined;
+            return (
+              <span
+                className="composer-attachment"
+                data-image={image ? "true" : undefined}
+                key={path}
+                title={path}
+              >
+                {image ? (
+                  <button
+                    type="button"
+                    className="composer-attachment-thumb"
+                    onClick={() => setPreview(path)}
+                    aria-label={`Preview ${path}`}
+                  >
+                    {thumb ? <img src={thumb} alt="" /> : <File size={14} />}
+                  </button>
+                ) : (
+                  <File size={12} />
+                )}
+                {!image ? (
+                  <button
+                    type="button"
+                    className="composer-attachment-name"
+                    onClick={() => image && setPreview(path)}
+                    aria-label={image ? `Preview ${path}` : path}
+                  >
+                    <span>{path.split(/[\\/]/).pop()}</span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => setFiles((current) => current.filter((item) => item !== path))}
+                  aria-label={`Remove ${path}`}
+                >
+                  <X size={12} />
+                </button>
+              </span>
+            );
+          })}
         </div>
       ) : null}
+      <Dialog
+        open={preview !== undefined}
+        onOpenChange={(open) => {
+          if (!open) setPreview(undefined);
+        }}
+      >
+        <DialogContent className="max-w-[min(1100px,calc(100vw-4rem))] p-2 sm:max-w-none">
+          <DialogTitle className="sr-only">Image preview</DialogTitle>
+          {previewUrl ? (
+            <img
+              className="composer-preview-img"
+              src={previewUrl}
+              alt={preview?.split(/[\\/]/).pop() ?? "Preview"}
+            />
+          ) : null}
+        </DialogContent>
+      </Dialog>
       <Textarea
         aria-label="Message Pi"
         value={text}
         onChange={(event) => setText(event.target.value)}
+        onPaste={(event) => {
+          const hasImage = Array.from(event.clipboardData.items).some(
+            (item) => item.kind === "file" && item.type.startsWith("image/"),
+          );
+          if (!hasImage) return;
+          event.preventDefault();
+          void window.ePi.app
+            .pasteImage()
+            .then((path) => {
+              if (path) attachFiles([path]);
+            })
+            .catch(() => undefined);
+        }}
         onKeyDown={(event) => {
           if (event.key === "Enter" && !event.shiftKey) {
             event.preventDefault();
@@ -174,26 +328,66 @@ export function Composer({ status, disabled, onSubmit, onInterrupt }: ComposerPr
       />
       <div className="composer-toolbar">
         <div className="composer-tools">
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => void chooseFiles()}
-            disabled={disabled || busy}
-            title="Attach files"
+          <DropdownMenu
+            onOpenChange={(open) => {
+              if (open && cwd) {
+                void window.ePi.skills
+                  .list(cwd)
+                  .then(setSkills)
+                  .catch(() => setSkills([]));
+              }
+            }}
           >
-            <Paperclip size={14} />
-            <span className="sr-only">Attach files</span>
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            onClick={() => void chooseFiles(true)}
-            disabled={disabled || busy}
-            title="Attach images"
-          >
-            <ImagePlus size={14} />
-            <span className="sr-only">Attach images</span>
-          </Button>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                disabled={disabled || busy}
+                aria-label="Add context"
+                title="Add context"
+              >
+                <Plus size={17} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent className="composer-add-menu" align="start">
+              <DropdownMenuItem onSelect={() => void chooseFiles()}>
+                <File size={15} />
+                File
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => void chooseFolder()}>
+                <FolderOpen size={15} />
+                Folder
+              </DropdownMenuItem>
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Sparkles size={15} />
+                  Skill
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="composer-skill-menu">
+                  {skills.length > 0 ? (
+                    <DropdownMenuRadioGroup
+                      value={selectedSkill?.filePath ?? ""}
+                      onValueChange={(filePath) =>
+                        setSelectedSkill(skills.find((skill) => skill.filePath === filePath))
+                      }
+                    >
+                      {skills.map((skill) => (
+                        <DropdownMenuRadioItem
+                          key={skill.filePath}
+                          value={skill.filePath}
+                          title={skill.description}
+                        >
+                          {skill.name}
+                        </DropdownMenuRadioItem>
+                      ))}
+                    </DropdownMenuRadioGroup>
+                  ) : (
+                    <DropdownMenuItem disabled>No skills available</DropdownMenuItem>
+                  )}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <span className="composer-divider" />
           <Menubar className="composer-config-menubar">
             <MenubarMenu>
@@ -267,7 +461,7 @@ export function Composer({ status, disabled, onSubmit, onInterrupt }: ComposerPr
             className="composer-send"
             size="sm"
             onClick={() => void submit()}
-            disabled={(!text.trim() && files.length === 0) || disabled || busy}
+            disabled={(!text.trim() && files.length === 0 && !selectedSkill) || disabled || busy}
             aria-label="Send message"
           >
             <ArrowUp size={15} />

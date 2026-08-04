@@ -1,5 +1,7 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
-import { join } from "node:path";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from "electron";
+import { randomUUID } from "node:crypto";
+import { readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
 import { ModelService } from "./services/model-service";
@@ -41,11 +43,30 @@ function activeCwd(): string {
   return runtime.state.cwd ?? app.getPath("home");
 }
 
+async function cleanupStalePastedImages(): Promise<void> {
+  const tempDir = app.getPath("temp");
+  const files = await readdir(tempDir);
+  await Promise.all(
+    files
+      .filter((name) => name.startsWith("e-pi-paste-") && name.endsWith(".png"))
+      .map((name) => rm(join(tempDir, name), { force: true })),
+  );
+}
+
 async function reloadActiveRuntime(): Promise<void> {
   const state = runtime.state;
   if (state.status !== "running" || !state.sessionPath || !state.cwd) return;
   await runtime.start(state.sessionPath, state.cwd);
 }
+
+const IMAGE_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp",
+};
 
 function registerHandlers(): void {
   ipcMain.handle("app:get-info", () => ({
@@ -64,13 +85,11 @@ function registerHandlers(): void {
     return result.canceled ? undefined : result.filePaths[0];
   });
 
-  ipcMain.handle("app:choose-files", async (_event, options?: { imagesOnly?: boolean }) => {
+  ipcMain.handle("app:choose-files", async () => {
     const result = await dialog.showOpenDialog(mainWindow!, {
       defaultPath: activeCwd(),
       properties: ["openFile", "multiSelections"],
-      filters: options?.imagesOnly
-        ? [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }]
-        : [{ name: "All files", extensions: ["*"] }],
+      filters: [{ name: "All files", extensions: ["*"] }],
     });
     return result.canceled ? [] : result.filePaths;
   });
@@ -78,6 +97,36 @@ function registerHandlers(): void {
   ipcMain.handle("app:open-path", async (_event, path: string) => {
     const error = await shell.openPath(path);
     if (error) throw new Error(error);
+  });
+
+  ipcMain.handle("app:paste-image", async () => {
+    const image = clipboard.readImage();
+    if (image.isEmpty()) return null;
+    const filePath = join(app.getPath("temp"), `e-pi-paste-${randomUUID()}.png`);
+    await writeFile(filePath, image.toPNG());
+    return filePath;
+  });
+
+  ipcMain.handle("app:image-data", async (_event, filePath: string, maxSize?: number) => {
+    const mime = IMAGE_MIME[extname(filePath).toLowerCase()] ?? "image/png";
+    if (maxSize && maxSize > 0) {
+      const image = nativeImage.createFromPath(filePath);
+      if (!image.isEmpty()) {
+        const { width, height } = image.getSize();
+        const scale = maxSize / Math.max(width, height);
+        if (width > 0 && height > 0 && scale < 1) {
+          return image
+            .resize({
+              width: Math.max(1, Math.round(width * scale)),
+              height: Math.max(1, Math.round(height * scale)),
+            })
+            .toDataURL();
+        }
+        return image.toDataURL();
+      }
+    }
+    const data = (await readFile(filePath)).toString("base64");
+    return `data:${mime};base64,${data}`;
   });
 
   ipcMain.handle("sessions:list", () => sessions.list());
@@ -234,6 +283,7 @@ if (!hasLock) {
 
   app.whenReady().then(() => {
     registerHandlers();
+    void cleanupStalePastedImages();
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
