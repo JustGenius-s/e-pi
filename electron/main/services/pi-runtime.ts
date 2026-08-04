@@ -1,14 +1,23 @@
 import { app } from "electron";
-import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, rmSync, watch } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { FSWatcher } from "node:fs";
 import type { IPty } from "node-pty";
 import { spawn } from "node-pty";
-import type { PiRuntimeState, ResizeTerminalRequest } from "../../../src/types/contracts";
+import type {
+  PiActivityStatus,
+  PiRuntimeState,
+  ResizeTerminalRequest,
+} from "../../../src/types/contracts";
 import { debugLog } from "./debug-log";
 
 type StateListener = (state: PiRuntimeState) => void;
 type GlobalDataListener = (sessionPath: string, data: string) => void;
+
+/** Matches the suffix the bridge extension writes next to each session file. */
+const ACTIVITY_SUFFIX = ".e-pi-activity.json";
 
 function resolvePiEntry(): string {
   const indexPath = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
@@ -40,6 +49,8 @@ interface Instance {
   resolveStop?: (() => void) | undefined;
   /** Shutdown initiated; trailing output of the dying process must not reach the terminal. */
   dying: boolean;
+  /** Watches the bridge's activity sidecar while the process is alive. */
+  watchActivity?: FSWatcher;
 }
 
 /**
@@ -228,6 +239,12 @@ export class PiRuntime {
     const generation = instance.generation;
     this.#setState(instance, { status: "starting", sessionPath, cwd, generation });
 
+    // Drop any stale activity sidecar from a previous run so a crashed
+    // "busy" never bleeds into the fresh process.
+    rmSync(join(dirname(sessionPath), `${basename(sessionPath)}${ACTIVITY_SUFFIX}`), {
+      force: true,
+    });
+
     try {
       const customNodeBinary = process.env.PI_NODE_BINARY?.trim();
       const nodeBinary = customNodeBinary || process.execPath;
@@ -267,12 +284,15 @@ export class PiRuntime {
           status: instance.state.status,
         });
         instance.process = undefined;
+        instance.watchActivity?.close();
+        instance.watchActivity = undefined;
         const wasStopping = instance.state.status === "stopping";
         this.#setState(instance, {
           ...instance.state,
           status: "exited",
           cwd,
           pid: undefined,
+          activity: undefined,
           exitCode,
           signal,
           error: wasStopping
@@ -286,6 +306,7 @@ export class PiRuntime {
         instance.stopPromise = undefined;
       });
 
+      this.#watchActivity(instance);
       this.#setState(instance, {
         status: "running",
         sessionPath,
@@ -304,6 +325,49 @@ export class PiRuntime {
         error: message,
       });
       throw error;
+    }
+  }
+
+  /**
+   * Track the bridge's activity sidecar (`<session>.e-pi-activity.json`). The
+   * bridge writes "busy" on agent_start and "idle" on agent_settled, so the
+   * sidebar can distinguish a running process that is working from one that
+   * is waiting for input.
+   */
+  #watchActivity(instance: Instance): void {
+    const activityName = `${basename(instance.sessionPath)}${ACTIVITY_SUFFIX}`;
+    const activityPath = join(dirname(instance.sessionPath), activityName);
+    let reading = false;
+    const refresh = (): void => {
+      if (reading) return;
+      reading = true;
+      void readFile(activityPath, "utf8")
+        .then((raw) => {
+          const parsed = JSON.parse(raw) as { status?: unknown };
+          const activity =
+            parsed.status === "busy" || parsed.status === "idle"
+              ? (parsed.status as PiActivityStatus)
+              : undefined;
+          if (activity !== instance.state.activity) {
+            this.#setState(instance, { ...instance.state, activity });
+          }
+        })
+        .catch(() => {
+          // Sidecar not written yet or already removed; keep the last value.
+        })
+        .finally(() => {
+          reading = false;
+        });
+    };
+    try {
+      instance.watchActivity = watch(dirname(instance.sessionPath), (_event, filename) => {
+        if (filename === null || String(filename) === activityName) refresh();
+      });
+      // The sidecar may already exist from a previous run of the same process;
+      // pick up its current value immediately.
+      refresh();
+    } catch {
+      // Directory watch unsupported; activity stays undefined (static dot).
     }
   }
 

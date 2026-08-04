@@ -1,5 +1,8 @@
 export type PiProcessStatus = "idle" | "starting" | "running" | "stopping" | "exited" | "error";
 
+/** Agent activity inside a running pi process (reported by the bridge extension). */
+export type PiActivityStatus = "busy" | "idle";
+
 export interface AppInfo {
   platform: NodeJS.Platform;
   arch: string;
@@ -28,6 +31,8 @@ export interface PiRuntimeState {
   cwd?: string;
   /** Monotonic counter; increments every time the session's pi process is (re)launched. */
   generation: number;
+  /** Agent activity while the process is running: "busy" (streaming/working) or "idle". */
+  activity?: PiActivityStatus;
   pid?: number;
   exitCode?: number;
   signal?: number;

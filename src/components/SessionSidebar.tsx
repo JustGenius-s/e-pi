@@ -184,7 +184,15 @@ export function SessionSidebar({
                         const title = sessionTitle(session);
                         const runtime = runtimeStates?.[session.path];
                         const tone = runtime ? statusTone(runtime.status) : "muted";
-                        const statusTitle = runtime ? statusLabel(runtime.status) : "Not running";
+                        const working =
+                          runtime?.status === "running" && runtime.activity === "busy";
+                        const statusTitle = !runtime
+                          ? "Not running"
+                          : working
+                            ? "Working…"
+                            : runtime.status === "running"
+                              ? "Idle"
+                              : statusLabel(runtime.status);
                         return (
                           <SidebarMenuItem key={session.path} className="session-menu-item">
                             <ContextMenu>
@@ -198,7 +206,7 @@ export function SessionSidebar({
                                 >
                                   <span className="session-label">{title}</span>
                                   <span
-                                    className={`session-status-dot ${tone}`}
+                                    className={`session-status-dot ${tone}${working ? " working" : ""}`}
                                     title={statusTitle}
                                     aria-label={statusTitle}
                                   />

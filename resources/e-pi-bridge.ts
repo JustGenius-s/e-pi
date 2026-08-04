@@ -1,6 +1,47 @@
-import { readFile } from "node:fs/promises";
-import { CustomEditor, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { readFile, rename, rm, writeFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
+import {
+  CustomEditor,
+  type ExtensionAPI,
+  type ExtensionContext,
+} from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
+
+const ACTIVITY_SUFFIX = ".e-pi-activity.json";
+
+/**
+ * Per-session activity reporting. Writes a tiny JSON sidecar next to the
+ * session file so the Electron main process can show "working vs idle" for
+ * sessions that run in the background. `SessionManager.listAll` only picks up
+ * `.jsonl` files, so the sidecar never appears as a session.
+ */
+let lastTarget = "";
+let lastStatus = "";
+let writeChain: Promise<void> = Promise.resolve();
+
+function activityTarget(sessionFile: string | undefined): string | undefined {
+  if (!sessionFile) return undefined;
+  return join(dirname(sessionFile), `${basename(sessionFile)}${ACTIVITY_SUFFIX}`);
+}
+
+function reportActivity(ctx: ExtensionContext, status: "busy" | "idle"): void {
+  const target = activityTarget(ctx.sessionManager.getSessionFile());
+  if (!target || (target === lastTarget && status === lastStatus)) return;
+  lastTarget = target;
+  lastStatus = status;
+  const payload = JSON.stringify({ status, ts: Date.now() });
+  const tmp = `${target}.tmp`;
+  writeChain = writeChain.then(async () => {
+    await writeFile(tmp, payload, "utf8");
+    await rename(tmp, target);
+  });
+}
+
+async function clearActivity(ctx: ExtensionContext): Promise<void> {
+  const target = activityTarget(ctx.sessionManager.getSessionFile());
+  if (!target) return;
+  await rm(target, { force: true }).catch(() => undefined);
+}
 
 class EmptyComponent implements Component {
   render(): string[] {
@@ -68,5 +109,21 @@ export default function ePiBridge(pi: ExtensionAPI): void {
     ctx.ui.setEditorComponent(
       (tui, theme, keybindings) => new DesktopEditor(tui, theme, keybindings),
     );
+    // Seed the sidecar so the main process knows the process is up.
+    reportActivity(ctx, "idle");
+  });
+
+  pi.on("agent_start", (_event, ctx) => {
+    reportActivity(ctx, "busy");
+  });
+
+  // agent_settled fires only when no retry, compaction retry, or queued
+  // follow-up remains, so it is the right "fully done" signal for a status UI.
+  pi.on("agent_settled", (_event, ctx) => {
+    reportActivity(ctx, "idle");
+  });
+
+  pi.on("session_shutdown", (_event, ctx) => {
+    void clearActivity(ctx);
   });
 }
