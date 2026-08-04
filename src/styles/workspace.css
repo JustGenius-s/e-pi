@@ -114,7 +114,8 @@
 
 .composer-shell {
   position: relative;
-  margin: 8px 12px 12px;
+  width: min(820px, calc(100% - 24px));
+  margin: 8px auto 12px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 12px;
