@@ -51,21 +51,19 @@ export class SkillService {
     const { skills } = loadSkills({
       cwd,
       agentDir: getAgentDir(),
-      skillPaths: [
-        ...settings.getSkillPaths(),
-        userAgentsSkillsDir(),
-        ...projectAgentsSkillDirs,
-      ],
+      skillPaths: [...settings.getSkillPaths(), userAgentsSkillsDir(), ...projectAgentsSkillDirs],
       includeDefaults: true,
     });
-    return skills
-      // ~/.agents/skills only yields skills from subdirectories — root-level
-      // .md files are ignored there, per the CLI's discovery rules.
-      .filter((skill) => dirname(skill.filePath) !== userAgentsSkillsDir())
-      .map((skill) =>
-        this.#toRecord(skill, userSkillsDir, projectSkillsDir, projectAgentsSkillDirs),
-      )
-      .sort((a, b) => a.name.localeCompare(b.name));
+    return (
+      skills
+        // ~/.agents/skills only yields skills from subdirectories — root-level
+        // .md files are ignored there, per the CLI's discovery rules.
+        .filter((skill) => dirname(skill.filePath) !== userAgentsSkillsDir())
+        .map((skill) =>
+          this.#toRecord(skill, userSkillsDir, projectSkillsDir, projectAgentsSkillDirs),
+        )
+        .sort((a, b) => a.name.localeCompare(b.name))
+    );
   }
 
   /** `.agents/skills` in cwd and each ancestor up to the git repo root. */

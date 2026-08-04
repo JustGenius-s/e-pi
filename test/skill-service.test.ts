@@ -1,11 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -221,11 +214,7 @@ describe("SkillService", () => {
     });
 
     it("keeps enabled/disabled from frontmatter", () => {
-      writeSkill(
-        join(testAgentDir, "skills", "disabled-skill"),
-        "disabled-skill",
-        "turned off",
-      );
+      writeSkill(join(testAgentDir, "skills", "disabled-skill"), "disabled-skill", "turned off");
       const filePath = join(testAgentDir, "skills", "disabled-skill", "SKILL.md");
       const content = readFileSync(filePath, "utf8");
       writeFileSync(
