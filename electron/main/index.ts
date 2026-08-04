@@ -38,7 +38,8 @@ function sendToRenderer(channel: string, payload: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send(channel, payload);
   }
-}function activeCwd(): string {
+}
+function activeCwd(): string {
   return runtime.state.cwd ?? app.getPath("home");
 }
 

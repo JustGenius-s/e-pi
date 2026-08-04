@@ -24,9 +24,7 @@ export function resetDebugLog(): void {
 export function debugLog(...parts: unknown[]): void {
   if (!enabled()) return;
   try {
-    const line = parts
-      .map((part) => (typeof part === "string" ? part : safeJson(part)))
-      .join(" ");
+    const line = parts.map((part) => (typeof part === "string" ? part : safeJson(part))).join(" ");
     appendFileSync(debugLogPath(), `[${new Date().toISOString()}] ${line}\n`);
   } catch {
     // Logging must never break the app.

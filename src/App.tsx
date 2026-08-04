@@ -58,7 +58,9 @@ export function App() {
         setRuntimeState(state);
         setActivePath(state.sessionPath || nextSessions[0]?.path);
         setLoading(false);
-        window.ePi.app.log(`[app] init sessions=${nextSessions.length} state=${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
+        window.ePi.app.log(
+          `[app] init sessions=${nextSessions.length} state=${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`,
+        );
       })
       .catch((reason: unknown) => {
         if (!active) return;
@@ -66,7 +68,9 @@ export function App() {
         setLoading(false);
       });
     const stopState = window.ePi.runtime.onState((state) => {
-      window.ePi.app.log(`[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
+      window.ePi.app.log(
+        `[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`,
+      );
       setRuntimeState(state);
     });
     return () => {

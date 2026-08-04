@@ -131,7 +131,12 @@ export class PiRuntime {
           debugLog("[runtime] onExit IGNORED (stale process)", { pid: child.pid, exitCode });
           return;
         }
-        debugLog("[runtime] onExit", { pid: child.pid, exitCode, signal, status: this.#state.status });
+        debugLog("[runtime] onExit", {
+          pid: child.pid,
+          exitCode,
+          signal,
+          status: this.#state.status,
+        });
         this.#process = undefined;
         const wasStopping = this.#state.status === "stopping";
         this.#setState({
@@ -185,7 +190,10 @@ export class PiRuntime {
 
   write(data: string): void {
     if (this.#state.status !== "running") {
-      debugLog("[runtime] write DROPPED (not running)", { status: this.#state.status, len: data.length });
+      debugLog("[runtime] write DROPPED (not running)", {
+        status: this.#state.status,
+        len: data.length,
+      });
       return;
     }
     this.#process?.write(data);
@@ -193,7 +201,10 @@ export class PiRuntime {
 
   submit(text: string): void {
     if (this.#state.status !== "running") {
-      debugLog("[runtime] submit REJECTED (not running)", { status: this.#state.status, text: text.slice(0, 60) });
+      debugLog("[runtime] submit REJECTED (not running)", {
+        status: this.#state.status,
+        text: text.slice(0, 60),
+      });
       throw new Error(`Pi is not ready (${this.#state.status}).`);
     }
     const normalized = text.replace(/\r\n/g, "\n");
@@ -214,7 +225,12 @@ export class PiRuntime {
 
   #setState(next: PiRuntimeState): void {
     this.#state = next;
-    debugLog("[runtime] state", { status: next.status, sessionPath: next.sessionPath, pid: next.pid, cwd: next.cwd });
+    debugLog("[runtime] state", {
+      status: next.status,
+      sessionPath: next.sessionPath,
+      pid: next.pid,
+      cwd: next.cwd,
+    });
     const snapshot = this.state;
     for (const listener of this.#stateListeners) listener(snapshot);
   }
