@@ -219,6 +219,21 @@
   color: #ed8b92;
 }
 
+/* 3x3 dot-matrix square: 9 lit dots inheriting the parent's color. */
+.session-activity-matrix {
+  display: grid;
+  width: 11px;
+  height: 11px;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 1px;
+}
+
+.session-activity-matrix i {
+  border-radius: 1px;
+  background: currentColor;
+}
+
 .session-activity.placeholder {
   visibility: hidden;
 }

@@ -50,8 +50,17 @@ const UNKNOWN_FOLDER = "Unknown folder";
 
 /** Same braille spinner frames as pi-tui's Loader (default 80ms interval). */
 const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-/** Full braille block: the "dot-matrix square" used for done/error states. */
-const DOT_MATRIX_SQUARE = "⣿";
+
+/** 3x3 dot-matrix square (9 lit dots) for done/error states. */
+function DotMatrixSquare() {
+  return (
+    <span className="session-activity-matrix" aria-hidden="true">
+      {Array.from({ length: 9 }, (_, index) => (
+        <i key={index} />
+      ))}
+    </span>
+  );
+}
 
 interface ActivityIndicatorProps {
   runtime?: PiRuntimeState;
@@ -86,14 +95,14 @@ function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
   if (failed) {
     return (
       <span className="session-activity error" title="Runtime error" aria-label="Runtime error">
-        {DOT_MATRIX_SQUARE}
+        <DotMatrixSquare />
       </span>
     );
   }
   if (done) {
     return (
       <span className="session-activity done" title="Idle" aria-label="Idle">
-        {DOT_MATRIX_SQUARE}
+        <DotMatrixSquare />
       </span>
     );
   }
