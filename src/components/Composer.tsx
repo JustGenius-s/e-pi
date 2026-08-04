@@ -1,8 +1,21 @@
-import { ArrowUp, Brain, ImagePlus, Paperclip, Square, X } from "lucide-react";
+import { ArrowUp, ImagePlus, Paperclip, Square, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { ModelManagementState, ModelRecord, PiProcessStatus } from "../types/contracts";
 import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
+import {
+  Menubar,
+  MenubarContent,
+  MenubarGroup,
+  MenubarLabel,
+  MenubarMenu,
+  MenubarRadioGroup,
+  MenubarRadioItem,
+  MenubarSeparator,
+  MenubarSub,
+  MenubarSubContent,
+  MenubarSubTrigger,
+  MenubarTrigger,
+} from "./ui/menubar";
 import { Textarea } from "./ui/textarea";
 
 interface ComposerProps {
@@ -35,9 +48,18 @@ export function Composer({ status, disabled, onSubmit, onInterrupt }: ComposerPr
   const [files, setFiles] = useState<string[]>([]);
   const [dragging, setDragging] = useState(false);
   const busy = status === "starting" || status === "stopping";
-  const availableModels =
-    models?.providers.flatMap((provider) => provider.models.filter((model) => model.available)) ??
-    [];
+  const availableProviders =
+    models?.providers
+      .map((provider) => ({
+        ...provider,
+        models: provider.models.filter((model) => model.available),
+      }))
+      .filter((provider) => provider.models.length > 0) ?? [];
+  const availableModels = availableProviders.flatMap((provider) => provider.models);
+  const selectedModel = availableModels.find(
+    (model) => `${model.provider}/${model.id}` === modelRef,
+  );
+  const selectedThinking = THINKING_LEVELS.find((level) => level.value === thinking);
 
   useEffect(() => {
     window.ePi.models
@@ -173,43 +195,60 @@ export function Composer({ status, disabled, onSubmit, onInterrupt }: ComposerPr
             <span className="sr-only">Attach images</span>
           </Button>
           <span className="composer-divider" />
-          <Select value={modelRef} onValueChange={(value) => void changeModel(value)}>
-            <SelectTrigger
-              className="composer-select composer-model-select"
-              size="sm"
-              aria-label="Model"
-            >
-              <SelectValue placeholder="Model" />
-            </SelectTrigger>
-            <SelectContent>
-              {availableModels.map((model) => (
-                <SelectItem
-                  key={`${model.provider}/${model.id}`}
-                  value={`${model.provider}/${model.id}`}
-                >
-                  {displayModel(model)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Select value={thinking} onValueChange={(value) => void changeThinking(value)}>
-            <SelectTrigger
-              className="composer-select composer-thinking-select"
-              size="sm"
-              aria-label="Thinking strength"
-            >
-              <Brain size={13} />
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {THINKING_LEVELS.map((level) => (
-                <SelectItem key={level.value} value={level.value}>
-                  <span>{level.label}</span>
-                  <small className="thinking-note">{level.note}</small>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Menubar className="composer-config-menubar">
+            <MenubarMenu>
+              <MenubarTrigger className="composer-config-trigger">
+                <span className="composer-config-values">
+                  <strong>{selectedModel ? displayModel(selectedModel) : "Model"}</strong>
+                  <span>{selectedThinking?.label ?? "Medium"}</span>
+                </span>
+              </MenubarTrigger>
+              <MenubarContent className="composer-config-menu" align="start">
+                <MenubarGroup>
+                  <MenubarSub>
+                    <MenubarSubTrigger>Model</MenubarSubTrigger>
+                    <MenubarSubContent className="composer-model-menu">
+                      <MenubarRadioGroup
+                        value={modelRef}
+                        onValueChange={(value) => void changeModel(value)}
+                      >
+                        {availableProviders.map((provider, index) => (
+                          <MenubarGroup key={provider.id}>
+                            {index > 0 ? <MenubarSeparator /> : null}
+                            <MenubarLabel>{provider.name || provider.id}</MenubarLabel>
+                            {provider.models.map((model) => (
+                              <MenubarRadioItem
+                                key={`${model.provider}/${model.id}`}
+                                value={`${model.provider}/${model.id}`}
+                              >
+                                {displayModel(model)}
+                              </MenubarRadioItem>
+                            ))}
+                          </MenubarGroup>
+                        ))}
+                      </MenubarRadioGroup>
+                    </MenubarSubContent>
+                  </MenubarSub>
+                  <MenubarSub>
+                    <MenubarSubTrigger>Thinking strength</MenubarSubTrigger>
+                    <MenubarSubContent>
+                      <MenubarRadioGroup
+                        value={thinking}
+                        onValueChange={(value) => void changeThinking(value)}
+                      >
+                        {THINKING_LEVELS.map((level) => (
+                          <MenubarRadioItem key={level.value} value={level.value}>
+                            <span>{level.label}</span>
+                            <small className="thinking-note">{level.note}</small>
+                          </MenubarRadioItem>
+                        ))}
+                      </MenubarRadioGroup>
+                    </MenubarSubContent>
+                  </MenubarSub>
+                </MenubarGroup>
+              </MenubarContent>
+            </MenubarMenu>
+          </Menubar>
         </div>
         <div className="composer-actions">
           {status === "running" ? (

@@ -272,28 +272,76 @@
   background: var(--border);
 }
 
-.composer-select {
-  max-width: 220px;
-  height: 34px !important;
-  gap: 8px;
-  padding: 0 10px 0 11px;
-  color: var(--muted-foreground);
+.composer-config-menubar {
+  height: 38px;
+  padding: 0;
   border: 0;
-  border-radius: 7px;
   background: transparent;
-  box-shadow: none;
-  font-size: 12px;
-  font-weight: 580;
 }
-.composer-select:hover {
+.composer-config-trigger {
+  min-width: 220px;
+  height: 38px;
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--muted-foreground);
+  border-radius: 8px;
+}
+.composer-config-trigger:hover {
   color: var(--foreground);
   background: var(--accent);
 }
-.composer-model-select {
-  max-width: 240px;
+.composer-config-values {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  line-height: 1.2;
 }
-.composer-thinking-select {
-  max-width: 145px;
+.composer-config-values strong,
+.composer-config-values span {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.composer-config-values strong {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 600;
+}
+.composer-config-values span {
+  flex: 0 0 auto;
+  padding-left: 8px;
+  color: var(--muted-foreground);
+  border-left: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 550;
+}
+.composer-config-menu {
+  width: 220px;
+  max-height: 420px;
+}
+.composer-config-menu [data-slot="menubar-sub-trigger"] {
+  min-height: 36px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.composer-config-menu [data-slot="menubar-radio-item"] {
+  min-height: 34px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  font-size: 12px;
+}
+.composer-model-menu {
+  width: 260px;
+  max-height: min(440px, var(--radix-menubar-content-available-height));
+  overflow-y: auto;
+}
+.composer-model-menu [data-slot="menubar-label"] {
+  padding: 7px 10px 4px;
+  font-size: 10px;
+  font-weight: 650;
 }
 .thinking-note {
   margin-left: 10px;

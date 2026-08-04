@@ -1,9 +1,11 @@
 @media (max-width: 900px) {
-  .composer-model-select {
-    max-width: 130px;
+  .composer-config-trigger {
+    min-width: 170px;
+    max-width: 210px;
   }
-  .composer-thinking-select {
-    max-width: 95px;
+  .composer-config-values strong,
+  .composer-config-values span {
+    max-width: 145px;
   }
   .composer-send span {
     display: none;
