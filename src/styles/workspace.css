@@ -6,21 +6,10 @@
   background: var(--background);
 }
 
-.workspace-title,
-.workspace-meta,
-.workspace-title > div:last-child {
+.workspace-title {
   display: flex;
   align-items: center;
   min-width: 0;
-}
-
-.workspace-title {
-  gap: 9px;
-}
-
-.workspace-title > div:last-child {
-  align-items: baseline;
-  gap: 10px;
 }
 
 .workspace-title h2 {
@@ -32,21 +21,6 @@
   font-weight: 680;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.workspace-title span,
-.workspace-meta span {
-  overflow: hidden;
-  color: var(--muted-foreground);
-  font-family: "SFMono-Regular", monospace;
-  font-size: 9px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace-meta {
-  flex: 0 0 auto;
-  gap: 12px;
 }
 
 .terminal-frame {

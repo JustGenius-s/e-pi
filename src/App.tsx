@@ -213,11 +213,7 @@ export function App() {
   return (
     <div className="app-shell">
       <SidebarProvider className="app-content">
-        <AppHeader
-          activeSession={activeSession}
-          activeCwd={activeCwd}
-          onOpenWorkingFolder={() => activeCwd && void window.ePi.app.openPath(activeCwd)}
-        />
+        <AppHeader activeSession={activeSession} />
 
         <div className="app-main">
           <SessionSidebar
