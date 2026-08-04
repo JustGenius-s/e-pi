@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compactPath, sessionTitle, statusLabel, statusTone } from "../src/lib/format";
+import { compactPath, pathBaseName, sessionTitle, statusLabel, statusTone } from "../src/lib/format";
 import type { SessionSummary } from "../src/types/contracts";
 
 const session: SessionSummary = {
@@ -24,6 +24,12 @@ describe("format helpers", () => {
     expect(compactPath("/Users/developer/Projects/a/very/long/path/e-pi", 32)).toBe(
       "/Users/.../path/e-pi",
     );
+  });
+
+  it("extracts the last path segment", () => {
+    expect(pathBaseName("/Users/developer/Code/e-pi")).toBe("e-pi");
+    expect(pathBaseName("/tmp/pi")).toBe("pi");
+    expect(pathBaseName("/")).toBe("/");
   });
 
   it("maps runtime state to a semantic label and tone", () => {

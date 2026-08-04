@@ -86,7 +86,7 @@ export function AppDialogs({
       <AlertDialog open={Boolean(removeTarget)} onOpenChange={(open) => !open && onCloseRemove()}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Move session to Trash?</AlertDialogTitle>
+            <AlertDialogTitle>Archive session?</AlertDialogTitle>
             <AlertDialogDescription>
               {removeTarget ? sessionTitle(removeTarget) : "This session"} will be moved to the
               system Trash.
@@ -94,7 +94,7 @@ export function AppDialogs({
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={onConfirmRemove}>Move to Trash</AlertDialogAction>
+            <AlertDialogAction onClick={onConfirmRemove}>Archive</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

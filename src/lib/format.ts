@@ -7,6 +7,11 @@ export function compactPath(path: string, max = 38): string {
   return `/${parts[0]}/.../${parts.slice(-2).join("/")}`;
 }
 
+export function pathBaseName(path: string): string {
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] ?? path;
+}
+
 export function sessionTitle(session: SessionSummary): string {
   return session.name || session.firstMessage || "New session";
 }

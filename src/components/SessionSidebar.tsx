@@ -1,25 +1,29 @@
 import {
-  MessageSquare,
-  Pencil,
+  Folder,
+  FolderOpen,
+  Package,
   Plus,
-  Search,
   Settings2,
   Sparkles,
-  Trash2,
-  Package,
 } from "lucide-react";
 import { useMemo, useState } from "react";
-import type { PiProcessStatus, SessionSummary } from "../types/contracts";
-import { compactPath, relativeTime, sessionTitle, statusTone } from "../lib/format";
-import { IconButton } from "./IconButton";
+import type { SessionSummary } from "../types/contracts";
+import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "./ui/context-menu";
 import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
   SidebarGroup,
+  SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
-  SidebarInput,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
@@ -29,34 +33,72 @@ import {
 interface SessionSidebarProps {
   sessions: SessionSummary[];
   activePath?: string;
-  runtimeStatus: PiProcessStatus;
+  homeCwd?: string;
+  platform?: NodeJS.Platform;
   onSelect: (session: SessionSummary) => void;
-  onCreate: () => void;
+  onCreate: (cwd?: string) => void;
   onRename: (session: SessionSummary) => void;
   onRemove: (session: SessionSummary) => void;
+  onOpenFolder: (cwd: string) => void;
+  onCopyText: (text: string) => void;
   onOpenPackages: () => void;
   onOpenSkills: () => void;
   onOpenSettings: () => void;
 }
 
+interface ProjectGroup {
+  cwd: string;
+  sessions: SessionSummary[];
+}
+
+const UNKNOWN_FOLDER = "Unknown folder";
+
 export function SessionSidebar({
   sessions,
   activePath,
-  runtimeStatus,
+  homeCwd,
+  platform,
   onSelect,
   onCreate,
   onRename,
   onRemove,
+  onOpenFolder,
+  onCopyText,
   onOpenPackages,
   onOpenSkills,
   onOpenSettings,
 }: SessionSidebarProps) {
-  const [query, setQuery] = useState("");
-  const filtered = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    if (!normalized) return sessions;
-    return sessions.filter((session) => session.searchText.toLowerCase().includes(normalized));
-  }, [query, sessions]);
+  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+
+  // Sessions arrive sorted by most recent activity, so grouping by cwd
+  // preserves both project recency order and per-project recency order.
+  const projects = useMemo<ProjectGroup[]>(() => {
+    const byCwd = new Map<string, SessionSummary[]>();
+    for (const session of sessions) {
+      const cwd = session.cwd || UNKNOWN_FOLDER;
+      const list = byCwd.get(cwd);
+      if (list) list.push(session);
+      else byCwd.set(cwd, [session]);
+    }
+    return [...byCwd.entries()].map(([cwd, projectSessions]) => ({
+      cwd,
+      sessions: projectSessions,
+    }));
+  }, [sessions]);
+
+  const toggleProject = (cwd: string) => {
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(cwd)) next.delete(cwd);
+      else next.add(cwd);
+      return next;
+    });
+  };
+
+  const isCollapsed = (cwd: string) => collapsed.has(cwd);
+
+  const projectLabel = (cwd: string) =>
+    homeCwd && cwd === homeCwd ? "Home" : pathBaseName(cwd);
 
   return (
     <Sidebar aria-label="Sessions" collapsible="icon">
@@ -81,77 +123,116 @@ export function SessionSidebar({
         </SidebarGroup>
 
         <SidebarGroup className="sidebar-session-group">
-          <SidebarGroupLabel>Sessions</SidebarGroupLabel>
-          <div className="sidebar-session-toolbar">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  className="sidebar-new-button"
-                  tooltip="New session"
-                  onClick={onCreate}
-                >
-                  <Plus />
-                  <span>New session</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
+          <SidebarGroupLabel>
+            Sessions
+            <SidebarGroupAction
+              onClick={() => onCreate(homeCwd)}
+              aria-label="New session in home directory"
+              title="New session in Home"
+            >
+              <Plus size={12} />
+            </SidebarGroupAction>
+          </SidebarGroupLabel>
 
-            <label className="sidebar-search">
-              <Search size={14} />
-              <span className="sr-only">Search sessions</span>
-              <SidebarInput
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-                placeholder="Search"
-                type="search"
-              />
-            </label>
-          </div>
           <SidebarGroupContent>
-            {filtered.length === 0 ? (
+            {sessions.length === 0 ? (
               <div className="sidebar-empty">
-                {sessions.length === 0 ? "No sessions yet" : "No matches"}
+                <span>No sessions yet</span>
+                <span className="sidebar-empty-hint">New sessions start in Home.</span>
               </div>
             ) : (
-              <SidebarMenu>
-                {filtered.map((session) => {
-                  const active = session.path === activePath;
-                  const title = sessionTitle(session);
-                  return (
-                    <SidebarMenuItem key={session.path} className="session-menu-item">
-                      <SidebarMenuButton
-                        className="session-menu-button"
-                        isActive={active}
-                        tooltip={title}
-                        title={compactPath(session.cwd || "Unknown folder", 70)}
-                        onClick={() => onSelect(session)}
-                      >
-                        <span className="session-icon" aria-hidden="true">
-                          <MessageSquare size={15} />
-                          <span
-                            className={`session-status ${active ? statusTone(runtimeStatus) : "muted"}`}
-                          />
-                        </span>
-                        <span className="session-label">{title}</span>
-                        <time dateTime={session.modifiedAt}>
-                          {relativeTime(session.modifiedAt)}
-                        </time>
-                      </SidebarMenuButton>
-                      <div className="session-menu-actions">
-                        <IconButton label={`Rename ${title}`} onClick={() => onRename(session)}>
-                          <Pencil size={12} />
-                        </IconButton>
-                        <IconButton
-                          label={`Move ${title} to Trash`}
-                          onClick={() => onRemove(session)}
-                        >
-                          <Trash2 size={12} />
-                        </IconButton>
-                      </div>
-                    </SidebarMenuItem>
-                  );
-                })}
-              </SidebarMenu>
+              projects.map((project) => (
+                <div key={project.cwd} className="project-group">
+                  <div
+                    className="project-header"
+                    role="button"
+                    tabIndex={0}
+                    title={project.cwd}
+                    onClick={() => toggleProject(project.cwd)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        toggleProject(project.cwd);
+                      }
+                    }}
+                  >
+                    {isCollapsed(project.cwd) ? (
+                      <Folder size={12} className="project-icon" aria-hidden="true" />
+                    ) : (
+                      <FolderOpen size={12} className="project-icon" aria-hidden="true" />
+                    )}
+                    <span className="project-path">{projectLabel(project.cwd)}</span>
+                    <button
+                      type="button"
+                      className="project-add"
+                      aria-label={`New session in ${project.cwd}`}
+                      title={`New session in ${project.cwd}`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onCreate(project.cwd);
+                      }}
+                    >
+                      <Plus size={12} />
+                    </button>
+                  </div>
+                  {!isCollapsed(project.cwd) && (
+                    <SidebarMenu className="project-sessions">
+                      {project.sessions.map((session) => {
+                        const active = session.path === activePath;
+                        const title = sessionTitle(session);
+                        return (
+                          <SidebarMenuItem key={session.path} className="session-menu-item">
+                            <ContextMenu>
+                              <ContextMenuTrigger asChild>
+                                <SidebarMenuButton
+                                  className="session-menu-button"
+                                  isActive={active}
+                                  tooltip={title}
+                                  title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
+                                  onClick={() => onSelect(session)}
+                                >
+                                  <span className="session-label">{title}</span>
+                                  <time dateTime={session.modifiedAt}>
+                                    {relativeTime(session.modifiedAt)}
+                                  </time>
+                                </SidebarMenuButton>
+                              </ContextMenuTrigger>
+                              <ContextMenuContent>
+                                <ContextMenuItem onSelect={() => onRename(session)}>
+                                  Rename chat
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                                {platform === "darwin" && (
+                                  <ContextMenuItem
+                                    onSelect={() => session.cwd && onOpenFolder(session.cwd)}
+                                  >
+                                    Open in Finder
+                                  </ContextMenuItem>
+                                )}
+                                <ContextMenuItem
+                                  onSelect={() => session.cwd && onCopyText(session.cwd)}
+                                >
+                                  Copy working directory
+                                </ContextMenuItem>
+                                <ContextMenuItem onSelect={() => onCopyText(session.path)}>
+                                  Copy session
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem
+                                  variant="destructive"
+                                  onSelect={() => onRemove(session)}
+                                >
+                                  Archive chat
+                                </ContextMenuItem>
+                              </ContextMenuContent>
+                            </ContextMenu>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  )}
+                </div>
+              ))
             )}
           </SidebarGroupContent>
         </SidebarGroup>

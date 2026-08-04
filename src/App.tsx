@@ -82,7 +82,7 @@ export function App() {
     const listener = (event: KeyboardEvent) => {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
         event.preventDefault();
-        void createSession();
+        void createSession(appInfo?.defaultCwd);
       }
       if (event.key === "Escape" && packageOpen) setPackageOpen(false);
       if (event.key === "Escape" && skillOpen) setSkillOpen(false);
@@ -91,12 +91,12 @@ export function App() {
     return () => window.removeEventListener("keydown", listener);
   });
 
-  const createSession = async () => {
+  const createSession = async (cwd?: string) => {
     setError(undefined);
-    const cwd = await window.ePi.app.chooseDirectory(activeCwd || undefined);
-    if (!cwd) return;
+    const targetCwd = cwd ?? (await window.ePi.app.chooseDirectory(activeCwd || undefined));
+    if (!targetCwd) return;
     try {
-      const session = await window.ePi.sessions.create({ cwd });
+      const session = await window.ePi.sessions.create({ cwd: targetCwd });
       setSessions((current) => [session, ...current]);
       setActivePath(session.path);
     } catch (reason) {
@@ -184,11 +184,14 @@ export function App() {
           <SessionSidebar
             sessions={sessions}
             activePath={activePath}
-            runtimeStatus={runtimeState.status}
+            homeCwd={appInfo?.defaultCwd}
+            platform={appInfo?.platform}
             onSelect={selectSession}
-            onCreate={() => void createSession()}
+            onCreate={createSession}
             onRename={(session) => void renameSession(session)}
             onRemove={(session) => void removeSession(session)}
+            onOpenFolder={(cwd) => void window.ePi.app.openPath(cwd)}
+            onCopyText={(text) => void window.ePi.app.copyText(text)}
             onOpenPackages={openPackages}
             onOpenSkills={openSkills}
             onOpenSettings={() => setSettingsOpen(true)}

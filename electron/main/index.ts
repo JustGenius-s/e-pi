@@ -99,6 +99,10 @@ function registerHandlers(): void {
     if (error) throw new Error(error);
   });
 
+  ipcMain.handle("app:copy-text", (_event, text: string) => {
+    clipboard.writeText(text);
+  });
+
   ipcMain.handle("app:paste-image", async () => {
     const image = clipboard.readImage();
     if (image.isEmpty()) return null;
