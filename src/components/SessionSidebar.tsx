@@ -1,11 +1,4 @@
-import {
-  Folder,
-  FolderOpen,
-  Package,
-  Plus,
-  Settings2,
-  Sparkles,
-} from "lucide-react";
+import { Folder, FolderOpen, Package, Plus, Settings2, Sparkles } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { SessionSummary } from "../types/contracts";
 import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
@@ -97,8 +90,7 @@ export function SessionSidebar({
 
   const isCollapsed = (cwd: string) => collapsed.has(cwd);
 
-  const projectLabel = (cwd: string) =>
-    homeCwd && cwd === homeCwd ? "Home" : pathBaseName(cwd);
+  const projectLabel = (cwd: string) => (homeCwd && cwd === homeCwd ? "Home" : pathBaseName(cwd));
 
   return (
     <Sidebar aria-label="Sessions" collapsible="icon">

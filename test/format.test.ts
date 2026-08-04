@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { compactPath, pathBaseName, sessionTitle, statusLabel, statusTone } from "../src/lib/format";
+import {
+  compactPath,
+  pathBaseName,
+  sessionTitle,
+  statusLabel,
+  statusTone,
+} from "../src/lib/format";
 import type { SessionSummary } from "../src/types/contracts";
 
 const session: SessionSummary = {
