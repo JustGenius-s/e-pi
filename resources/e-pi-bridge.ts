@@ -56,8 +56,7 @@ export default function ePiBridge(pi: ExtensionAPI): void {
         }),
       );
       const content: Array<
-        | { type: "text"; text: string }
-        | { type: "image"; data: string; mimeType: string }
+        { type: "text"; text: string } | { type: "image"; data: string; mimeType: string }
       > = [{ type: "text", text: prompt }, ...imageBlocks];
       pi.sendUserMessage(content);
     },
