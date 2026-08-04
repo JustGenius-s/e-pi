@@ -71,7 +71,7 @@ interface ActivityIndicatorProps {
  * - working (process running, agent busy): blue braille spinner
  * - done (process running, agent settled): green dot-matrix square
  * - error: red dot-matrix square
- * - every other state: invisible placeholder (keeps titles aligned)
+ * - every other state: nothing rendered
  */
 function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
   const working = runtime?.status === "running" && runtime.activity === "busy";
@@ -106,7 +106,7 @@ function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
       </span>
     );
   }
-  return <span className="session-activity placeholder" aria-hidden="true" />;
+  return null;
 }
 
 export function SessionSidebar({

@@ -234,10 +234,6 @@
   background: currentColor;
 }
 
-.session-activity.placeholder {
-  visibility: hidden;
-}
-
 .session-menu-button time {
   color: var(--muted-foreground);
   font-size: 9px;
