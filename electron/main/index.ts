@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
 import { ModelService } from "./services/model-service";
 import { PackageService } from "./services/package-service";
+import { debugLog, resetDebugLog } from "./services/debug-log";
 import { PiRuntime } from "./services/pi-runtime";
 import { SessionService } from "./services/session-service";
 import { SkillService } from "./services/skill-service";
@@ -37,9 +38,7 @@ function sendToRenderer(channel: string, payload: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) window.webContents.send(channel, payload);
   }
-}
-
-function activeCwd(): string {
+}function activeCwd(): string {
   return runtime.state.cwd ?? app.getPath("home");
 }
 
@@ -103,6 +102,10 @@ function registerHandlers(): void {
     clipboard.writeText(text);
   });
 
+  ipcMain.on("app:log", (_event, message: string) => {
+    debugLog("[renderer]", message);
+  });
+
   ipcMain.handle("app:paste-image", async () => {
     const image = clipboard.readImage();
     if (image.isEmpty()) return null;
@@ -153,12 +156,17 @@ function registerHandlers(): void {
   });
 
   ipcMain.handle("runtime:get-state", () => runtime.state);
-  ipcMain.handle("runtime:start", async (_event, path: string) =>
-    runtime.start(path, sessions.getCwd(path)),
-  );
+  ipcMain.handle("runtime:start", async (_event, path: string) => {
+    const cwd = sessions.getCwd(path);
+    debugLog("[ipc] runtime:start", { path, cwd });
+    return runtime.start(path, cwd);
+  });
   ipcMain.handle("runtime:stop", () => runtime.stop());
   ipcMain.on("runtime:write", (_event, data: string) => runtime.write(data));
-  ipcMain.handle("runtime:submit", (_event, text: string) => runtime.submit(text));
+  ipcMain.handle("runtime:submit", (_event, text: string) => {
+    debugLog("[ipc] runtime:submit", { text: text.slice(0, 80) });
+    return runtime.submit(text);
+  });
   ipcMain.on("runtime:interrupt", () => runtime.interrupt());
   ipcMain.on("runtime:resize", (_event, size: ResizeTerminalRequest) => runtime.resize(size));
 
@@ -286,6 +294,8 @@ if (!hasLock) {
   });
 
   app.whenReady().then(() => {
+    resetDebugLog();
+    debugLog("app started", { version: app.getVersion(), platform: process.platform });
     registerHandlers();
     void cleanupStalePastedImages();
     createWindow();

@@ -58,13 +58,17 @@ export function App() {
         setRuntimeState(state);
         setActivePath(state.sessionPath || nextSessions[0]?.path);
         setLoading(false);
+        window.ePi.app.log(`[app] init sessions=${nextSessions.length} state=${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
       })
       .catch((reason: unknown) => {
         if (!active) return;
         setError(reason instanceof Error ? reason.message : String(reason));
         setLoading(false);
       });
-    const stopState = window.ePi.runtime.onState(setRuntimeState);
+    const stopState = window.ePi.runtime.onState((state) => {
+      window.ePi.app.log(`[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
+      setRuntimeState(state);
+    });
     return () => {
       active = false;
       stopState();
@@ -72,7 +76,15 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    if (loading || !activePath || runtimeState.sessionPath === activePath) return;
+    if (loading || !activePath || runtimeState.sessionPath === activePath) {
+      window.ePi.app.log(
+        `[app] switch effect SKIP loading=${loading} activePath=${activePath} sessionPath=${runtimeState.sessionPath}`,
+      );
+      return;
+    }
+    window.ePi.app.log(
+      `[app] switch effect START activePath=${activePath} prevSessionPath=${runtimeState.sessionPath}`,
+    );
     void window.ePi.runtime.start(activePath).catch((reason: unknown) => {
       setError(reason instanceof Error ? reason.message : String(reason));
     });
@@ -97,6 +109,7 @@ export function App() {
     if (!targetCwd) return;
     try {
       const session = await window.ePi.sessions.create({ cwd: targetCwd });
+      window.ePi.app.log(`[app] createSession created=${session.path} cwd=${targetCwd}`);
       setSessions((current) => [session, ...current]);
       setActivePath(session.path);
     } catch (reason) {
@@ -106,6 +119,7 @@ export function App() {
 
   const selectSession = (session: SessionSummary) => {
     setError(undefined);
+    window.ePi.app.log(`[app] selectSession ${session.path}`);
     setActivePath(session.path);
   };
 
@@ -143,6 +157,7 @@ export function App() {
 
   const submit = async (text: string) => {
     setError(undefined);
+    window.ePi.app.log(`[app] submit status=${runtimeState.status} text=${text.slice(0, 60)}`);
     try {
       await window.ePi.runtime.submit(text);
     } catch (reason) {
@@ -235,6 +250,8 @@ export function App() {
               cwd={activeCwd}
               disabled={
                 !activeSession ||
+                runtimeState.status === "starting" ||
+                runtimeState.status === "stopping" ||
                 runtimeState.status === "error" ||
                 runtimeState.status === "exited"
               }

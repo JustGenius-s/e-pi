@@ -215,6 +215,7 @@ export interface EPiApi {
     imageData(filePath: string, maxSize?: number): Promise<string | null>;
     openPath(path: string): Promise<void>;
     copyText(text: string): Promise<void>;
+    log(message: string): void;
   };
   sessions: {
     list(): Promise<SessionSummary[]>;

@@ -44,6 +44,7 @@ const api: EPiApi = {
       ipcRenderer.invoke("app:image-data", filePath, maxSize) as Promise<string | null>,
     openPath: (path: string) => ipcRenderer.invoke("app:open-path", path) as Promise<void>,
     copyText: (text: string) => ipcRenderer.invoke("app:copy-text", text) as Promise<void>,
+    log: (message: string) => ipcRenderer.send("app:log", message),
   },
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list") as Promise<SessionSummary[]>,
