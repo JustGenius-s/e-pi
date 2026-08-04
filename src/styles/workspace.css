@@ -24,10 +24,74 @@
 }
 
 .terminal-frame {
+  position: relative;
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   background: var(--background);
+}
+
+/* Fade the scrollback out near the bottom edge so the junction with the
+   composer reads as a smooth transition instead of a hard cut. */
+.terminal-frame::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  height: 32px;
+  background: linear-gradient(
+    to bottom,
+    transparent 40%,
+    color-mix(in oklch, var(--background) 60%, transparent) 72%,
+    var(--background)
+  );
+  pointer-events: none;
+}
+
+/* Floating "scroll to bottom" button, visible only while the terminal is
+   scrolled up. Sits centered above the fade overlay. */
+.terminal-scroll-bottom {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  translate: -50% 0;
+  z-index: 2;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+  color: var(--muted-foreground);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--card) 92%, var(--foreground));
+  box-shadow: 0 4px 14px color-mix(in oklch, var(--foreground) 14%, transparent);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(4px);
+  transition:
+    opacity 150ms ease,
+    transform 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease;
+  pointer-events: none;
+}
+
+.terminal-scroll-bottom[data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+.terminal-scroll-bottom:hover {
+  color: var(--foreground);
+  border-color: color-mix(in oklch, var(--foreground) 30%, var(--border));
+}
+
+.terminal-scroll-bottom:active {
+  transform: translateY(1px);
 }
 
 .terminal-panel {
@@ -153,6 +217,19 @@
   background: color-mix(in oklch, var(--background) 90%, transparent);
   font-size: 12px;
   font-weight: 650;
+  pointer-events: none;
+}
+
+/* Mirror fade at the card's top edge so the terminal background appears to
+   flow into the composer instead of stopping at the border. */
+.composer-shell::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  height: 12px;
+  background: linear-gradient(to bottom, color-mix(in oklch, var(--background) 15%, transparent), transparent);
   pointer-events: none;
 }
 

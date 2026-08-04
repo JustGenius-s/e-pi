@@ -1,6 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { useEffect, useRef } from "react";
+import { ArrowDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 interface TerminalPanelProps {
   sessionKey: string;
@@ -27,6 +28,30 @@ function appendTerminalBuffer(sessionKey: string, data: string): void {
 let feederStarted = false;
 
 /**
+ * Smoothly scroll the terminal to the bottom. xterm has no built-in animated
+ * scrolling, so step towards the bottom with requestAnimationFrame, easing
+ * the remaining distance (each frame covers 1/5 of what's left). Falls back
+ * to an instant jump when the scrollback is huge and the animation would
+ * drag on.
+ */
+function animateScrollToBottom(terminal: Terminal): void {
+  const MAX_FRAMES = 30;
+  let frames = 0;
+  const step = () => {
+    const remaining = terminal.buffer.active.baseY - terminal.buffer.active.viewportY;
+    if (remaining <= 0) return;
+    if (frames >= MAX_FRAMES) {
+      terminal.scrollToBottom();
+      return;
+    }
+    frames += 1;
+    terminal.scrollLines(Math.max(1, Math.ceil(remaining / 5)));
+    requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/**
  * App-lifetime subscription: buffer every session's output regardless of which
  * terminal is visible, so nothing is lost while a session runs in the
  * background. Only starts once the first TerminalPanel mounts.
@@ -39,6 +64,8 @@ function ensureBufferFeeder(): void {
 
 export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const terminalRef = useRef<Terminal | null>(null);
+  const [atBottom, setAtBottom] = useState(true);
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -84,6 +111,11 @@ export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
     const fit = new FitAddon();
     terminal.loadAddon(fit);
     terminal.open(hostRef.current);
+    terminalRef.current = terminal;
+
+    const scrollSub = terminal.onScroll(() => {
+      setAtBottom(terminal.buffer.active.viewportY >= terminal.buffer.active.baseY);
+    });
 
     const fitTerminal = () => {
       try {
@@ -111,10 +143,31 @@ export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
       disposed = true;
       stopData();
       input.dispose();
+      scrollSub.dispose();
+      terminalRef.current = null;
       resizeObserver.disconnect();
       terminal.dispose();
     };
   }, [sessionKey]);
 
-  return <div className="terminal-panel" ref={hostRef} aria-label="Pi terminal output" />;
+  return (
+    <>
+      <div className="terminal-panel" ref={hostRef} aria-label="Pi terminal output" />
+      <button
+        type="button"
+        className="terminal-scroll-bottom"
+        data-visible={atBottom ? "false" : "true"}
+        aria-hidden={atBottom}
+        tabIndex={atBottom ? -1 : 0}
+        onClick={() => {
+          const terminal = terminalRef.current;
+          if (terminal) animateScrollToBottom(terminal);
+        }}
+        aria-label="Scroll to bottom"
+        title="Scroll to bottom"
+      >
+        <ArrowDown size={14} />
+      </button>
+    </>
+  );
 }
