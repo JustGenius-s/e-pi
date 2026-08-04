@@ -1,14 +1,7 @@
 import { Folder, FolderOpen, Package, Plus, Settings2, Sparkles } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PiRuntimeState, SessionSummary } from "../types/contracts";
-import {
-  compactPath,
-  pathBaseName,
-  relativeTime,
-  sessionTitle,
-  statusLabel,
-  statusTone,
-} from "../lib/format";
+import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -54,6 +47,58 @@ interface ProjectGroup {
 }
 
 const UNKNOWN_FOLDER = "Unknown folder";
+
+/** Same braille spinner frames as pi-tui's Loader (default 80ms interval). */
+const SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+/** Full braille block: the "dot-matrix square" used for done/error states. */
+const DOT_MATRIX_SQUARE = "⣿";
+
+interface ActivityIndicatorProps {
+  runtime?: PiRuntimeState;
+}
+
+/**
+ * Per-session status glyph shown before the session title:
+ * - working (process running, agent busy): blue braille spinner
+ * - done (process running, agent settled): green dot-matrix square
+ * - error: red dot-matrix square
+ * - every other state: invisible placeholder (keeps titles aligned)
+ */
+function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
+  const working = runtime?.status === "running" && runtime.activity === "busy";
+  const done = runtime?.status === "running" && runtime.activity === "idle";
+  const failed = runtime?.status === "error";
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    if (!working) return;
+    const id = setInterval(() => setFrame((current) => (current + 1) % SPINNER_FRAMES.length), 80);
+    return () => clearInterval(id);
+  }, [working]);
+
+  if (working) {
+    return (
+      <span className="session-activity working" title="Working…" aria-label="Working…">
+        {SPINNER_FRAMES[frame]}
+      </span>
+    );
+  }
+  if (failed) {
+    return (
+      <span className="session-activity error" title="Runtime error" aria-label="Runtime error">
+        {DOT_MATRIX_SQUARE}
+      </span>
+    );
+  }
+  if (done) {
+    return (
+      <span className="session-activity done" title="Idle" aria-label="Idle">
+        {DOT_MATRIX_SQUARE}
+      </span>
+    );
+  }
+  return <span className="session-activity placeholder" aria-hidden="true" />;
+}
 
 export function SessionSidebar({
   sessions,
@@ -183,16 +228,6 @@ export function SessionSidebar({
                         const active = session.path === activePath;
                         const title = sessionTitle(session);
                         const runtime = runtimeStates?.[session.path];
-                        const tone = runtime ? statusTone(runtime.status) : "muted";
-                        const working =
-                          runtime?.status === "running" && runtime.activity === "busy";
-                        const statusTitle = !runtime
-                          ? "Not running"
-                          : working
-                            ? "Working…"
-                            : runtime.status === "running"
-                              ? "Idle"
-                              : statusLabel(runtime.status);
                         return (
                           <SidebarMenuItem key={session.path} className="session-menu-item">
                             <ContextMenu>
@@ -204,12 +239,8 @@ export function SessionSidebar({
                                   title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
                                   onClick={() => onSelect(session)}
                                 >
+                                  <ActivityIndicator runtime={runtime} />
                                   <span className="session-label">{title}</span>
-                                  <span
-                                    className={`session-status-dot ${tone}${working ? " working" : ""}`}
-                                    title={statusTitle}
-                                    aria-label={statusTitle}
-                                  />
                                   <time dateTime={session.modifiedAt}>
                                     {relativeTime(session.modifiedAt)}
                                   </time>
