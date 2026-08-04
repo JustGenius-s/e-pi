@@ -9,6 +9,8 @@ import { SessionService } from "./services/session-service";
 import { SkillService } from "./services/skill-service";
 import type {
   CreateSessionRequest,
+  CustomProviderRemoveRequest,
+  CustomProviderRequest,
   ModelLoginRequest,
   ModelLoginResponse,
   PackageMutation,
@@ -62,6 +64,17 @@ function registerHandlers(): void {
     return result.canceled ? undefined : result.filePaths[0];
   });
 
+  ipcMain.handle("app:choose-files", async (_event, options?: { imagesOnly?: boolean }) => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      defaultPath: activeCwd(),
+      properties: ["openFile", "multiSelections"],
+      filters: options?.imagesOnly
+        ? [{ name: "Images", extensions: ["png", "jpg", "jpeg", "gif", "webp", "bmp"] }]
+        : [{ name: "All files", extensions: ["*"] }],
+    });
+    return result.canceled ? [] : result.filePaths;
+  });
+
   ipcMain.handle("app:open-path", async (_event, path: string) => {
     const error = await shell.openPath(path);
     if (error) throw new Error(error);
@@ -87,7 +100,9 @@ function registerHandlers(): void {
   });
 
   ipcMain.handle("runtime:get-state", () => runtime.state);
-  ipcMain.handle("runtime:start", async (_event, path: string) => runtime.start(path, sessions.getCwd(path)));
+  ipcMain.handle("runtime:start", async (_event, path: string) =>
+    runtime.start(path, sessions.getCwd(path)),
+  );
   ipcMain.handle("runtime:stop", () => runtime.stop());
   ipcMain.on("runtime:write", (_event, data: string) => runtime.write(data));
   ipcMain.handle("runtime:submit", (_event, text: string) => runtime.submit(text));
@@ -95,16 +110,28 @@ function registerHandlers(): void {
   ipcMain.on("runtime:resize", (_event, size: ResizeTerminalRequest) => runtime.resize(size));
 
   ipcMain.handle("packages:list", (_event, cwd: string) => packages.list(cwd || activeCwd()));
-  ipcMain.handle("packages:install", (_event, request: PackageMutation) => packages.install(request));
+  ipcMain.handle("packages:install", (_event, request: PackageMutation) =>
+    packages.install(request),
+  );
   ipcMain.handle("packages:remove", (_event, request: PackageMutation) => packages.remove(request));
-  ipcMain.handle("packages:update", (_event, request: PackageUpdateRequest) => packages.update(request));
+  ipcMain.handle("packages:update", (_event, request: PackageUpdateRequest) =>
+    packages.update(request),
+  );
 
   ipcMain.handle("skills:list", (_event, cwd: string) => skills.list(cwd || activeCwd()));
-  ipcMain.handle("skills:read", (_event, cwd: string, filePath: string) => skills.read(cwd || activeCwd(), filePath));
-  ipcMain.handle("skills:create", async (_event, request: SkillCreateRequest) => skills.create(request));
-  ipcMain.handle("skills:add-path", async (_event, request: SkillAddPathRequest) => skills.addPath(request));
+  ipcMain.handle("skills:read", (_event, cwd: string, filePath: string) =>
+    skills.read(cwd || activeCwd(), filePath),
+  );
+  ipcMain.handle("skills:create", async (_event, request: SkillCreateRequest) =>
+    skills.create(request),
+  );
+  ipcMain.handle("skills:add-path", async (_event, request: SkillAddPathRequest) =>
+    skills.addPath(request),
+  );
   ipcMain.handle("skills:remove", async (_event, request: SkillMutation) => skills.remove(request));
-  ipcMain.handle("skills:set-enabled", async (_event, request: SkillSetEnabledRequest) => skills.setEnabled(request));
+  ipcMain.handle("skills:set-enabled", async (_event, request: SkillSetEnabledRequest) =>
+    skills.setEnabled(request),
+  );
 
   ipcMain.handle("models:list", () => models.list(activeCwd()));
   ipcMain.handle("models:login", async (_event, request: ModelLoginRequest) => {
@@ -132,6 +159,13 @@ function registerHandlers(): void {
     }
     return state;
   });
+  ipcMain.handle("models:custom-list", () => models.listCustomProviders());
+  ipcMain.handle("models:custom-save", (_event, request: CustomProviderRequest) =>
+    models.saveCustomProvider(request),
+  );
+  ipcMain.handle("models:custom-remove", (_event, request: CustomProviderRemoveRequest) =>
+    models.removeCustomProvider(request),
+  );
 }
 
 function createWindow(): void {

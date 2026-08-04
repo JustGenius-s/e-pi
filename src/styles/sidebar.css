@@ -13,7 +13,9 @@
   min-width: var(--sidebar-width);
   min-height: 0;
   color: var(--sidebar-foreground);
-  transition: width 180ms ease, min-width 180ms ease;
+  transition:
+    width 180ms ease,
+    min-width 180ms ease;
 }
 
 .sidebar-root[data-state="collapsed"] {
@@ -73,7 +75,9 @@
   text-align: left;
   white-space: nowrap;
   cursor: default;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
 }
 
 .sidebar-menu-button:hover,
@@ -315,20 +319,19 @@
 }
 
 .sidebar-root[data-state="collapsed"] .sidebar-empty {
+  /* --- legacy live styles (previously inline in app.css) --- */
 
-/* --- legacy live styles (previously inline in app.css) --- */
+  .session-status {
+    width: 6px;
+    height: 6px;
+  }
 
-.session-status {
-  width: 6px;
-  height: 6px;
-}
-
-.sidebar-empty {
-  display: grid;
-  gap: 5px;
-  padding: 22px 10px;
-  text-align: center;
-  color: var(--muted-foreground);
-  font-size: 10px;
-}
+  .sidebar-empty {
+    display: grid;
+    gap: 5px;
+    padding: 22px 10px;
+    text-align: center;
+    color: var(--muted-foreground);
+    font-size: 10px;
+  }
 }

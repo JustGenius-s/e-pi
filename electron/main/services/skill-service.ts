@@ -44,15 +44,18 @@ export class SkillService {
   async create(request: SkillCreateRequest): Promise<SkillRecord[]> {
     const name = request.name.trim();
     if (!SKILL_NAME_PATTERN.test(name)) {
-      throw new Error("Skill name must be lowercase letters, numbers, and hyphens only (no leading/trailing/consecutive hyphens).");
+      throw new Error(
+        "Skill name must be lowercase letters, numbers, and hyphens only (no leading/trailing/consecutive hyphens).",
+      );
     }
     const description = request.description.trim();
     if (!description) {
       throw new Error("Skill description is required.");
     }
-    const dir = request.scope === "project"
-      ? resolve(request.cwd, ".pi", "skills", name)
-      : resolve(getAgentDir(), "skills", name);
+    const dir =
+      request.scope === "project"
+        ? resolve(request.cwd, ".pi", "skills", name)
+        : resolve(getAgentDir(), "skills", name);
     if (existsSync(dir)) {
       throw new Error(`A skill named "${name}" already exists.`);
     }
@@ -76,9 +79,10 @@ export class SkillService {
     const path = resolve(request.path);
     if (!existsSync(path)) throw new Error("Path does not exist.");
     const settings = this.#settings(request.cwd);
-    const existing = request.scope === "project"
-      ? (settings.getProjectSettings().skills ?? [])
-      : (settings.getGlobalSettings().skills ?? []);
+    const existing =
+      request.scope === "project"
+        ? (settings.getProjectSettings().skills ?? [])
+        : (settings.getGlobalSettings().skills ?? []);
     if (existing.includes(path)) return this.list(request.cwd);
     const next = [...existing, path];
     if (request.scope === "project") {
@@ -133,9 +137,26 @@ export class SkillService {
     if (projectPaths) settings.setProjectSkillPaths(projectPaths);
   }
 
-  #toRecord(skill: { name: string; description: string; filePath: string; baseDir: string; sourceInfo: { scope: string }; disableModelInvocation: boolean }, userSkillsDir: string, projectSkillsDir: string): SkillRecord {
-    const source: SkillSource = skill.sourceInfo.scope === "project" ? "project" : skill.sourceInfo.scope === "user" ? "user" : "path";
-    const managed = this.#isUnder(userSkillsDir, skill.baseDir) || this.#isUnder(projectSkillsDir, skill.baseDir);
+  #toRecord(
+    skill: {
+      name: string;
+      description: string;
+      filePath: string;
+      baseDir: string;
+      sourceInfo: { scope: string };
+      disableModelInvocation: boolean;
+    },
+    userSkillsDir: string,
+    projectSkillsDir: string,
+  ): SkillRecord {
+    const source: SkillSource =
+      skill.sourceInfo.scope === "project"
+        ? "project"
+        : skill.sourceInfo.scope === "user"
+          ? "user"
+          : "path";
+    const managed =
+      this.#isUnder(userSkillsDir, skill.baseDir) || this.#isUnder(projectSkillsDir, skill.baseDir);
     return {
       name: skill.name,
       description: skill.description,

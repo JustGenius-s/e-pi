@@ -54,13 +54,7 @@ export class PiRuntime {
     try {
       const customNodeBinary = process.env.PI_NODE_BINARY?.trim();
       const nodeBinary = customNodeBinary || process.execPath;
-      const args = [
-        resolvePiEntry(),
-        "--session",
-        sessionPath,
-        "--extension",
-        resolveBridgePath(),
-      ];
+      const args = [resolvePiEntry(), "--session", sessionPath, "--extension", resolveBridgePath()];
 
       const child = spawn(nodeBinary, args, {
         name: "xterm-256color",
@@ -92,7 +86,11 @@ export class PiRuntime {
           pid: undefined,
           exitCode,
           signal,
-          error: wasStopping ? undefined : exitCode === 0 ? undefined : `Pi exited with code ${exitCode}.`,
+          error: wasStopping
+            ? undefined
+            : exitCode === 0
+              ? undefined
+              : `Pi exited with code ${exitCode}.`,
         });
         this.#resolveStop?.();
         this.#resolveStop = undefined;

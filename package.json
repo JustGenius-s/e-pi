@@ -9,6 +9,8 @@
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
+    "format": "oxfmt .",
+    "format:check": "oxfmt --check .",
     "test": "vitest run",
     "build": "npm run typecheck && npm run test && electron-vite build",
     "dist:mac": "npm run build && electron-builder --mac",
@@ -45,10 +47,21 @@
     "electron-vite": "5.0.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.3.0",
+    "oxfmt": "0.62.0",
     "oxlint": "^1.77.0",
     "typescript": "7.0.2",
     "vite": "7.3.6",
     "vitest": "4.1.10"
+  },
+  "lint-staged": {
+    "*.{ts,tsx}": "oxlint --fix"
+  },
+  "packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "electron",
+      "node-pty"
+    ]
   },
   "build": {
     "appId": "works.earendil.e-pi",
@@ -75,15 +88,5 @@
         "zip"
       ]
     }
-  },
-  "packageManager": "pnpm@10.30.3+sha512.c961d1e0a2d8e354ecaa5166b822516668b7f44cb5bd95122d590dd81922f606f5473b6d23ec4a5be05e7fcd18e8488d47d978bbe981872f1145d06e9a740017",
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "electron",
-      "node-pty"
-    ]
-  },
-  "lint-staged": {
-    "*.{ts,tsx}": "oxlint --fix"
   }
 }

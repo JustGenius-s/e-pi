@@ -37,9 +37,12 @@ export function PackagePanel({ open, cwd, onOpenChange, onReloadPi }: PackagePan
   useEffect(() => {
     if (!open) return;
     setError(undefined);
-    void window.ePi.packages.list(cwd).then(setPackages).catch((reason: unknown) => {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    });
+    void window.ePi.packages
+      .list(cwd)
+      .then(setPackages)
+      .catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
   }, [cwd, open]);
 
   useEffect(() => {
@@ -82,7 +85,11 @@ export function PackagePanel({ open, cwd, onOpenChange, onReloadPi }: PackagePan
         </SheetDescription>
 
         <section className="package-install-section" aria-label="Install package">
-          <Tabs value={scope} onValueChange={(value) => setScope(value as "user" | "project")} aria-label="Install scope">
+          <Tabs
+            value={scope}
+            onValueChange={(value) => setScope(value as "user" | "project")}
+            aria-label="Install scope"
+          >
             <TabsList>
               <TabsTrigger value="user">Global</TabsTrigger>
               <TabsTrigger value="project">Project</TabsTrigger>
@@ -106,11 +113,17 @@ export function PackagePanel({ open, cwd, onOpenChange, onReloadPi }: PackagePan
         </section>
 
         <div className="package-drawer-body">
-          {error ? <div className="inline-error" role="alert">{error}</div> : null}
+          {error ? (
+            <div className="inline-error" role="alert">
+              {error}
+            </div>
+          ) : null}
 
           <section className="package-list-section" aria-live="polite">
             <div className="section-heading-row">
-              <h3>Installed <span>{packages.length}</span></h3>
+              <h3>
+                Installed <span>{packages.length}</span>
+              </h3>
               <IconButton
                 label="Update all packages"
                 onClick={() => void run(() => window.ePi.packages.update({ cwd }))}
@@ -121,7 +134,10 @@ export function PackagePanel({ open, cwd, onOpenChange, onReloadPi }: PackagePan
             </div>
 
             {busy && progress ? (
-              <div className="progress-line"><span />{progress.message || `${progress.action} ${progress.source}`}</div>
+              <div className="progress-line">
+                <span />
+                {progress.message || `${progress.action} ${progress.source}`}
+              </div>
             ) : null}
 
             {packages.length === 0 && !busy ? (
@@ -132,12 +148,17 @@ export function PackagePanel({ open, cwd, onOpenChange, onReloadPi }: PackagePan
                   <div className="package-row" key={`${item.scope}:${item.source}`}>
                     <div className="package-row-main">
                       <strong title={item.source}>{item.source}</strong>
-                      <span>{item.scope === "project" ? "Project" : "Global"}{item.filtered ? " · Filtered" : ""}</span>
+                      <span>
+                        {item.scope === "project" ? "Project" : "Global"}
+                        {item.filtered ? " · Filtered" : ""}
+                      </span>
                     </div>
                     <div className="package-row-actions">
                       <IconButton
                         label={`Update ${item.source}`}
-                        onClick={() => void run(() => window.ePi.packages.update({ cwd, source: item.source }))}
+                        onClick={() =>
+                          void run(() => window.ePi.packages.update({ cwd, source: item.source }))
+                        }
                         disabled={busy}
                       >
                         <RefreshCw size={14} />
@@ -152,12 +173,23 @@ export function PackagePanel({ open, cwd, onOpenChange, onReloadPi }: PackagePan
                           <AlertDialogHeader>
                             <AlertDialogTitle>Remove package?</AlertDialogTitle>
                             <AlertDialogDescription>
-                              {item.source} will be removed from the {item.scope === "project" ? "project" : "global"} package list.
+                              {item.source} will be removed from the{" "}
+                              {item.scope === "project" ? "project" : "global"} package list.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => void run(() => window.ePi.packages.remove({ source: item.source, cwd, scope: item.scope }))}>
+                            <AlertDialogAction
+                              onClick={() =>
+                                void run(() =>
+                                  window.ePi.packages.remove({
+                                    source: item.source,
+                                    cwd,
+                                    scope: item.scope,
+                                  }),
+                                )
+                              }
+                            >
                               Remove
                             </AlertDialogAction>
                           </AlertDialogFooter>

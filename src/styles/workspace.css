@@ -120,7 +120,9 @@
 }
 
 @keyframes skeleton-pulse {
-  50% { opacity: 0.45; }
+  50% {
+    opacity: 0.45;
+  }
 }
 
 .runtime-error {
@@ -137,50 +139,187 @@
 }
 
 .composer-shell {
-  margin: 8px 10px 10px;
+  position: relative;
+  margin: 8px 12px 12px;
   overflow: hidden;
-  border: 1px solid var(--input);
-  border-radius: var(--radius);
-  background: color-mix(in oklch, var(--foreground) 2%, var(--background));
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in oklch, var(--card) 96%, var(--foreground));
+  box-shadow:
+    0 10px 28px color-mix(in oklch, var(--foreground) 8%, transparent),
+    inset 0 1px 0 color-mix(in oklch, var(--background) 70%, transparent);
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.composer-shell:focus-within {
+  border-color: color-mix(in oklch, var(--foreground) 28%, var(--border));
+  box-shadow:
+    0 12px 30px color-mix(in oklch, var(--foreground) 10%, transparent),
+    0 0 0 3px color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.composer-shell[data-dragging="true"] {
+  border-color: var(--foreground);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--foreground) 10%, transparent);
+  transform: translateY(-1px);
+}
+
+.composer-shell[data-dragging="true"]::after {
+  content: "Drop files to attach";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--background) 90%, transparent);
+  font-size: 12px;
+  font-weight: 650;
+  pointer-events: none;
 }
 
 .composer-shell [data-slot="textarea"] {
-  min-height: 42px;
-  max-height: 144px;
+  min-height: 82px;
+  max-height: 280px;
+  padding: 18px 16px 14px;
   resize: none;
   border: 0;
   border-radius: 0;
   background: transparent;
   box-shadow: none;
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 .composer-shell [data-slot="textarea"]:focus-visible {
   box-shadow: none;
 }
 
-.composer-toolbar {
+.composer-attachments {
   display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  min-height: 32px;
-  padding: 0 6px 6px;
+  gap: 6px;
+  padding: 10px 10px 0;
+  overflow-x: auto;
 }
 
-.composer-actions {
-  display: flex;
+.composer-attachment {
+  display: inline-flex;
+  max-width: 210px;
+  height: 28px;
   align-items: center;
   gap: 6px;
+  padding: 0 5px 0 8px;
+  color: var(--secondary-foreground);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--secondary);
+  font-size: 10px;
+  white-space: nowrap;
 }
 
-.composer-hint {
-  display: inline-flex;
+.composer-attachment > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-attachment button {
+  display: grid;
+  width: 19px;
+  height: 19px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+}
+.composer-attachment button:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+.composer-toolbar {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 7px 7px 8px;
+}
+
+.composer-tools,
+.composer-actions {
+  display: flex;
+  min-width: 0;
   align-items: center;
   gap: 5px;
-  color: var(--muted-foreground);
-  font-size: 9px;
 }
 
-.hint-divider {
-  color: var(--input);
+.composer-tools > [data-slot="button"] {
+  color: var(--muted-foreground);
+  border-radius: 7px;
+}
+.composer-tools > [data-slot="button"]:hover {
+  color: var(--foreground);
+}
+
+.composer-divider {
+  width: 1px;
+  height: 18px;
+  margin: 0 2px;
+  background: var(--border);
+}
+
+.composer-select {
+  max-width: 220px;
+  height: 34px !important;
+  gap: 8px;
+  padding: 0 10px 0 11px;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 580;
+}
+.composer-select:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+.composer-model-select {
+  max-width: 240px;
+}
+.composer-thinking-select {
+  max-width: 145px;
+}
+.thinking-note {
+  margin-left: 10px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.composer-stop {
+  color: var(--destructive);
+  border: 1px solid color-mix(in oklch, var(--destructive) 20%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--destructive) 6%, transparent);
+}
+.composer-stop:hover {
+  color: var(--destructive);
+  background: color-mix(in oklch, var(--destructive) 12%, transparent);
+}
+
+.composer-send {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 20%, transparent);
+  font-size: 10px;
+}
+.composer-send:active,
+.composer-stop:active {
+  transform: translateY(1px);
 }

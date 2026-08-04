@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { FolderOpen, FolderPlus, LoaderCircle, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import {
+  FolderOpen,
+  FolderPlus,
+  LoaderCircle,
+  Plus,
+  RefreshCw,
+  Search,
+  Trash2,
+} from "lucide-react";
 import type { SkillRecord, SkillScope } from "../types/contracts";
 import { IconButton } from "./IconButton";
 import {
@@ -14,7 +22,14 @@ import {
 } from "./ui/alert-dialog";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -57,22 +72,28 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
   const [newScope, setNewScope] = useState<SkillScope>("project");
   const [removeTarget, setRemoveTarget] = useState<SkillRecord>();
 
-  const refresh = useCallback(async (opts?: { keepSelection?: boolean }) => {
-    setLoading(true);
-    setError(undefined);
-    try {
-      const next = await window.ePi.skills.list(cwd);
-      setSkills(next);
-      if (!opts?.keepSelection) {
-        setSelectedPath((current) =>
-          current && next.some((skill) => skill.filePath === current) ? current : next[0]?.filePath);
+  const refresh = useCallback(
+    async (opts?: { keepSelection?: boolean }) => {
+      setLoading(true);
+      setError(undefined);
+      try {
+        const next = await window.ePi.skills.list(cwd);
+        setSkills(next);
+        if (!opts?.keepSelection) {
+          setSelectedPath((current) =>
+            current && next.some((skill) => skill.filePath === current)
+              ? current
+              : next[0]?.filePath,
+          );
+        }
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        setLoading(false);
       }
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    } finally {
-      setLoading(false);
-    }
-  }, [cwd]);
+    },
+    [cwd],
+  );
 
   useEffect(() => {
     if (!open) return;
@@ -90,7 +111,8 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
       return;
     }
     let mounted = true;
-    window.ePi.skills.read(cwd, selectedPath)
+    window.ePi.skills
+      .read(cwd, selectedPath)
       .then((content) => {
         if (mounted) setPreview(content);
       })
@@ -106,7 +128,8 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
     const normalized = query.trim().toLowerCase();
     if (!normalized) return skills;
     return skills.filter((skill) =>
-      `${skill.name} ${skill.description}`.toLowerCase().includes(normalized));
+      `${skill.name} ${skill.description}`.toLowerCase().includes(normalized),
+    );
   }, [query, skills]);
 
   const validName = SKILL_NAME_PATTERN.test(newName.trim());
@@ -140,12 +163,14 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
   };
 
   const create = async () => {
-    await run(() => window.ePi.skills.create({
-      cwd,
-      scope: newScope,
-      name: newName.trim(),
-      description: newDescription.trim(),
-    }));
+    await run(() =>
+      window.ePi.skills.create({
+        cwd,
+        scope: newScope,
+        name: newName.trim(),
+        description: newDescription.trim(),
+      }),
+    );
     setCreateOpen(false);
     setNewName("");
     setNewDescription("");
@@ -201,11 +226,17 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
         </section>
 
         <div className="skill-drawer-body">
-          {error ? <div className="inline-error" role="alert">{error}</div> : null}
+          {error ? (
+            <div className="inline-error" role="alert">
+              {error}
+            </div>
+          ) : null}
 
           <section className="skill-list-section" aria-live="polite">
             <div className="section-heading-row">
-              <h3>Skills <span>{skills.length}</span></h3>
+              <h3>
+                Skills <span>{skills.length}</span>
+              </h3>
               <IconButton
                 label="Refresh skills"
                 onClick={() => void refresh({ keepSelection: true })}
@@ -216,7 +247,9 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
             </div>
 
             {loading && skills.length === 0 ? (
-              <div className="skill-panel-empty"><LoaderCircle className="spin" size={15} /> Loading skills</div>
+              <div className="skill-panel-empty">
+                <LoaderCircle className="spin" size={15} /> Loading skills
+              </div>
             ) : filtered.length === 0 ? (
               <div className="skill-panel-empty">No skills found</div>
             ) : (
@@ -233,16 +266,23 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
                       type="button"
                       title={skill.description || skill.baseDir}
                     >
-                      <span className="skill-panel-name" data-disabled={!skill.enabled}>{skill.name}</span>
+                      <span className="skill-panel-name" data-disabled={!skill.enabled}>
+                        {skill.name}
+                      </span>
                       <span className="skill-panel-meta">
                         <Badge variant="outline">{sourceLabel(skill.source)}</Badge>
-                        <span className={`skill-row-dot ${skill.enabled ? "is-on" : ""}`} aria-label={skill.enabled ? "Enabled" : "Disabled"} />
+                        <span
+                          className={`skill-row-dot ${skill.enabled ? "is-on" : ""}`}
+                          aria-label={skill.enabled ? "Enabled" : "Disabled"}
+                        />
                       </span>
                     </button>
 
                     {skill.filePath === selectedPath ? (
                       <div className="skill-panel-detail">
-                        {skill.description ? <p className="skill-description">{skill.description}</p> : null}
+                        {skill.description ? (
+                          <p className="skill-description">{skill.description}</p>
+                        ) : null}
 
                         <div className="skill-status">
                           <span className="skill-status-label">Enabled</span>
@@ -356,15 +396,23 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
               </label>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
-              <Button onClick={() => void create()} disabled={!validName || !newDescription.trim() || busy}>
+              <Button variant="outline" onClick={() => setCreateOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => void create()}
+                disabled={!validName || !newDescription.trim() || busy}
+              >
                 Create skill
               </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
 
-        <AlertDialog open={Boolean(removeTarget)} onOpenChange={(next) => !next && setRemoveTarget(undefined)}>
+        <AlertDialog
+          open={Boolean(removeTarget)}
+          onOpenChange={(next) => !next && setRemoveTarget(undefined)}
+        >
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete skill?</AlertDialogTitle>

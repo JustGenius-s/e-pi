@@ -25,7 +25,11 @@ export function AppHeader({ activeSession, activeCwd, onOpenWorkingFolder }: App
           </div>
         </div>
         <div className="workspace-meta">
-          <IconButton label="Open working folder" onClick={onOpenWorkingFolder} disabled={!activeCwd}>
+          <IconButton
+            label="Open working folder"
+            onClick={onOpenWorkingFolder}
+            disabled={!activeCwd}
+          >
             <FolderOpen size={15} />
           </IconButton>
         </div>

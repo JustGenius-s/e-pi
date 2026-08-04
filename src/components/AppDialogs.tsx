@@ -11,7 +11,14 @@ import {
   AlertDialogTitle,
 } from "./ui/alert-dialog";
 import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import { Input } from "./ui/input";
 import { ModelSettings } from "./ModelSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
@@ -49,7 +56,9 @@ export function AppDialogs({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename session</DialogTitle>
-            <DialogDescription>Give this session a short name so it is easier to find later.</DialogDescription>
+            <DialogDescription>
+              Give this session a short name so it is easier to find later.
+            </DialogDescription>
           </DialogHeader>
           <Input
             autoFocus
@@ -64,8 +73,12 @@ export function AppDialogs({
             }}
           />
           <DialogFooter>
-            <Button variant="outline" onClick={onCloseRename}>Cancel</Button>
-            <Button onClick={onCommitRename} disabled={!renameName.trim()}>Save name</Button>
+            <Button variant="outline" onClick={onCloseRename}>
+              Cancel
+            </Button>
+            <Button onClick={onCommitRename} disabled={!renameName.trim()}>
+              Save name
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -75,7 +88,8 @@ export function AppDialogs({
           <AlertDialogHeader>
             <AlertDialogTitle>Move session to Trash?</AlertDialogTitle>
             <AlertDialogDescription>
-              {removeTarget ? sessionTitle(removeTarget) : "This session"} will be moved to the system Trash.
+              {removeTarget ? sessionTitle(removeTarget) : "This session"} will be moved to the
+              system Trash.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -107,8 +121,14 @@ export function AppDialogs({
             </TabsContent>
             <TabsContent value="general">
               <div className="settings-summary">
-                <div><span>Pi version</span><strong>{appInfo?.piVersion || "-"}</strong></div>
-                <div><span>Default folder</span><strong title={appInfo?.defaultCwd}>{appInfo?.defaultCwd || "-"}</strong></div>
+                <div>
+                  <span>Pi version</span>
+                  <strong>{appInfo?.piVersion || "-"}</strong>
+                </div>
+                <div>
+                  <span>Default folder</span>
+                  <strong title={appInfo?.defaultCwd}>{appInfo?.defaultCwd || "-"}</strong>
+                </div>
               </div>
             </TabsContent>
           </Tabs>

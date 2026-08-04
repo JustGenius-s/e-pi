@@ -117,7 +117,11 @@
   animation: spin 700ms linear infinite;
 }
 
-@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 
 .package-list {
   min-height: 0;
@@ -196,4 +200,3 @@
 .drawer-footer-note [data-slot="button"] {
   flex: 0 0 auto;
 }
-

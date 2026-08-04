@@ -1,4 +1,30 @@
+@media (max-width: 900px) {
+  .composer-model-select {
+    max-width: 130px;
+  }
+  .composer-thinking-select {
+    max-width: 95px;
+  }
+  .composer-send span {
+    display: none;
+  }
+  .composer-send {
+    width: 30px;
+    padding: 0;
+  }
+}
+
 @media (max-width: 720px) {
+  .composer-toolbar {
+    align-items: flex-end;
+  }
+  .composer-tools {
+    flex-wrap: wrap;
+  }
+  .composer-divider {
+    display: none;
+  }
+
   .model-settings {
     grid-template-columns: 180px minmax(0, 1fr);
   }
@@ -34,4 +60,3 @@
     transition-duration: 0.01ms !important;
   }
 }
-

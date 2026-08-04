@@ -158,6 +158,31 @@ export interface SetDefaultModelRequest {
   id: string;
 }
 
+export interface CustomModelDefinition {
+  id: string;
+  name?: string;
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+}
+
+export interface CustomProviderConfig {
+  id: string;
+  name?: string;
+  baseUrl: string;
+  api: string;
+  apiKey?: string;
+  models: CustomModelDefinition[];
+}
+
+export interface CustomProviderRequest {
+  provider: CustomProviderConfig;
+}
+
+export interface CustomProviderRemoveRequest {
+  providerId: string;
+}
+
 export type ModelLoginEvent =
   | {
       type: "prompt";
@@ -184,6 +209,8 @@ export interface EPiApi {
   app: {
     getInfo(): Promise<AppInfo>;
     chooseDirectory(defaultPath?: string): Promise<string | undefined>;
+    chooseFiles(options?: { imagesOnly?: boolean }): Promise<string[]>;
+    getPathForFile(file: File): string;
     openPath(path: string): Promise<void>;
   };
   sessions: {
@@ -217,6 +244,9 @@ export interface EPiApi {
     cancelLogin(): void;
     logout(providerId: string): Promise<ModelManagementState>;
     setDefault(request: SetDefaultModelRequest): Promise<ModelManagementState>;
+    customList(): Promise<CustomProviderConfig[]>;
+    customSave(request: CustomProviderRequest): Promise<CustomProviderConfig[]>;
+    customRemove(request: CustomProviderRemoveRequest): Promise<CustomProviderConfig[]>;
     onLoginEvent(listener: (event: ModelLoginEvent) => void): () => void;
   };
   skills: {

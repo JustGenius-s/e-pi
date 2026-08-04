@@ -368,3 +368,126 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* --- custom provider management --- */
+
+.model-provider-toolbar {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-provider-toolbar .model-provider-search {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.model-custom-row {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--muted);
+}
+
+.model-custom-badge {
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 540;
+}
+
+.model-custom-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.custom-provider-dialog {
+  width: min(620px, calc(100vw - 32px));
+  max-width: 620px;
+}
+
+.custom-provider-form {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.custom-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  font-size: 11px;
+  font-weight: 540;
+}
+
+.custom-field > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.custom-field small {
+  color: var(--muted-foreground);
+  font-size: 9px;
+  font-weight: 400;
+}
+
+.custom-field-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.6fr);
+  gap: 10px;
+}
+
+.custom-models {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.custom-models-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 540;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.custom-models-empty {
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.custom-model-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 70px 70px auto auto;
+  align-items: center;
+  gap: 6px;
+}
+
+.custom-model-row input {
+  height: 30px;
+  font-size: 10px;
+}
+
+.custom-model-reasoning {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--muted-foreground);
+  font-size: 9px;
+  white-space: nowrap;
+}

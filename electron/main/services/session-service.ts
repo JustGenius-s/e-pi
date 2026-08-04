@@ -1,7 +1,4 @@
-import {
-  SessionManager,
-  type SessionInfo,
-} from "@earendil-works/pi-coding-agent";
+import { SessionManager, type SessionInfo } from "@earendil-works/pi-coding-agent";
 import { writeFile } from "node:fs/promises";
 import type { SessionSummary } from "../../../src/types/contracts";
 
@@ -20,7 +17,9 @@ export function toSessionSummary(session: SessionInfo): SessionSummary {
     modifiedAt: session.modified.toISOString(),
     messageCount: session.messageCount,
     firstMessage: normalizeText(session.firstMessage),
-    searchText: normalizeText(`${session.name ?? ""} ${session.firstMessage} ${session.allMessagesText} ${session.cwd}`),
+    searchText: normalizeText(
+      `${session.name ?? ""} ${session.firstMessage} ${session.allMessagesText} ${session.cwd}`,
+    ),
   };
 }
 

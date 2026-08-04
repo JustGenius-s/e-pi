@@ -1,4 +1,13 @@
-import { MessageSquare, Pencil, Plus, Search, Settings2, Sparkles, Trash2, Package } from "lucide-react";
+import {
+  MessageSquare,
+  Pencil,
+  Plus,
+  Search,
+  Settings2,
+  Sparkles,
+  Trash2,
+  Package,
+} from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PiProcessStatus, SessionSummary } from "../types/contracts";
 import { compactPath, relativeTime, sessionTitle, statusTone } from "../lib/format";
@@ -76,7 +85,11 @@ export function SessionSidebar({
           <div className="sidebar-session-toolbar">
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton className="sidebar-new-button" tooltip="New session" onClick={onCreate}>
+                <SidebarMenuButton
+                  className="sidebar-new-button"
+                  tooltip="New session"
+                  onClick={onCreate}
+                >
                   <Plus />
                   <span>New session</span>
                 </SidebarMenuButton>
@@ -115,16 +128,23 @@ export function SessionSidebar({
                       >
                         <span className="session-icon" aria-hidden="true">
                           <MessageSquare size={15} />
-                          <span className={`session-status ${active ? statusTone(runtimeStatus) : "muted"}`} />
+                          <span
+                            className={`session-status ${active ? statusTone(runtimeStatus) : "muted"}`}
+                          />
                         </span>
                         <span className="session-label">{title}</span>
-                        <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+                        <time dateTime={session.modifiedAt}>
+                          {relativeTime(session.modifiedAt)}
+                        </time>
                       </SidebarMenuButton>
                       <div className="session-menu-actions">
                         <IconButton label={`Rename ${title}`} onClick={() => onRename(session)}>
                           <Pencil size={12} />
                         </IconButton>
-                        <IconButton label={`Move ${title} to Trash`} onClick={() => onRemove(session)}>
+                        <IconButton
+                          label={`Move ${title} to Trash`}
+                          onClick={() => onRemove(session)}
+                        >
                           <Trash2 size={12} />
                         </IconButton>
                       </div>

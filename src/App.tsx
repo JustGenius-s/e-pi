@@ -26,14 +26,19 @@ export function App() {
   const [removeTarget, setRemoveTarget] = useState<SessionSummary>();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
+  const activeSession = useMemo(
+    () => sessions.find((session) => session.path === activePath),
+    [activePath, sessions],
+  );
   const activeCwd = runtimeState.cwd || activeSession?.cwd || appInfo?.defaultCwd || "";
 
   const refreshSessions = async () => {
     try {
       const next = await window.ePi.sessions.list();
       setSessions(next);
-      setActivePath((current) => current && next.some((session) => session.path === current) ? current : next[0]?.path);
+      setActivePath((current) =>
+        current && next.some((session) => session.path === current) ? current : next[0]?.path,
+      );
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -41,7 +46,11 @@ export function App() {
 
   useEffect(() => {
     let active = true;
-    Promise.all([window.ePi.app.getInfo(), window.ePi.sessions.list(), window.ePi.runtime.getState()])
+    Promise.all([
+      window.ePi.app.getInfo(),
+      window.ePi.sessions.list(),
+      window.ePi.runtime.getState(),
+    ])
       .then(([info, nextSessions, state]) => {
         if (!active) return;
         setAppInfo(info);
@@ -186,29 +195,48 @@ export function App() {
           />
 
           <SidebarInset className="workspace">
-          <div className="terminal-frame">
-            {loading ? (
-              <div className="workspace-empty"><div className="skeleton-line wide" /><div className="skeleton-line" /></div>
-            ) : activeSession ? (
-              <TerminalPanel sessionKey={activeSession.path} runtimeState={runtimeState} />
-            ) : (
-              <div className="workspace-empty">
-                <div className="empty-terminal-icon"><Terminal size={20} /></div>
-                <h3>Start a Pi session</h3>
-                <p>Choose a working folder and let Pi take the terminal from there.</p>
-                <Button onClick={() => void createSession()}><FolderOpen size={15} /> Choose folder</Button>
+            <div className="terminal-frame">
+              {loading ? (
+                <div className="workspace-empty">
+                  <div className="skeleton-line wide" />
+                  <div className="skeleton-line" />
+                </div>
+              ) : activeSession ? (
+                <TerminalPanel sessionKey={activeSession.path} runtimeState={runtimeState} />
+              ) : (
+                <div className="workspace-empty">
+                  <div className="empty-terminal-icon">
+                    <Terminal size={20} />
+                  </div>
+                  <h3>Start a Pi session</h3>
+                  <p>Choose a working folder and let Pi take the terminal from there.</p>
+                  <Button onClick={() => void createSession()}>
+                    <FolderOpen size={15} /> Choose folder
+                  </Button>
+                </div>
+              )}
+            </div>
+
+            {error ? (
+              <div className="runtime-error" role="alert">
+                <X size={14} />
+                <span>{error}</span>
+                <IconButton label="Dismiss error" onClick={() => setError(undefined)}>
+                  <X size={14} />
+                </IconButton>
               </div>
-            )}
-          </div>
+            ) : null}
 
-          {error ? <div className="runtime-error" role="alert"><X size={14} /><span>{error}</span><IconButton label="Dismiss error" onClick={() => setError(undefined)}><X size={14} /></IconButton></div> : null}
-
-          <Composer
-            status={runtimeState.status}
-            disabled={!activeSession || runtimeState.status === "error" || runtimeState.status === "exited"}
-            onSubmit={submit}
-            onInterrupt={() => window.ePi.runtime.interrupt()}
-          />
+            <Composer
+              status={runtimeState.status}
+              disabled={
+                !activeSession ||
+                runtimeState.status === "error" ||
+                runtimeState.status === "exited"
+              }
+              onSubmit={submit}
+              onInterrupt={() => window.ePi.runtime.interrupt()}
+            />
           </SidebarInset>
         </div>
       </SidebarProvider>
@@ -227,8 +255,18 @@ export function App() {
         appInfo={appInfo}
       />
 
-      <PackagePanel open={packageOpen} cwd={activeCwd} onOpenChange={setPackageOpen} onReloadPi={reloadPi} />
-      <SkillPanel open={skillOpen} cwd={activeCwd} onOpenChange={setSkillOpen} onReloadPi={reloadPi} />
+      <PackagePanel
+        open={packageOpen}
+        cwd={activeCwd}
+        onOpenChange={setPackageOpen}
+        onReloadPi={reloadPi}
+      />
+      <SkillPanel
+        open={skillOpen}
+        cwd={activeCwd}
+        onOpenChange={setSkillOpen}
+        onReloadPi={reloadPi}
+      />
     </div>
   );
 }

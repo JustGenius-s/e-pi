@@ -1,7 +1,10 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type {
   AppInfo,
   CreateSessionRequest,
+  CustomProviderConfig,
+  CustomProviderRemoveRequest,
+  CustomProviderRequest,
   ModelLoginEvent,
   ModelLoginRequest,
   ModelLoginResponse,
@@ -34,18 +37,23 @@ const api: EPiApi = {
     getInfo: () => ipcRenderer.invoke("app:get-info") as Promise<AppInfo>,
     chooseDirectory: (defaultPath?: string) =>
       ipcRenderer.invoke("app:choose-directory", defaultPath) as Promise<string | undefined>,
+    chooseFiles: (options?: { imagesOnly?: boolean }) =>
+      ipcRenderer.invoke("app:choose-files", options) as Promise<string[]>,
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
     openPath: (path: string) => ipcRenderer.invoke("app:open-path", path) as Promise<void>,
   },
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list") as Promise<SessionSummary[]>,
     create: (request: CreateSessionRequest) =>
       ipcRenderer.invoke("sessions:create", request) as Promise<SessionSummary>,
-    rename: (request: RenameSessionRequest) => ipcRenderer.invoke("sessions:rename", request) as Promise<void>,
+    rename: (request: RenameSessionRequest) =>
+      ipcRenderer.invoke("sessions:rename", request) as Promise<void>,
     remove: (path: string) => ipcRenderer.invoke("sessions:remove", path) as Promise<void>,
   },
   runtime: {
     getState: () => ipcRenderer.invoke("runtime:get-state") as Promise<PiRuntimeState>,
-    start: (sessionPath: string) => ipcRenderer.invoke("runtime:start", sessionPath) as Promise<void>,
+    start: (sessionPath: string) =>
+      ipcRenderer.invoke("runtime:start", sessionPath) as Promise<void>,
     stop: () => ipcRenderer.invoke("runtime:stop") as Promise<void>,
     write: (data: string) => ipcRenderer.send("runtime:write", data),
     submit: (text: string) => ipcRenderer.invoke("runtime:submit", text) as Promise<void>,
@@ -62,18 +70,25 @@ const api: EPiApi = {
       ipcRenderer.invoke("packages:remove", request) as Promise<PackageRecord[]>,
     update: (request: PackageUpdateRequest) =>
       ipcRenderer.invoke("packages:update", request) as Promise<PackageRecord[]>,
-    onProgress: (listener: (progress: PackageProgress) => void) => subscribe("packages:progress", listener),
+    onProgress: (listener: (progress: PackageProgress) => void) =>
+      subscribe("packages:progress", listener),
   },
   models: {
     list: () => ipcRenderer.invoke("models:list") as Promise<ModelManagementState>,
     login: (request: ModelLoginRequest) =>
       ipcRenderer.invoke("models:login", request) as Promise<ModelManagementState>,
-    respondToLogin: (response: ModelLoginResponse) => ipcRenderer.send("models:login-response", response),
+    respondToLogin: (response: ModelLoginResponse) =>
+      ipcRenderer.send("models:login-response", response),
     cancelLogin: () => ipcRenderer.send("models:cancel-login"),
     logout: (providerId: string) =>
       ipcRenderer.invoke("models:logout", providerId) as Promise<ModelManagementState>,
     setDefault: (request: SetDefaultModelRequest) =>
       ipcRenderer.invoke("models:set-default", request) as Promise<ModelManagementState>,
+    customList: () => ipcRenderer.invoke("models:custom-list") as Promise<CustomProviderConfig[]>,
+    customSave: (request: CustomProviderRequest) =>
+      ipcRenderer.invoke("models:custom-save", request) as Promise<CustomProviderConfig[]>,
+    customRemove: (request: CustomProviderRemoveRequest) =>
+      ipcRenderer.invoke("models:custom-remove", request) as Promise<CustomProviderConfig[]>,
     onLoginEvent: (listener: (event: ModelLoginEvent) => void) =>
       subscribe("models:login-event", listener),
   },
