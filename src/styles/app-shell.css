@@ -31,17 +31,24 @@
   -webkit-app-region: drag;
 }
 
+/* While a drawer/dialog overlay is open, the drag mask must not cover the
+   topbar: Electron's mask ignores z-index, so it would swallow clicks on the
+   overlay's top area. Electron recomputes the mask when app-region changes. */
+.app-shell[data-modal-open] .window-drag-region {
+  -webkit-app-region: no-drag;
+}
+
 .brand-lockup,
 .topbar-actions {
   position: relative;
   z-index: 1;
   display: flex;
   align-items: center;
-  -webkit-app-region: no-drag;
 }
 
 .brand-lockup {
   justify-content: flex-start;
+  -webkit-app-region: no-drag;
 }
 
 .topbar-actions {

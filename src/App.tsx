@@ -217,8 +217,19 @@ export function App() {
   reloadPiRef.current = reloadPi;
   const onReloadPi = useCallback(() => reloadPiRef.current(), []);
 
+  // Drawers and dialogs are portaled to <body> at z-50, so they cover the
+  // topbar — but Electron's window-drag mask ignores z-index and would still
+  // swallow clicks on their top area. Disable the topbar drag region while
+  // any modal layer is open.
+  const modalOpen =
+    packageOpen ||
+    skillOpen ||
+    settingsOpen ||
+    renameTarget !== undefined ||
+    removeTarget !== undefined;
+
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-modal-open={modalOpen ? "" : undefined}>
       <SidebarProvider className="app-content">
         <AppHeader activeSession={activeSession} />
 
