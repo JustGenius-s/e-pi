@@ -2,6 +2,10 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   AppInfo,
   CreateSessionRequest,
+  ModelLoginEvent,
+  ModelLoginRequest,
+  ModelLoginResponse,
+  ModelManagementState,
   PackageMutation,
   PackageProgress,
   PackageRecord,
@@ -10,7 +14,13 @@ import type {
   PiRuntimeState,
   RenameSessionRequest,
   ResizeTerminalRequest,
+  SetDefaultModelRequest,
   SessionSummary,
+  SkillAddPathRequest,
+  SkillCreateRequest,
+  SkillMutation,
+  SkillRecord,
+  SkillSetEnabledRequest,
 } from "../../src/types/contracts";
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -53,6 +63,32 @@ const api: EPiApi = {
     update: (request: PackageUpdateRequest) =>
       ipcRenderer.invoke("packages:update", request) as Promise<PackageRecord[]>,
     onProgress: (listener: (progress: PackageProgress) => void) => subscribe("packages:progress", listener),
+  },
+  models: {
+    list: () => ipcRenderer.invoke("models:list") as Promise<ModelManagementState>,
+    login: (request: ModelLoginRequest) =>
+      ipcRenderer.invoke("models:login", request) as Promise<ModelManagementState>,
+    respondToLogin: (response: ModelLoginResponse) => ipcRenderer.send("models:login-response", response),
+    cancelLogin: () => ipcRenderer.send("models:cancel-login"),
+    logout: (providerId: string) =>
+      ipcRenderer.invoke("models:logout", providerId) as Promise<ModelManagementState>,
+    setDefault: (request: SetDefaultModelRequest) =>
+      ipcRenderer.invoke("models:set-default", request) as Promise<ModelManagementState>,
+    onLoginEvent: (listener: (event: ModelLoginEvent) => void) =>
+      subscribe("models:login-event", listener),
+  },
+  skills: {
+    list: (cwd: string) => ipcRenderer.invoke("skills:list", cwd) as Promise<SkillRecord[]>,
+    read: (cwd: string, filePath: string) =>
+      ipcRenderer.invoke("skills:read", cwd, filePath) as Promise<string>,
+    create: (request: SkillCreateRequest) =>
+      ipcRenderer.invoke("skills:create", request) as Promise<SkillRecord[]>,
+    addPath: (request: SkillAddPathRequest) =>
+      ipcRenderer.invoke("skills:add-path", request) as Promise<SkillRecord[]>,
+    remove: (request: SkillMutation) =>
+      ipcRenderer.invoke("skills:remove", request) as Promise<SkillRecord[]>,
+    setEnabled: (request: SkillSetEnabledRequest) =>
+      ipcRenderer.invoke("skills:set-enabled", request) as Promise<SkillRecord[]>,
   },
 };
 

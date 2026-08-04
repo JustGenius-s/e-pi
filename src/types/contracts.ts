@@ -72,6 +72,114 @@ export interface ResizeTerminalRequest {
   rows: number;
 }
 
+export type ModelAuthType = "api_key" | "oauth";
+
+export interface ModelRecord {
+  provider: string;
+  id: string;
+  name: string;
+  api: string;
+  reasoning: boolean;
+  contextWindow: number;
+  maxTokens: number;
+  available: boolean;
+}
+
+export interface ModelProviderRecord {
+  id: string;
+  name: string;
+  configured: boolean;
+  authSource?: string;
+  storedAuthType?: ModelAuthType;
+  supportsApiKey: boolean;
+  supportsOAuth: boolean;
+  apiKeyLabel?: string;
+  oauthLabel?: string;
+  models: ModelRecord[];
+}
+
+export interface ModelManagementState {
+  providers: ModelProviderRecord[];
+  defaultModel?: {
+    provider: string;
+    id: string;
+  };
+  error?: string;
+}
+
+export type SkillScope = "user" | "project";
+
+export type SkillSource = "user" | "project" | "path";
+
+export interface SkillRecord {
+  name: string;
+  description: string;
+  filePath: string;
+  baseDir: string;
+  source: SkillSource;
+  enabled: boolean;
+  managed: boolean;
+}
+
+export interface SkillMutation {
+  cwd: string;
+  filePath: string;
+}
+
+export interface SkillSetEnabledRequest extends SkillMutation {
+  enabled: boolean;
+}
+
+export interface SkillCreateRequest {
+  cwd: string;
+  scope: SkillScope;
+  name: string;
+  description: string;
+}
+
+export interface SkillAddPathRequest {
+  cwd: string;
+  scope: SkillScope;
+  path: string;
+}
+
+export interface ModelLoginRequest {
+  providerId: string;
+  type: ModelAuthType;
+}
+
+export interface ModelLoginResponse {
+  promptId: string;
+  value: string;
+}
+
+export interface SetDefaultModelRequest {
+  provider: string;
+  id: string;
+}
+
+export type ModelLoginEvent =
+  | {
+      type: "prompt";
+      promptId: string;
+      promptType: "text" | "secret" | "select" | "manual_code";
+      message: string;
+      placeholder?: string;
+      options?: Array<{ id: string; label: string; description?: string }>;
+    }
+  | { type: "auth_url"; url: string; instructions?: string }
+  | {
+      type: "device_code";
+      userCode: string;
+      verificationUri: string;
+      expiresInSeconds?: number;
+    }
+  | { type: "info"; message: string }
+  | { type: "progress"; message: string }
+  | { type: "complete"; providerId: string }
+  | { type: "cancelled" }
+  | { type: "error"; message: string };
+
 export interface EPiApi {
   app: {
     getInfo(): Promise<AppInfo>;
@@ -101,5 +209,22 @@ export interface EPiApi {
     remove(request: PackageMutation): Promise<PackageRecord[]>;
     update(request: PackageUpdateRequest): Promise<PackageRecord[]>;
     onProgress(listener: (progress: PackageProgress) => void): () => void;
+  };
+  models: {
+    list(): Promise<ModelManagementState>;
+    login(request: ModelLoginRequest): Promise<ModelManagementState>;
+    respondToLogin(response: ModelLoginResponse): void;
+    cancelLogin(): void;
+    logout(providerId: string): Promise<ModelManagementState>;
+    setDefault(request: SetDefaultModelRequest): Promise<ModelManagementState>;
+    onLoginEvent(listener: (event: ModelLoginEvent) => void): () => void;
+  };
+  skills: {
+    list(cwd: string): Promise<SkillRecord[]>;
+    read(cwd: string, filePath: string): Promise<string>;
+    create(request: SkillCreateRequest): Promise<SkillRecord[]>;
+    addPath(request: SkillAddPathRequest): Promise<SkillRecord[]>;
+    remove(request: SkillMutation): Promise<SkillRecord[]>;
+    setEnabled(request: SkillSetEnabledRequest): Promise<SkillRecord[]>;
   };
 }

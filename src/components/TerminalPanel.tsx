@@ -79,6 +79,9 @@ export function TerminalPanel({ sessionKey, runtimeState }: TerminalPanelProps) 
       resizeObserver.disconnect();
       terminal.dispose();
     };
+    // The terminal instance is bound to the session; runtime status is only read
+    // once at mount to clear the screen, so it is intentionally not a dependency.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionKey]);
 
   return <div className="terminal-panel" ref={hostRef} aria-label="Pi terminal output" />;

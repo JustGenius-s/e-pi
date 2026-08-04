@@ -2,20 +2,31 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from "electron";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
+import { ModelService } from "./services/model-service";
 import { PackageService } from "./services/package-service";
 import { PiRuntime } from "./services/pi-runtime";
 import { SessionService } from "./services/session-service";
+import { SkillService } from "./services/skill-service";
 import type {
   CreateSessionRequest,
+  ModelLoginRequest,
+  ModelLoginResponse,
   PackageMutation,
   PackageUpdateRequest,
   ResizeTerminalRequest,
+  SetDefaultModelRequest,
+  SkillAddPathRequest,
+  SkillCreateRequest,
+  SkillMutation,
+  SkillSetEnabledRequest,
 } from "../../src/types/contracts";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const runtime = new PiRuntime();
 const sessions = new SessionService();
 const packages = new PackageService();
+const models = new ModelService();
+const skills = new SkillService();
 let mainWindow: BrowserWindow | undefined;
 
 function sendToRenderer(channel: string, payload: unknown): void {
@@ -26,6 +37,12 @@ function sendToRenderer(channel: string, payload: unknown): void {
 
 function activeCwd(): string {
   return runtime.state.cwd ?? app.getPath("home");
+}
+
+async function reloadActiveRuntime(): Promise<void> {
+  const state = runtime.state;
+  if (state.status !== "running" || !state.sessionPath || !state.cwd) return;
+  await runtime.start(state.sessionPath, state.cwd);
 }
 
 function registerHandlers(): void {
@@ -81,6 +98,40 @@ function registerHandlers(): void {
   ipcMain.handle("packages:install", (_event, request: PackageMutation) => packages.install(request));
   ipcMain.handle("packages:remove", (_event, request: PackageMutation) => packages.remove(request));
   ipcMain.handle("packages:update", (_event, request: PackageUpdateRequest) => packages.update(request));
+
+  ipcMain.handle("skills:list", (_event, cwd: string) => skills.list(cwd || activeCwd()));
+  ipcMain.handle("skills:read", (_event, cwd: string, filePath: string) => skills.read(cwd || activeCwd(), filePath));
+  ipcMain.handle("skills:create", async (_event, request: SkillCreateRequest) => skills.create(request));
+  ipcMain.handle("skills:add-path", async (_event, request: SkillAddPathRequest) => skills.addPath(request));
+  ipcMain.handle("skills:remove", async (_event, request: SkillMutation) => skills.remove(request));
+  ipcMain.handle("skills:set-enabled", async (_event, request: SkillSetEnabledRequest) => skills.setEnabled(request));
+
+  ipcMain.handle("models:list", () => models.list(activeCwd()));
+  ipcMain.handle("models:login", async (_event, request: ModelLoginRequest) => {
+    const state = await models.login(request, activeCwd(), (loginEvent) => {
+      sendToRenderer("models:login-event", loginEvent);
+      if (loginEvent.type === "auth_url") void shell.openExternal(loginEvent.url);
+      if (loginEvent.type === "device_code") void shell.openExternal(loginEvent.verificationUri);
+    });
+    await reloadActiveRuntime();
+    return state;
+  });
+  ipcMain.on("models:login-response", (_event, response: ModelLoginResponse) => {
+    models.respondToLogin(response);
+  });
+  ipcMain.on("models:cancel-login", () => models.cancelLogin());
+  ipcMain.handle("models:logout", async (_event, providerId: string) => {
+    const state = await models.logout(providerId, activeCwd());
+    await reloadActiveRuntime();
+    return state;
+  });
+  ipcMain.handle("models:set-default", async (_event, request: SetDefaultModelRequest) => {
+    const state = await models.setDefault(request, activeCwd());
+    if (runtime.state.status === "running") {
+      runtime.submit(`/model ${request.provider}/${request.id}`);
+    }
+    return state;
+  });
 }
 
 function createWindow(): void {

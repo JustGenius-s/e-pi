@@ -1,4 +1,4 @@
-import { MessageSquare, Pencil, Plus, Search, Settings2, Trash2, Package } from "lucide-react";
+import { MessageSquare, Pencil, Plus, Search, Settings2, Sparkles, Trash2, Package } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { PiProcessStatus, SessionSummary } from "../types/contracts";
 import { compactPath, relativeTime, sessionTitle, statusTone } from "../lib/format";
@@ -26,6 +26,7 @@ interface SessionSidebarProps {
   onRename: (session: SessionSummary) => void;
   onRemove: (session: SessionSummary) => void;
   onOpenPackages: () => void;
+  onOpenSkills: () => void;
   onOpenSettings: () => void;
 }
 
@@ -38,6 +39,7 @@ export function SessionSidebar({
   onRename,
   onRemove,
   onOpenPackages,
+  onOpenSkills,
   onOpenSettings,
 }: SessionSidebarProps) {
   const [query, setQuery] = useState("");
@@ -53,6 +55,12 @@ export function SessionSidebar({
         <SidebarGroup className="sidebar-package-group">
           <SidebarGroupContent>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Skills" onClick={onOpenSkills}>
+                  <Sparkles />
+                  <span>Skills</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton tooltip="Packages" onClick={onOpenPackages}>
                   <Package />

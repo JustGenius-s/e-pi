@@ -1,0 +1,112 @@
+.skill-drawer {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: min(560px, calc(100vw - 320px));
+  min-width: 480px;
+  gap: 0;
+  padding: 16px;
+  overflow: hidden;
+}
+
+.skill-install-section {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.skill-drawer-body {
+  min-height: 0;
+  margin-top: 12px;
+  overflow-y: auto;
+}
+
+.skill-list-section {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.skill-panel-list {
+  max-height: calc(100vh - 300px);
+  min-height: 160px;
+  margin-top: 8px;
+}
+
+.skill-panel-item {
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.skill-panel-item[data-active="true"] {
+  border-color: var(--ring);
+}
+
+.skill-panel-select {
+  display: flex;
+  min-height: 44px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  padding: 7px 10px;
+  background: transparent;
+  color: var(--foreground);
+  text-align: left;
+}
+
+.skill-panel-select:hover,
+.skill-panel-select:focus-visible {
+  outline: none;
+  background: var(--accent);
+}
+
+.skill-panel-name {
+  overflow: hidden;
+  max-width: 100%;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 540;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-panel-name[data-disabled="true"] {
+  color: var(--muted-foreground);
+}
+
+.skill-panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.skill-panel-detail {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  background: var(--muted);
+}
+
+.skill-panel-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.skill-panel-empty {
+  display: flex;
+  min-height: 64px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}

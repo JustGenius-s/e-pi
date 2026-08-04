@@ -6,6 +6,7 @@ import { Composer } from "./components/Composer";
 import { IconButton } from "./components/IconButton";
 import { PackagePanel } from "./components/PackagePanel";
 import { SessionSidebar } from "./components/SessionSidebar";
+import { SkillPanel } from "./components/SkillPanel";
 import { TerminalPanel } from "./components/TerminalPanel";
 import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
 import { Button } from "./components/ui/button";
@@ -17,6 +18,7 @@ export function App() {
   const [activePath, setActivePath] = useState<string>();
   const [runtimeState, setRuntimeState] = useState<PiRuntimeState>({ status: "idle" });
   const [packageOpen, setPackageOpen] = useState(false);
+  const [skillOpen, setSkillOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>();
   const [renameTarget, setRenameTarget] = useState<SessionSummary>();
@@ -74,6 +76,7 @@ export function App() {
         void createSession();
       }
       if (event.key === "Escape" && packageOpen) setPackageOpen(false);
+      if (event.key === "Escape" && skillOpen) setSkillOpen(false);
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
@@ -143,6 +146,11 @@ export function App() {
     setPackageOpen(true);
   };
 
+  const openSkills = () => {
+    if (!activeCwd) return;
+    setSkillOpen(true);
+  };
+
   const reloadPi = async () => {
     if (!activePath) return;
     setError(undefined);
@@ -173,6 +181,7 @@ export function App() {
             onRename={(session) => void renameSession(session)}
             onRemove={(session) => void removeSession(session)}
             onOpenPackages={openPackages}
+            onOpenSkills={openSkills}
             onOpenSettings={() => setSettingsOpen(true)}
           />
 
@@ -219,6 +228,7 @@ export function App() {
       />
 
       <PackagePanel open={packageOpen} cwd={activeCwd} onOpenChange={setPackageOpen} onReloadPi={reloadPi} />
+      <SkillPanel open={skillOpen} cwd={activeCwd} onOpenChange={setSkillOpen} onReloadPi={reloadPi} />
     </div>
   );
 }

@@ -2,12 +2,7 @@ import {
   CustomEditor,
   type ExtensionAPI,
 } from "@earendil-works/pi-coding-agent";
-import type {
-  Component,
-  EditorTheme,
-  KeybindingsManager,
-  TUI,
-} from "@earendil-works/pi-tui";
+import type { Component } from "@earendil-works/pi-tui";
 
 class EmptyComponent implements Component {
   render(): string[] {
@@ -18,10 +13,6 @@ class EmptyComponent implements Component {
 }
 
 class DesktopEditor extends CustomEditor {
-  constructor(tui: TUI, theme: EditorTheme, keybindings: KeybindingsManager) {
-    super(tui, theme, keybindings);
-  }
-
   override render(): string[] {
     return [""];
   }

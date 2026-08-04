@@ -1,0 +1,37 @@
+@media (max-width: 720px) {
+  .model-settings {
+    grid-template-columns: 180px minmax(0, 1fr);
+  }
+
+  .model-provider-actions button:not([aria-label]) {
+    width: 32px;
+    padding: 0;
+    overflow: hidden;
+    color: transparent;
+    gap: 0;
+  }
+
+  .model-provider-actions button:not([aria-label]) svg {
+    color: var(--foreground);
+  }
+
+  .model-row {
+    grid-template-columns: 18px minmax(0, 1fr);
+  }
+
+  .model-row-meta {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+

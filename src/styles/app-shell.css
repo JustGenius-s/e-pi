@@ -1,0 +1,80 @@
+.app-shell {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 760px;
+  background: var(--background);
+}
+
+.app-content {
+  display: grid;
+  grid-template-rows: 40px minmax(0, 1fr);
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+}
+
+.topbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 0 12px 0 84px;
+  border-bottom: 1px solid var(--border);
+  background: var(--background);
+}
+
+.window-drag-region {
+  position: absolute;
+  inset: 0;
+  -webkit-app-region: drag;
+}
+
+.brand-lockup,
+.topbar-actions {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.brand-lockup {
+  justify-content: flex-start;
+}
+
+.topbar-actions {
+  justify-content: flex-end;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.topbar-actions .workspace-title {
+  max-width: min(60vw, 640px);
+}
+
+.session-status {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--muted-foreground);
+}
+.session-status.live {
+  background: var(--primary);
+}
+
+.session-status.busy {
+  background: var(--chart-1);
+}
+
+.session-status.danger {
+  background: var(--destructive);
+}
+
+.app-main {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+}

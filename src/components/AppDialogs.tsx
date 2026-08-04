@@ -13,6 +13,8 @@ import {
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
+import { ModelSettings } from "./ModelSettings";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
 
 interface AppDialogsProps {
   renameTarget?: SessionSummary;
@@ -83,19 +85,33 @@ export function AppDialogs({
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={settingsOpen} onOpenChange={onSettingsOpenChange}>
+      <Dialog
+        open={settingsOpen}
+        onOpenChange={(open) => {
+          if (!open) window.ePi.models.cancelLogin();
+          onSettingsOpenChange(open);
+        }}
+      >
         <DialogContent className="settings-dialog">
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
-            <DialogDescription>Runtime details for this E-Pi workspace.</DialogDescription>
+            <DialogDescription>Manage models and application details.</DialogDescription>
           </DialogHeader>
-          <div className="settings-summary">
-            <div><span>Pi version</span><strong>{appInfo?.piVersion || "-"}</strong></div>
-            <div><span>Default folder</span><strong title={appInfo?.defaultCwd}>{appInfo?.defaultCwd || "-"}</strong></div>
-          </div>
-          <DialogFooter>
-            <Button onClick={() => onSettingsOpenChange(false)}>Done</Button>
-          </DialogFooter>
+          <Tabs className="settings-tabs" defaultValue="models">
+            <TabsList variant="line">
+              <TabsTrigger value="models">Models</TabsTrigger>
+              <TabsTrigger value="general">General</TabsTrigger>
+            </TabsList>
+            <TabsContent value="models">
+              <ModelSettings active={settingsOpen} />
+            </TabsContent>
+            <TabsContent value="general">
+              <div className="settings-summary">
+                <div><span>Pi version</span><strong>{appInfo?.piVersion || "-"}</strong></div>
+                <div><span>Default folder</span><strong title={appInfo?.defaultCwd}>{appInfo?.defaultCwd || "-"}</strong></div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </>
