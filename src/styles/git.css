@@ -383,6 +383,12 @@
   font-size: var(--fs-body);
 }
 
+.git-diff-loading {
+  padding: 14px 12px;
+  color: var(--muted-foreground);
+  font-size: var(--fs-medium);
+}
+
 .git-diff-empty {
   padding: 20px 12px;
   color: var(--muted-foreground);

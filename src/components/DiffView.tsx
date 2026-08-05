@@ -1,6 +1,6 @@
 import type { FileDiffOptions } from "@pierre/diffs";
 import { PatchDiff } from "@pierre/diffs/react";
-import { memo, useMemo, type CSSProperties } from "react";
+import { memo, useMemo, useState, type CSSProperties } from "react";
 
 import { useIsDark } from "../lib/useIsDark";
 
@@ -48,6 +48,11 @@ const WRAPPER_STYLE = {
  */
 export const DiffView = memo(function DiffView({ patch, style }: { patch: string; style: DiffStyle }) {
   const isDark = useIsDark();
+  // The engine paints asynchronously on its first render while the Shiki
+  // highlighter warms up (see preloadDiffHighlighter); onPostRender only
+  // fires once real content is in the DOM, so hide the blank window behind
+  // a loading note until the first successful paint.
+  const [painted, setPainted] = useState(false);
 
   const options = useMemo<FileDiffOptions<undefined>>(
     () => ({
@@ -62,6 +67,7 @@ export const DiffView = memo(function DiffView({ patch, style }: { patch: string
       maxLineDiffLength: 1000,
       expansionLineCount: 20,
       disableFileHeader: true,
+      onPostRender: () => setPainted(true),
       unsafeCSS: UNSAFE_CSS,
     }),
     [isDark, style],
@@ -83,6 +89,7 @@ export const DiffView = memo(function DiffView({ patch, style }: { patch: string
   return (
     <div className="git-diff-pierre" style={wrapperStyle}>
       <PatchDiff patch={cleanPatch} options={options} disableWorkerPool />
+      {!painted ? <div className="git-diff-loading">加载中…</div> : null}
       {truncated ? <div className="git-diff-truncated">Diff truncated for display</div> : null}
     </div>
   );

@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
+import { preloadDiffHighlighter } from "../lib/diffPreload";
 import { pathBaseName } from "../lib/format";
 import type { GitDiffResult, GitFileEntry, GitNumstat, GitStatus } from "../types/contracts";
 import { DiffView, type DiffStyle } from "./DiffView";
@@ -218,6 +219,13 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
     setDiffErrors({});
     void refresh();
   }, [cwd, refresh]);
+
+  // Warm the diff highlighter (themes + common languages) once the panel
+  // opens, so the first file expansion paints synchronously instead of
+  // showing an empty diff while Shiki grammars lazy-load.
+  useEffect(() => {
+    preloadDiffHighlighter();
+  }, []);
 
   // Auto-refresh when the session's pi process goes busy -> idle (agent just
   // finished editing files), throttled to once per 2 seconds.
