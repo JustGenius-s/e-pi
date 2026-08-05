@@ -97,7 +97,7 @@
 .brand-name {
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 600;
   letter-spacing: 0.02em;
 }

@@ -4,6 +4,7 @@ import { Terminal } from "@xterm/xterm";
 import { ArrowDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { getAppearance, subscribeAppearance } from "../lib/appearance";
 import { terminalTheme } from "../lib/terminalTheme";
 import { useIsDark } from "../lib/useIsDark";
 
@@ -96,7 +97,7 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
       cursorBlink: false,
       cursorStyle: "bar",
       fontFamily: '"SFMono-Regular", "Cascadia Code", "JetBrains Mono", monospace',
-      fontSize: 13,
+      fontSize: getAppearance().termMain,
       lineHeight: 1.32,
       scrollback: 12_000,
       theme: terminalTheme(isDarkRef.current, surfaceBackground),
@@ -176,6 +177,13 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
     fittedOnceRef.current = false;
     fitTerminal();
 
+    // Live font-size updates from the Appearance settings (refit reflows the
+    // grid; the skip-if-unchanged guard makes this a no-op when nothing moves).
+    const unsubscribeAppearance = subscribeAppearance(() => {
+      terminal.options.fontSize = getAppearance().termMain;
+      fitTerminal();
+    });
+
     let disposed = false;
     const replay = buffers.get(sessionKey);
     if (replay) terminal.write(replay);
@@ -188,6 +196,7 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
 
     return () => {
       disposed = true;
+      unsubscribeAppearance();
       stopData();
       input.dispose();
       scrollSub.dispose();

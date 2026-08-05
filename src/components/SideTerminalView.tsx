@@ -2,6 +2,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { memo, useEffect, useRef, useState } from "react";
 
+import { getAppearance, subscribeAppearance } from "../lib/appearance";
 import { terminalTheme } from "../lib/terminalTheme";
 import { useIsDark } from "../lib/useIsDark";
 
@@ -34,6 +35,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
     let inputDisposable: { dispose(): void } | undefined;
     let scrollDisposable: { dispose(): void } | undefined;
     let resizeObserver: ResizeObserver | undefined;
+    let unsubscribeAppearance: (() => void) | undefined;
 
     const start = async () => {
       if (!hostRef.current) return;
@@ -59,7 +61,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
         cursorBlink: false,
         cursorStyle: "bar",
         fontFamily: '"SFMono-Regular", "Cascadia Code", "JetBrains Mono", monospace',
-        fontSize: 11,
+        fontSize: getAppearance().termSide,
         lineHeight: 1.35,
         scrollback: 8_000,
         theme: terminalTheme(isDarkRef.current, surfaceBackground),
@@ -80,6 +82,12 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       resizeObserver = new ResizeObserver(fitTerminal);
       resizeObserver.observe(hostRef.current);
       fitTerminal();
+
+      // Live font-size updates from the Appearance settings.
+      unsubscribeAppearance = subscribeAppearance(() => {
+        terminal!.options.fontSize = getAppearance().termSide;
+        fitTerminal();
+      });
 
       stopData = window.ePi.sideTerminal.onData((dataId, data) => {
         if (dataId === id) terminal!.write(data);
@@ -104,6 +112,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       resizeObserver?.disconnect();
       terminal?.dispose();
       terminalRef.current = null;
+      unsubscribeAppearance?.();
     };
   }, [cwd]);
 

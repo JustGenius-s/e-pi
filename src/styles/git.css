@@ -21,7 +21,7 @@
   padding: 0 8px 0 12px;
   color: var(--muted-foreground);
   border-bottom: 1px solid var(--border);
-  font-size: 10.5px;
+  font-size: var(--fs-small);
 }
 
 .git-review-actions {
@@ -57,7 +57,7 @@
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 550;
   cursor: pointer;
 }
@@ -93,14 +93,14 @@
   gap: 8px;
   padding: 2px 12px;
   border-bottom: 1px solid var(--border);
-  font-size: 10px;
+  font-size: var(--fs-small);
   line-height: 1.4;
 }
 
 .git-review-meta strong {
   overflow: hidden;
   color: var(--foreground);
-  font-size: 11.5px;
+  font-size: var(--fs-body);
   font-weight: 650;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -113,7 +113,7 @@
   gap: 5px;
   overflow: hidden;
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--fs-mini);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -166,7 +166,7 @@
   color: var(--destructive);
   border-bottom: 1px solid color-mix(in oklch, var(--destructive) 30%, transparent);
   background: color-mix(in oklch, var(--destructive) 10%, transparent);
-  font-size: 10.5px;
+  font-size: var(--fs-small);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -186,7 +186,7 @@
   gap: 4px;
   min-height: 30px;
   padding: 0 10px 0 4px;
-  font-size: 12.5px;
+  font-size: var(--fs-medium);
   cursor: pointer;
   user-select: none;
 }
@@ -264,7 +264,7 @@
   flex: 0 1 auto;
   overflow: hidden;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -278,7 +278,7 @@
   flex: 0 0 16px;
   place-items: center;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-small);
   font-weight: 700;
   line-height: 1;
 }
@@ -308,7 +308,7 @@
   gap: 8px;
   margin-left: 2px;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--fs-small);
   font-weight: 440;
   line-height: 1;
   letter-spacing: 0.05px;
@@ -334,7 +334,7 @@
   overflow: hidden;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-body);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -342,7 +342,7 @@
 .git-empty {
   padding: 18px 12px;
   color: var(--muted-foreground);
-  font-size: 12.5px;
+  font-size: var(--fs-medium);
   text-align: center;
 }
 
@@ -372,7 +372,7 @@
 .git-diff-error {
   padding: 8px 12px;
   color: var(--destructive);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   line-height: 1.5;
   overflow-wrap: anywhere;
 }
@@ -380,13 +380,13 @@
 .git-diff-truncated {
   padding: 6px 10px;
   color: var(--chart-1);
-  font-size: 11px;
+  font-size: var(--fs-body);
 }
 
 .git-diff-empty {
   padding: 20px 12px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   text-align: center;
 }
 
@@ -405,7 +405,7 @@
 .git-message-input[data-slot="textarea"] {
   min-height: 64px;
   max-height: 132px;
-  font-size: 11px;
+  font-size: var(--fs-body);
   line-height: 1.5;
   resize: vertical;
 }
@@ -421,7 +421,7 @@
   height: 27px;
   gap: 5px;
   padding: 0 9px;
-  font-size: 11px;
+  font-size: var(--fs-body);
 }
 
 .git-actions [data-slot="button"]:last-child {
@@ -430,7 +430,7 @@
 
 .git-status-line {
   min-height: 14px;
-  font-size: 10px;
+  font-size: var(--fs-small);
   line-height: 1.4;
 }
 
@@ -455,7 +455,7 @@
   place-items: center;
   padding: 24px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: var(--fs-body);
 }
 
 /* --- Main area: flat file sections + floating file-tree card --- */
@@ -490,7 +490,7 @@
   padding: 6px 10px;
   color: var(--muted-foreground);
   border-bottom: 1px solid var(--border);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 600;
 }
 
@@ -511,7 +511,7 @@
   border-radius: 5px;
   background: transparent;
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fs-medium);
   text-align: left;
   cursor: pointer;
 }
@@ -523,7 +523,7 @@
 .git-tree-card-status {
   flex: 0 0 auto;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 700;
 }
 
@@ -584,7 +584,7 @@
   border: 1px solid transparent;
   border-bottom: none;
   border-radius: 6px 6px 0 0;
-  font-size: 12.5px;
+  font-size: var(--fs-medium);
   cursor: pointer;
   user-select: none;
   transition: background 130ms ease;
@@ -731,7 +731,7 @@
 .tool-launch-item-title {
   flex: 1 1 auto;
   min-width: 0;
-  font-size: 13px;
+  font-size: var(--fs-title);
 }
 
 /* --- File tree --- */
@@ -754,7 +754,7 @@
   border: 0;
   background: transparent;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--fs-xl);
   text-align: left;
   cursor: pointer;
   user-select: none;
@@ -806,14 +806,14 @@
   flex: 0 0 auto;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-body);
 }
 
 .tool-file-loading,
 .tool-file-error {
   padding: 3px 8px 3px 32px;
   color: var(--muted-foreground);
-  font-size: 12px;
+  font-size: var(--fs-medium);
 }
 
 .tool-file-error {

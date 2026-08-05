@@ -2,6 +2,7 @@ import { useRef } from "react";
 
 import { sessionTitle } from "../lib/format";
 import type { AppInfo, SessionSummary } from "../types/contracts";
+import { FontSettings } from "./FontSettings";
 import { ModelSettings } from "./ModelSettings";
 import {
   AlertDialog,
@@ -136,9 +137,13 @@ export function AppDialogs({
             <TabsList variant="line">
               <TabsTrigger value="models">Models</TabsTrigger>
               <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="appearance">Font</TabsTrigger>
             </TabsList>
             <TabsContent value="models">
               <ModelSettings active={settingsOpen} />
+            </TabsContent>
+            <TabsContent value="appearance">
+              <FontSettings />
             </TabsContent>
             <TabsContent value="general">
               <div className="settings-summary">

@@ -71,7 +71,7 @@
   outline: none;
   background: transparent;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--fs-body);
   text-align: left;
   white-space: nowrap;
   cursor: default;
@@ -104,7 +104,7 @@
 
 /* Skills / Packages 分组：字体调大 */
 .sidebar-package-group .sidebar-menu-button {
-  font-size: 13px;
+  font-size: var(--fs-title);
 }
 
 .sidebar-package-group .sidebar-menu-button > svg {
@@ -121,7 +121,7 @@
 .sidebar-session-group .sidebar-group-label {
   height: 30px;
   color: var(--sidebar-foreground);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   font-weight: 600;
   line-height: 30px;
   letter-spacing: 0.01em;
@@ -189,7 +189,7 @@
   padding: 0 8px;
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: var(--fs-small);
   line-height: 28px;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -247,7 +247,7 @@
 
 .session-menu-button time {
   color: var(--muted-foreground);
-  font-size: 9px;
+  font-size: var(--fs-mini);
 }
 
 .session-label {
@@ -302,7 +302,7 @@
 
 .project-path {
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--fs-medium);
   font-weight: 600;
   letter-spacing: 0.01em;
   text-overflow: ellipsis;
@@ -344,7 +344,7 @@
 
 .sidebar-empty-hint {
   display: block;
-  font-size: 9px;
+  font-size: var(--fs-mini);
   opacity: 0.7;
 }
 
@@ -502,7 +502,7 @@
   flex-shrink: 0;
   place-items: center;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 700;
   line-height: 1;
   color: #fff;
@@ -532,7 +532,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -583,7 +583,7 @@
   background: transparent;
   color: var(--popover-foreground);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fs-medium);
   text-align: left;
   white-space: nowrap;
   cursor: default;
@@ -598,7 +598,7 @@
 
 .project-flyout-session time {
   color: var(--muted-foreground);
-  font-size: 9px;
+  font-size: var(--fs-mini);
 }
 
 .project-flyout-session[data-active="true"] time {
@@ -636,6 +636,6 @@
     padding: 22px 10px;
     text-align: center;
     color: var(--muted-foreground);
-    font-size: 10px;
+    font-size: var(--fs-small);
   }
 }

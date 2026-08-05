@@ -47,7 +47,7 @@
 }
 
 .package-drawer-tabs [data-slot="tabs-trigger"] {
-  font-size: 11px;
+  font-size: var(--fs-body);
   line-height: 1;
   user-select: none;
   cursor: pointer;
@@ -71,7 +71,7 @@
   border: 1px solid color-mix(in oklch, var(--destructive) 30%, transparent);
   border-radius: var(--radius);
   background: color-mix(in oklch, var(--destructive) 12%, transparent);
-  font-size: 10px;
+  font-size: var(--fs-small);
   line-height: 1.5;
 }
 
@@ -99,13 +99,13 @@
   gap: 5px;
   margin: 0;
   color: var(--card-foreground);
-  font-size: 11px;
+  font-size: var(--fs-body);
 }
 
 .section-heading-row h3 span {
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-small);
   font-weight: 500;
 }
 
@@ -127,7 +127,7 @@
   color: var(--card-foreground);
   border-radius: 5px;
   background: var(--card);
-  font-size: 9px;
+  font-size: var(--fs-mini);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -179,7 +179,7 @@
   overflow: hidden;
   color: var(--card-foreground);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -187,7 +187,7 @@
 
 .package-row-main span {
   color: var(--muted-foreground);
-  font-size: 10.5px;
+  font-size: var(--fs-small);
 }
 
 .package-link {
@@ -223,7 +223,7 @@
 .package-search-box [data-slot="input"] {
   height: 32px;
   padding-left: 30px;
-  font-size: 11px;
+  font-size: var(--fs-body);
 }
 
 .package-search-spinner {
@@ -265,7 +265,7 @@
   overflow: hidden;
   color: var(--card-foreground);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -275,7 +275,7 @@
   flex: 0 0 auto;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--fs-small);
 }
 
 .package-hover-desc {
@@ -285,7 +285,7 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   color: var(--muted-foreground);
-  font-size: 10.5px;
+  font-size: var(--fs-small);
   line-height: 1.5;
   overflow-wrap: break-word;
 }
@@ -306,7 +306,7 @@
 .package-hover-stats dt {
   flex: 0 0 auto;
   color: var(--muted-foreground);
-  font-size: 9.5px;
+  font-size: var(--fs-mini);
 }
 
 .package-hover-stats dd {
@@ -314,7 +314,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--card-foreground);
-  font-size: 10px;
+  font-size: var(--fs-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -322,7 +322,7 @@
 .package-hover-stats .package-hover-downloads {
   color: var(--primary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 600;
 }
 
@@ -331,7 +331,7 @@
   align-items: center;
   justify-self: start;
   color: var(--primary);
-  font-size: 10px;
+  font-size: var(--fs-small);
   text-decoration: none;
 }
 
@@ -369,7 +369,7 @@
   min-height: 120px;
   place-items: center;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: var(--fs-small);
 }
 
 .drawer-footer-note {
@@ -381,7 +381,7 @@
   padding-top: 10px;
   color: var(--muted-foreground);
   border-top: 1px solid var(--border);
-  font-size: 9px;
+  font-size: var(--fs-mini);
 }
 
 .drawer-footer-note [data-slot="button"] {

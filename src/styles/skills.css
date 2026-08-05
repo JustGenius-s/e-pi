@@ -40,7 +40,7 @@
 .skill-search [data-slot="input"] {
   height: 32px;
   padding-left: 30px;
-  font-size: 11px;
+  font-size: var(--fs-body);
 }
 
 .skill-drawer-body {
@@ -90,7 +90,7 @@
   overflow: hidden;
   max-width: 100%;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 540;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -113,5 +113,5 @@
   justify-content: center;
   gap: 7px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: var(--fs-small);
 }

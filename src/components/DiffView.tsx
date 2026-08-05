@@ -34,7 +34,7 @@ const UNSAFE_CSS = `
 
 const WRAPPER_STYLE = {
   "--diffs-font-family": 'ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", monospace',
-  "--diffs-font-size": "13px",
+  "--diffs-font-size": "var(--fs-diff)",
   "--diffs-line-height": "24px",
   "--diffs-tab-size": "2",
   "--diffs-min-number-column-width": "4ch",

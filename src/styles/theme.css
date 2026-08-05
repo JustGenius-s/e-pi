@@ -55,6 +55,33 @@
   --shadow-2xl: 0px 1px 2px 0px hsl(0 0% 0% / 0.45);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
+
+  /* ---- Font-size scale (Appearance settings) ----
+     Every module exposes a single base knob (--fs-scale-{module}, unitless
+     px). The role tokens below resolve against the *contextual* --fs-scale.
+     NOTE: var() references inside a custom property resolve against the
+     element that *declares* the property, so tokens inherited from :root
+     would be frozen at the base scale — the ladder is therefore redeclared
+     on every module scope element below (see the combined rule at the end of
+     this file). Defaults keep the pre-token values (9–15px anchored at 11px). */
+  --fs-scale: 11;
+  --fs-scale-sidebar: 11;
+  --fs-scale-workspace: 11;
+  --fs-scale-models: 11;
+  --fs-scale-packages: 11;
+  --fs-scale-git: 11;
+  --fs-scale-skills: 11;
+
+  /* Default ladder (base scale) — overridden per module scope below. */
+  --fs-mini: calc(var(--fs-scale) * 1px - 2px); /* badges, tiny metadata */
+  --fs-small: calc(var(--fs-scale) * 1px - 1px); /* secondary labels */
+  --fs-body: calc(var(--fs-scale) * 1px); /* default text */
+  --fs-medium: calc(var(--fs-scale) * 1px + 1px); /* emphasized rows */
+  --fs-title: calc(var(--fs-scale) * 1px + 2px); /* titles */
+  --fs-xl: calc(var(--fs-scale) * 1px + 3px);
+  --fs-2xl: calc(var(--fs-scale) * 1px + 4px);
+  /* Diff code, anchored to the git module (13px at the default scale). */
+  --fs-diff: calc(var(--fs-scale-git) * 1px + 2px);
 }
 
 .dark {
@@ -162,4 +189,55 @@
   --shadow-lg: var(--shadow-lg);
   --shadow-xl: var(--shadow-xl);
   --shadow-2xl: var(--shadow-2xl);
+}
+
+/* Module scopes: rebind --fs-scale inside each module subtree. Nested scopes
+   (e.g. .git-panel-body inside .tool-panel-layout) override their ancestor.
+   The left session sidebar is data-side="left" — the right tool panel also
+   renders .sidebar-root, so it must not match this rule. */
+.sidebar-root[data-side="left"] {
+  --fs-scale: var(--fs-scale-sidebar);
+}
+
+.app-topbar,
+.workspace,
+.tool-panel-layout {
+  --fs-scale: var(--fs-scale-workspace);
+}
+
+.git-panel-body {
+  --fs-scale: var(--fs-scale-git);
+}
+
+.settings-dialog {
+  --fs-scale: var(--fs-scale-models);
+}
+
+.package-drawer {
+  --fs-scale: var(--fs-scale-packages);
+}
+
+.skill-drawer {
+  --fs-scale: var(--fs-scale-skills);
+}
+
+/* Role ladder, redeclared on every element that rebinds --fs-scale. var()
+   references inside a custom property resolve against the declaring element
+   (not the using element), so tokens inherited from :root stay frozen at the
+   base scale — each scope must recompute them with its own knob. */
+.sidebar-root[data-side="left"],
+.app-topbar,
+.workspace,
+.tool-panel-layout,
+.git-panel-body,
+.settings-dialog,
+.package-drawer,
+.skill-drawer {
+  --fs-mini: calc(var(--fs-scale) * 1px - 2px);
+  --fs-small: calc(var(--fs-scale) * 1px - 1px);
+  --fs-body: calc(var(--fs-scale) * 1px);
+  --fs-medium: calc(var(--fs-scale) * 1px + 1px);
+  --fs-title: calc(var(--fs-scale) * 1px + 2px);
+  --fs-xl: calc(var(--fs-scale) * 1px + 3px);
+  --fs-2xl: calc(var(--fs-scale) * 1px + 4px);
 }

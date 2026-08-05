@@ -17,7 +17,7 @@
   margin: 0;
   overflow: hidden;
   color: var(--foreground);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   font-weight: 680;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -132,14 +132,14 @@
 
 .workspace-empty h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: var(--fs-2xl);
 }
 
 .workspace-empty p {
   max-width: 310px;
   margin: 7px 0 16px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: var(--fs-body);
   line-height: 1.6;
 }
 
@@ -218,7 +218,7 @@
   place-items: center;
   color: var(--foreground);
   background: color-mix(in oklch, var(--background) 90%, transparent);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   font-weight: 650;
   pointer-events: none;
 }
@@ -245,7 +245,7 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  font-size: 14px;
+  font-size: var(--fs-xl);
   line-height: 1.6;
 }
 
@@ -371,7 +371,7 @@
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--secondary);
-  font-size: 10px;
+  font-size: var(--fs-small);
   white-space: nowrap;
 }
 
@@ -525,7 +525,7 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  font-size: 10.5px;
+  font-size: var(--fs-small);
 }
 
 .context-card-head span {
@@ -534,7 +534,7 @@
 
 .context-card-head strong {
   font-family: "SFMono-Regular", monospace;
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 650;
 }
 
@@ -575,7 +575,7 @@
   margin-top: 6px;
   color: var(--muted-foreground);
   font-family: "SFMono-Regular", monospace;
-  font-size: 9px;
+  font-size: var(--fs-mini);
 }
 
 .context-card-divider {
@@ -599,14 +599,14 @@
 
 .context-card-rows dt {
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: var(--fs-small);
 }
 
 .context-card-rows dd {
   margin: 0;
   color: var(--foreground);
   font-family: "SFMono-Regular", monospace;
-  font-size: 10px;
+  font-size: var(--fs-small);
 }
 
 .composer-tools > [data-slot="button"] {
@@ -623,7 +623,7 @@
 .composer-add-menu [data-slot="dropdown-menu-item"],
 .composer-add-menu [data-slot="dropdown-menu-sub-trigger"] {
   min-height: 36px;
-  font-size: 12px;
+  font-size: var(--fs-medium);
 }
 .composer-skill-menu {
   width: 260px;
@@ -632,7 +632,7 @@
 }
 .composer-skill-menu [data-slot="dropdown-menu-radio-item"] {
   min-height: 34px;
-  font-size: 12px;
+  font-size: var(--fs-medium);
 }
 
 .composer-divider {
@@ -677,7 +677,7 @@
 }
 .composer-config-values strong {
   color: var(--foreground);
-  font-size: 12px;
+  font-size: var(--fs-medium);
   font-weight: 600;
 }
 .composer-config-values span {
@@ -685,7 +685,7 @@
   padding-left: 8px;
   color: var(--muted-foreground);
   border-left: 1px solid var(--border);
-  font-size: 11px;
+  font-size: var(--fs-body);
   font-weight: 550;
 }
 .composer-config-menu {
@@ -695,13 +695,13 @@
 .composer-config-menu [data-slot="menubar-sub-trigger"] {
   min-height: 36px;
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: var(--fs-medium);
 }
 .composer-config-menu [data-slot="menubar-radio-item"] {
   min-height: 34px;
   padding-top: 7px;
   padding-bottom: 7px;
-  font-size: 12px;
+  font-size: var(--fs-medium);
 }
 .composer-model-menu {
   width: 260px;
@@ -710,13 +710,13 @@
 }
 .composer-model-menu [data-slot="menubar-label"] {
   padding: 7px 10px 4px;
-  font-size: 10px;
+  font-size: var(--fs-small);
   font-weight: 650;
 }
 .thinking-note {
   margin-left: 10px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: var(--fs-small);
 }
 
 .composer-send {
@@ -725,7 +725,7 @@
   padding: 0 11px;
   border-radius: 8px;
   box-shadow: 0 1px 2px color-mix(in oklch, var(--foreground) 20%, transparent);
-  font-size: 12px;
+  font-size: var(--fs-medium);
 }
 .composer-send[data-action="stop"] {
   color: var(--destructive);
