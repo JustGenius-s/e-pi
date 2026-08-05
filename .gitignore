@@ -2,5 +2,9 @@ node_modules/
 out/
 dist/
 release/
+build/*
+!build/icon.icns
+!build/icon.iconset/
+!build/icon.iconset/**
 *.log
 .DS_Store
