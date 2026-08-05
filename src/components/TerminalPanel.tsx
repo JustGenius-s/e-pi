@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { ArrowDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -65,6 +66,8 @@ function ensureBufferFeeder(): void {
 export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const fitTimerRef = useRef<number | undefined>(undefined);
+  const fittedOnceRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
 
   useEffect(() => {
@@ -110,6 +113,17 @@ export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
+    // Warp-style GPU rendering: glyphs are cached in a texture atlas, so a
+    // resize only repositions quads instead of clearing and repainting the
+    // whole canvas — no intermediate frames, no reflow flicker.
+    let webgl: WebglAddon | undefined;
+    try {
+      webgl = new WebglAddon();
+      terminal.loadAddon(webgl);
+    } catch {
+      // WebGL unavailable (headless/software rendering) — xterm falls back
+      // to its canvas renderer, which still works, just with repaint flicker.
+    }
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
 
@@ -117,16 +131,59 @@ export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
       setAtBottom(terminal.buffer.active.viewportY >= terminal.buffer.active.baseY);
     });
 
+    /**
+     * Refit the terminal to its container. With the WebGL renderer (glyph
+     * atlas) a refit only repositions quads, so following the panel width
+     * live — even per frame while dragging — is flicker-free and the grid
+     * never shows a stale layout. The canvas fallback repaints the whole
+     * canvas per resize, so it debounces to a single refit once the width
+     * settles.
+     */
     const fitTerminal = () => {
+      const host = hostRef.current;
+      if (!host) return;
       try {
-        fit.fit();
-        window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
+        // Skip the refit when the character grid did not change (e.g.
+        // sub-pixel width wobble) — resizing repaints the renderer.
+        const dims = fit.proposeDimensions();
+        if (!dims) return;
+        if (dims.cols === terminal.cols && dims.rows === terminal.rows) return;
       } catch {
         // The terminal can be measured before its parent is visible.
+        return;
+      }
+      const refit = () => {
+        const viewport = host.querySelector<HTMLElement>(".xterm-viewport");
+        const beforeScrollTop = viewport?.scrollTop ?? 0;
+        const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
+        try {
+          fit.fit();
+          window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
+        } catch {
+          return;
+        }
+        // Restore the scroll position so the visible line range doesn't jump:
+        // stick to the (possibly new) bottom when following output, otherwise
+        // keep the previous pixel offset for continuity.
+        if (wasAtBottom) {
+          terminal.scrollToBottom();
+        } else if (viewport && viewport.scrollTop !== beforeScrollTop) {
+          viewport.scrollTop = beforeScrollTop;
+        }
+      };
+      if (webgl || !fittedOnceRef.current) {
+        // Live refit (WebGL) or first mount: run immediately.
+        fittedOnceRef.current = true;
+        refit();
+      } else {
+        // Canvas fallback: collapse repeated fires into one refit.
+        window.clearTimeout(fitTimerRef.current);
+        fitTimerRef.current = window.setTimeout(refit, 120);
       }
     };
     const resizeObserver = new ResizeObserver(fitTerminal);
     resizeObserver.observe(hostRef.current);
+    fittedOnceRef.current = false;
     fitTerminal();
 
     let disposed = false;
@@ -145,6 +202,8 @@ export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
       input.dispose();
       scrollSub.dispose();
       terminalRef.current = null;
+      window.clearTimeout(fitTimerRef.current);
+      webgl?.dispose();
       resizeObserver.disconnect();
       terminal.dispose();
     };
