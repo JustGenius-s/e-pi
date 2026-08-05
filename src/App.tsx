@@ -296,25 +296,25 @@ export function App() {
           onTogglePanel={() => setPanelOpen((current) => !current)}
         />
 
-        <div className="app-main">
-          <SessionSidebar
-            sessions={sessions}
-            activePath={activePath}
-            runtimeStates={runtimeStates}
-            homeCwd={appInfo?.defaultCwd}
-            platform={appInfo?.platform}
-            onSelect={selectSession}
-            onCreate={createSession}
-            onCreateProject={() => void createProjectSession()}
-            onRename={(session) => void renameSession(session)}
-            onRemove={(session) => void removeSession(session)}
-            onOpenFolder={(cwd) => void window.ePi.app.openPath(cwd)}
-            onCopyText={(text) => void window.ePi.app.copyText(text)}
-            onOpenPackages={openPackages}
-            onOpenSkills={openSkills}
-            onOpenSettings={() => setSettingsOpen(true)}
-          />
+        <SessionSidebar
+          sessions={sessions}
+          activePath={activePath}
+          runtimeStates={runtimeStates}
+          homeCwd={appInfo?.defaultCwd}
+          platform={appInfo?.platform}
+          onSelect={selectSession}
+          onCreate={createSession}
+          onCreateProject={() => void createProjectSession()}
+          onRename={(session) => void renameSession(session)}
+          onRemove={(session) => void removeSession(session)}
+          onOpenFolder={(cwd) => void window.ePi.app.openPath(cwd)}
+          onCopyText={(text) => void window.ePi.app.copyText(text)}
+          onOpenPackages={openPackages}
+          onOpenSkills={openSkills}
+          onOpenSettings={() => setSettingsOpen(true)}
+        />
 
+        <div className="app-main">
           <SidebarInset className="workspace">
             {" "}
             <div className="terminal-frame">
@@ -368,27 +368,28 @@ export function App() {
               onInterrupt={() => activePath && window.ePi.runtime.interrupt(activePath)}
             />
           </SidebarInset>
-          <SidebarProvider
-            side="right"
-            storageKey="tool-panel-width-v2"
-            open={panelOpen}
-            onOpenChange={setPanelOpen}
-            className="tool-panel-layout"
-          >
-            <Sidebar side="right" collapsible="offcanvas" className="tool-panel-sidebar">
-              <ToolPanel
-                cwd={activeCwd}
-                tabs={panel.tabs}
-                activeTabId={panel.activeId}
-                platform={appInfo?.platform}
-                onOpenTab={openPanelTab}
-                onCloseTab={closePanelTab}
-                onSelectTab={selectPanelTab}
-              />
-            </Sidebar>
-            <SidebarRail />
-          </SidebarProvider>
         </div>
+
+        <SidebarProvider
+          side="right"
+          storageKey="tool-panel-width-v2"
+          open={panelOpen}
+          onOpenChange={setPanelOpen}
+          className="tool-panel-layout"
+        >
+          <Sidebar side="right" collapsible="offcanvas" className="tool-panel-sidebar">
+            <ToolPanel
+              cwd={activeCwd}
+              tabs={panel.tabs}
+              activeTabId={panel.activeId}
+              platform={appInfo?.platform}
+              onOpenTab={openPanelTab}
+              onCloseTab={closePanelTab}
+              onSelectTab={selectPanelTab}
+            />
+          </Sidebar>
+          <SidebarRail />
+        </SidebarProvider>
       </SidebarProvider>
 
       <AppDialogs

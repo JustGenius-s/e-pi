@@ -567,7 +567,7 @@
   padding: 4px 6px 0;
   overflow-x: auto;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in oklch, var(--card) 90%, var(--foreground));
+  background: var(--background);
   scrollbar-width: none;
 }
 
@@ -632,11 +632,22 @@
   border-radius: 4px;
   background: transparent;
   cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 130ms ease;
 }
 
 .tool-tab-close:hover {
   color: var(--foreground);
   background: var(--accent);
+}
+
+/* Close button appears on the active tab or the hovered tab only. */
+.tool-tab.active .tool-tab-close,
+.tool-tab:hover .tool-tab-close,
+.tool-tab-close:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 /* "+" tab: opens the new-tab type menu. */
@@ -688,8 +699,8 @@
   flex: 1 1 auto;
   flex-direction: column;
   justify-content: center;
-  gap: 2px;
-  padding: 12px;
+  gap: 10px;
+  padding: 12px 28px;
 }
 
 .tool-launch-item {
@@ -697,7 +708,7 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 7px 8px;
+  padding: 8px 18px;
   border: none;
   border-radius: 7px;
   background: transparent;
@@ -714,7 +725,7 @@
 
 .tool-launch-item > svg {
   flex: 0 0 auto;
-  color: var(--primary);
+  color: color-mix(in oklch, var(--primary) 75%, var(--background));
 }
 
 .tool-launch-item-title {

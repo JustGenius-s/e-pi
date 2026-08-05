@@ -9,19 +9,25 @@
 .app-content {
   display: grid;
   grid-template-rows: 40px minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   width: 100%;
   height: 100%;
   min-width: 0;
 }
 
-.topbar {
+/* Top row spans the left sidebar and workspace columns. The brand zone on
+   the left covers the sidebar column (same width/background/border as the
+   sidebar below, no divider under it), while the workspace topbar carries
+   the divider line. The right tool panel sits in column 3 and spans both
+   rows, running from the window top to bottom. */
+.app-topbar {
   position: relative;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  align-items: stretch;
   min-width: 0;
-  padding: 0 12px 0 84px;
-  border-bottom: 1px solid var(--border);
+  padding: 0 12px 0 0;
+  grid-column: 1 / 3;
+  grid-row: 1;
   background: var(--background);
 }
 
@@ -52,6 +58,29 @@
   -webkit-app-region: no-drag;
 }
 
+/* Brand zone: overlays the left sidebar column, so it shares the sidebar's
+   width, background and right border (the vertical line that separates the
+   brand from the session title). Left padding clears the macOS traffic
+   lights. */
+.app-topbar .brand-lockup {
+  flex: 0 0 var(--sidebar-width);
+  align-items: center;
+  padding: 0 12px 0 84px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--sidebar-border);
+}
+
+/* Collapsed sidebar: the whole top row switches to the workspace
+   background. The brand stays at its fixed offset (the ☰ trigger must
+   remain right of the macOS traffic lights), and the divider line runs the
+   full row width. */
+.app-topbar[data-collapsed] .brand-lockup {
+  flex: 0 0 auto;
+  background: transparent;
+  border-right: none;
+  border-bottom: 1px solid var(--border);
+}
+
 .brand-mark-lockup {
   display: inline-flex;
   align-items: center;
@@ -78,6 +107,7 @@
   gap: 12px;
   min-width: 0;
   flex: 1;
+  border-bottom: 1px solid var(--border);
 }
 
 .topbar-actions .workspace-title {
@@ -106,4 +136,6 @@
   display: flex;
   width: 100%;
   min-height: 0;
+  grid-column: 2;
+  grid-row: 2;
 }

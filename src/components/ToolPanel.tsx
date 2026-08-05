@@ -1,4 +1,4 @@
-import { FolderOpen, GitPullRequest, Plus, Terminal, X } from "lucide-react";
+import { FolderOpen, GitPullRequest, Plus, SquareTerminal, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { memo } from "react";
 
@@ -38,7 +38,7 @@ interface ToolPanelProps {
 const VIEW_META: Record<PanelView, { title: string; icon: LucideIcon }> = {
   review: { title: "审阅", icon: GitPullRequest },
   files: { title: "文件", icon: FolderOpen },
-  terminal: { title: "终端", icon: Terminal },
+  terminal: { title: "终端", icon: SquareTerminal },
 };
 
 /** Duplicate views get numbered titles ("文件", "文件 2", …). */
@@ -52,7 +52,7 @@ function tabTitle(tabs: PanelTab[], index: number): string {
 const LAUNCH_ITEMS: Array<{ view: PanelView; title: string; icon: LucideIcon; key: string }> = [
   { view: "review", title: "审阅", icon: GitPullRequest, key: "1" },
   { view: "files", title: "文件", icon: FolderOpen, key: "2" },
-  { view: "terminal", title: "终端", icon: Terminal, key: "3" },
+  { view: "terminal", title: "终端", icon: SquareTerminal, key: "3" },
 ];
 
 function LaunchPad({ platform, onSelect }: { platform?: NodeJS.Platform; onSelect: (view: PanelView) => void }) {
@@ -145,7 +145,7 @@ function TabBar({ tabs, activeTabId, onOpenTab, onCloseTab, onSelectTab }: TabBa
             文件
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onOpenTab("terminal", true)}>
-            <Terminal size={13} />
+            <SquareTerminal size={13} />
             终端
           </DropdownMenuItem>
         </DropdownMenuContent>

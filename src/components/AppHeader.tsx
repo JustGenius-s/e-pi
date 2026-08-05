@@ -3,7 +3,7 @@ import { PanelRightClose, PanelRightOpen } from "lucide-react";
 import { sessionTitle } from "../lib/format";
 import type { SessionSummary } from "../types/contracts";
 import { IconButton } from "./IconButton";
-import { SidebarTrigger } from "./ui/sidebar";
+import { SidebarTrigger, useSidebar } from "./ui/sidebar";
 
 interface AppHeaderProps {
   activeSession?: SessionSummary;
@@ -12,8 +12,9 @@ interface AppHeaderProps {
 }
 
 export function AppHeader({ activeSession, panelOpen, onTogglePanel }: AppHeaderProps) {
+  const { state } = useSidebar();
   return (
-    <header className="topbar">
+    <header className="app-topbar" data-collapsed={state === "collapsed" ? "" : undefined}>
       <div className="window-drag-region" />
       <div className="brand-lockup">
         <SidebarTrigger />

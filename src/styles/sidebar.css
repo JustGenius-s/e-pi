@@ -446,11 +446,22 @@
   height: 100%;
 }
 
-/* Right-side tool panel: nested provider inside app-main. The wrapper stays
-   a flex item (width from the sidebar itself); the rail and borders mirror. */
+/* Left session sidebar: grid item in column 1, below the top row. The top
+   row's brand zone shares its background/width, so the column reads as one
+   surface from the window top. */
+.session-sidebar {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+/* Right-side tool panel: grid sibling of the topbar and app-main inside
+   .app-content, spanning both grid rows so the panel reaches the window
+   top. Width comes from the sidebar itself; the rail and borders mirror. */
 .sidebar-layout.tool-panel-layout {
   width: auto;
-  flex: 0 0 auto;
+  min-height: 0;
+  grid-column: 3;
+  grid-row: 1 / -1;
 }
 
 .sidebar-root[data-side="right"] .sidebar-container {
