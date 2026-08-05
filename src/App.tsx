@@ -10,7 +10,7 @@ import { SessionSidebar } from "./components/SessionSidebar";
 import { SkillPanel } from "./components/SkillPanel";
 import { clearTerminalBuffer, TerminalPanel } from "./components/TerminalPanel";
 import { PANEL_VIEWS, ToolPanel } from "./components/ToolPanel";
-import type { PanelView } from "./components/ToolPanel";
+import type { PanelState, PanelTab, PanelView } from "./components/ToolPanel";
 import { SidebarInset, SidebarProvider, SidebarRail, Sidebar } from "./components/ui/sidebar";
 import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
 
@@ -29,7 +29,8 @@ export function App() {
   const [removeTarget, setRemoveTarget] = useState<SessionSummary>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
-  const [panelView, setPanelView] = useState<PanelView>();
+  /** Open tool-panel tabs plus the active one; review is a singleton. */
+  const [panel, setPanel] = useState<PanelState>({ tabs: [], activeId: undefined });
 
   const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;
@@ -109,7 +110,7 @@ export function App() {
         if (target) {
           event.preventDefault();
           setPanelOpen(true);
-          setPanelView(target);
+          openPanelTab(target);
         }
       }
     };
@@ -191,6 +192,37 @@ export function App() {
       return false;
     }
   };
+
+  const openPanelTab = useCallback((view: PanelView, forceNew = false) => {
+    setPanel((current) => {
+      if (!forceNew) {
+        const existing = current.tabs.find((tab) => tab.view === view);
+        if (existing) return { ...current, activeId: existing.id };
+      }
+      // Review is a singleton: never duplicate it even on forceNew.
+      if (view === "review") {
+        const review = current.tabs.find((tab) => tab.view === "review");
+        if (review) return { ...current, activeId: review.id };
+      }
+      const tab: PanelTab = { id: crypto.randomUUID(), view };
+      return { tabs: [...current.tabs, tab], activeId: tab.id };
+    });
+  }, []);
+
+  const closePanelTab = useCallback((id: string) => {
+    setPanel((current) => {
+      const index = current.tabs.findIndex((tab) => tab.id === id);
+      if (index < 0) return current;
+      const tabs = current.tabs.filter((tab) => tab.id !== id);
+      // Activate the right neighbour, else the left one; none left shows the launch pad.
+      const activeId = current.activeId === id ? (tabs[index] ?? tabs[index - 1])?.id : current.activeId;
+      return { tabs, activeId };
+    });
+  }, []);
+
+  const selectPanelTab = useCallback((id: string) => {
+    setPanel((current) => (current.tabs.some((tab) => tab.id === id) ? { ...current, activeId: id } : current));
+  }, []);
 
   const openPackages = () => {
     if (!activeCwd) return;
@@ -312,7 +344,15 @@ export function App() {
             className="tool-panel-layout"
           >
             <Sidebar side="right" collapsible="offcanvas" className="tool-panel-sidebar">
-              <ToolPanel cwd={activeCwd} view={panelView} onViewChange={setPanelView} platform={appInfo?.platform} />
+              <ToolPanel
+                cwd={activeCwd}
+                tabs={panel.tabs}
+                activeTabId={panel.activeId}
+                platform={appInfo?.platform}
+                onOpenTab={openPanelTab}
+                onCloseTab={closePanelTab}
+                onSelectTab={selectPanelTab}
+              />
             </Sidebar>
             <SidebarRail />
           </SidebarProvider>

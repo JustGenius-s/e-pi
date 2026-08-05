@@ -125,6 +125,7 @@ const api: EPiApi = {
     commit: (cwd: string, message: string) =>
       ipcRenderer.invoke("git:commit", cwd, message) as Promise<GitOperationResult>,
     push: (cwd: string) => ipcRenderer.invoke("git:push", cwd) as Promise<GitOperationResult>,
+    pull: (cwd: string) => ipcRenderer.invoke("git:pull", cwd) as Promise<GitOperationResult>,
   },
   fs: {
     listDir: (cwd: string, path: string) => ipcRenderer.invoke("fs:list-dir", cwd, path) as Promise<FileEntry[]>,

@@ -16,22 +16,24 @@ type SidebarSide = "left" | "right";
 /** Drag-to-resize bounds for the sidebar rail (px). */
 const SIDEBAR_WIDTH_MIN = 256;
 const SIDEBAR_WIDTH_MAX = 520;
+/** The right-hand tool panel may grow twice as wide as the left sidebar. */
+const SIDEBAR_WIDTH_RIGHT_MAX = SIDEBAR_WIDTH_MAX * 2;
 const SIDEBAR_WIDTH_DEFAULT = 320;
 // v2: old key was bumped so previously saved test widths (which would
 // otherwise override the new default) are ignored. Sidebars keep their own
 // key so left/right widths don't clobber each other.
 const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width-v2";
 
-const clampSidebarWidth = (width: number) => Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, width));
+const clampSidebarWidth = (width: number, max: number) => Math.min(max, Math.max(SIDEBAR_WIDTH_MIN, width));
 
-function readSavedSidebarWidth(storageKey: string): number {
+function readSavedSidebarWidth(storageKey: string, max: number): number {
   try {
     // getItem returns null when the key is absent — Number(null) is 0, which
     // would clamp to the minimum. Only accept real stored values.
     const saved = window.localStorage.getItem(storageKey);
     if (saved !== null) {
       const parsed = Number(saved);
-      if (Number.isFinite(parsed)) return clampSidebarWidth(parsed);
+      if (Number.isFinite(parsed)) return clampSidebarWidth(parsed, max);
     }
   } catch {
     // Storage unavailable (tests, hardened environments) — use the default.
@@ -92,13 +94,13 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => setOpen(!open), [open, setOpen]);
   const state: SidebarState = open ? "expanded" : "collapsed";
 
-  const [width, setWidth] = React.useState(() => readSavedSidebarWidth(storageKey));
+  const [width, setWidth] = React.useState(() => readSavedSidebarWidth(storageKey, side === "right" ? SIDEBAR_WIDTH_RIGHT_MAX : SIDEBAR_WIDTH_MAX));
   const widthRef = React.useRef(width);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const getWidth = React.useCallback(() => widthRef.current, []);
   const applyWidth = React.useCallback(
     (next: number, persist: boolean) => {
-      const clamped = clampSidebarWidth(next);
+      const clamped = clampSidebarWidth(next, side === "right" ? SIDEBAR_WIDTH_RIGHT_MAX : SIDEBAR_WIDTH_MAX);
       widthRef.current = clamped;
       // Live drags mutate the CSS variable directly so React never re-renders
       // per pointermove (the wrapper re-renders often; a stale style prop would
@@ -114,7 +116,7 @@ function SidebarProvider({
         }
       }
     },
-    [storageKey],
+    [storageKey, side],
   );
 
   const contextValue = React.useMemo(

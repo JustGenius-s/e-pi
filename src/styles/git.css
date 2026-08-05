@@ -10,18 +10,91 @@
   background: var(--background);
 }
 
-/* --- Review meta (branch info above the file list) --- */
+/* --- Review meta (branch info + actions) --- */
 
 .git-review-meta {
   display: flex;
-  min-height: 30px;
+  min-height: 40px;
   flex: 0 0 auto;
   align-items: center;
   gap: 6px;
-  padding: 0 12px;
+  padding: 0 8px 0 12px;
   color: var(--muted-foreground);
   border-bottom: 1px solid var(--border);
   font-size: 10.5px;
+}
+
+.git-review-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.git-review-actions button.active {
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+}
+
+/* --- Commit & push combo button --- */
+
+.git-combo {
+  display: inline-flex;
+  height: 26px;
+  margin-left: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: color-mix(in oklch, var(--card) 80%, var(--foreground));
+}
+
+.git-combo-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  color: var(--foreground);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.git-combo-primary:hover {
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+}
+
+.git-combo-caret {
+  display: grid;
+  width: 22px;
+  place-items: center;
+  padding: 0;
+  color: var(--muted-foreground);
+  border: 0;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+}
+
+.git-combo-caret:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+/* --- Status strip (notices / long-running phases) --- */
+
+.git-status-strip {
+  display: flex;
+  min-height: 20px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 12px;
+  border-bottom: 1px solid var(--border);
+  font-size: 10px;
+  line-height: 1.4;
 }
 
 .git-review-meta strong {
@@ -53,38 +126,18 @@
   font-style: normal;
 }
 
-/* --- View bottom bar (back to list, refresh) --- */
+/* --- View bottom bar (refresh) --- */
 
 .tool-view-bar {
   display: flex;
   min-height: 32px;
   flex: 0 0 auto;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 8px;
-  padding: 0 8px 0 10px;
+  padding: 0 8px;
   border-top: 1px solid var(--border);
   background: color-mix(in oklch, var(--card) 90%, var(--foreground));
-}
-
-.tool-view-bar-back {
-  display: inline-flex;
-  min-height: 24px;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  color: var(--muted-foreground);
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  font: inherit;
-  font-size: 10.5px;
-  cursor: pointer;
-}
-
-.tool-view-bar-back:hover {
-  color: var(--foreground);
-  background: var(--accent);
 }
 
 /* no-drag lives on a wrapper div, not the <button> itself: Electron's
@@ -95,14 +148,14 @@
   -webkit-app-region: no-drag;
 }
 
-.topbar-git-toggle[data-slot="button"] {
+.topbar-git-toggle {
   color: var(--muted-foreground);
   border-radius: 7px;
 }
-.topbar-git-toggle[data-slot="button"]:hover {
+.topbar-git-toggle:hover {
   color: var(--foreground);
 }
-.topbar-git-toggle[data-slot="button"].active {
+.topbar-git-toggle.active {
   color: var(--primary);
   background: color-mix(in oklch, var(--primary) 10%, transparent);
 }
@@ -118,26 +171,24 @@
   overflow-wrap: anywhere;
 }
 
-/* --- File list --- */
+/* --- Flat changed-file list (each row expands its diff) --- */
 
-.git-file-list {
-  min-height: 90px;
-  max-height: 32%;
-  flex: 0 0 auto;
+.git-files {
+  min-height: 0;
+  flex: 1 1 auto;
   overflow-y: auto;
   padding: 4px 0;
-  border-bottom: 1px solid var(--border);
   scrollbar-width: thin;
 }
 
 .git-file {
   display: grid;
-  grid-template-columns: 20px minmax(0, auto) minmax(0, 1fr);
+  grid-template-columns: 14px 20px minmax(0, auto) minmax(0, 1fr);
   align-items: center;
   gap: 2px;
-  min-height: 26px;
-  padding: 0 10px 0 6px;
-  font-size: 11px;
+  min-height: 30px;
+  padding: 0 10px 0 4px;
+  font-size: 12.5px;
   cursor: pointer;
   user-select: none;
 }
@@ -146,8 +197,24 @@
   background: color-mix(in oklch, var(--foreground) 5%, transparent);
 }
 
-.git-file.selected {
-  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+.git-file.expanded {
+  background: color-mix(in oklch, var(--foreground) 4%, transparent);
+}
+
+.git-file-chevron {
+  display: grid;
+  width: 14px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+
+.git-file-chevron svg {
+  transition: transform 120ms ease;
+}
+
+.git-file-chevron svg.rotated {
+  transform: rotate(90deg);
 }
 
 .git-file-stage {
@@ -183,7 +250,7 @@
 .git-file-name {
   overflow: hidden;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -192,7 +259,7 @@
   overflow: hidden;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -200,7 +267,7 @@
 .git-empty {
   padding: 18px 12px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12.5px;
   text-align: center;
 }
 
@@ -208,16 +275,24 @@
 
 .git-diff-wrap {
   min-height: 0;
-  flex: 1 1 auto;
+  max-height: 45vh;
   overflow: auto;
   background: color-mix(in oklch, var(--background) 92%, var(--foreground));
   scrollbar-width: thin;
 }
 
+.git-diff-error {
+  padding: 8px 12px;
+  color: var(--destructive);
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .git-diff {
   padding: 6px 0;
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 1.55;
 }
 
@@ -248,26 +323,26 @@
 .git-diff-truncated {
   padding: 6px 10px;
   color: var(--chart-1);
-  font-size: 10px;
+  font-size: 11px;
 }
 
 .git-diff-empty {
   padding: 20px 12px;
   color: var(--muted-foreground);
-  font-size: 11px;
+  font-size: 12px;
   text-align: center;
 }
 
-/* --- Footer: message + actions --- */
+/* --- Footer: message + actions (commit dialog) --- */
 
-.git-panel-foot {
+.git-commit-dialog {
   display: flex;
-  flex: 0 0 auto;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border-top: 1px solid var(--border);
-  background: color-mix(in oklch, var(--card) 90%, var(--foreground));
+  gap: 10px;
+}
+
+.git-commit-dialog .git-message-input[data-slot="textarea"] {
+  width: 100%;
 }
 
 .git-message-input[data-slot="textarea"] {
@@ -326,6 +401,95 @@
   font-size: 11px;
 }
 
+/* --- Main area: flat file sections + floating file-tree card --- */
+
+.git-main {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.git-tree-card {
+  position: absolute;
+  z-index: 5;
+  top: 8px;
+  right: 10px;
+  display: flex;
+  width: 220px;
+  max-height: 60%;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in oklch, var(--card) 92%, transparent);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  backdrop-filter: blur(6px);
+}
+
+.git-tree-card-head {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.git-tree-card-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px;
+  scrollbar-width: thin;
+}
+
+.git-tree-card-item {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  color: var(--foreground);
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.git-tree-card-item:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.git-tree-card-status {
+  flex: 0 0 auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.git-tree-card-status-staged {
+  color: var(--primary);
+}
+
+.git-tree-card-status-untracked {
+  color: var(--chart-2);
+}
+
+.git-tree-card-status-conflict {
+  color: var(--destructive);
+}
+
+.git-tree-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* --- Tool panel body (view container) --- */
 
 .git-panel-body {
@@ -334,6 +498,130 @@
   flex: 1 1 auto;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* --- Tab bar --- */
+
+.tool-tab-bar {
+  display: flex;
+  min-height: 32px;
+  flex: 0 0 auto;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 4px 6px 0;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in oklch, var(--card) 90%, var(--foreground));
+  scrollbar-width: none;
+}
+
+.tool-tab {
+  display: inline-flex;
+  min-width: 100px;
+  max-width: 200px;
+  height: 28px;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 5px 0 8px;
+  color: var(--muted-foreground);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 130ms ease;
+}
+
+.tool-tab:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+}
+
+.tool-tab.active {
+  color: var(--foreground);
+  background: var(--background);
+  border-color: var(--border);
+  border-bottom-color: var(--background);
+}
+
+.tool-tab > svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+  opacity: 0.65;
+}
+
+.tool-tab.active > svg {
+  opacity: 1;
+}
+
+.tool-tab-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-tab-close {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  place-items: center;
+  padding: 0;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tool-tab-close:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+/* "+" tab: opens the new-tab type menu. */
+
+.tool-tab-add {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  color: var(--muted-foreground);
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.tool-tab-add:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+/* --- View stack: all tabs stay mounted, inactive ones hidden --- */
+
+.tool-panel-stack {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.tool-panel-view {
+  display: none;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.tool-panel-view.active {
+  display: flex;
 }
 
 /* --- Launch pad (view list) --- */

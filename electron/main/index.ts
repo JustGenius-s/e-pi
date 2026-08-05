@@ -223,6 +223,10 @@ function registerHandlers(): void {
     debugLog("[ipc] git:push", { cwd });
     return git.push(cwd || activeCwd());
   });
+  ipcMain.handle("git:pull", async (_event, cwd: string) => {
+    debugLog("[ipc] git:pull", { cwd });
+    return git.pull(cwd || activeCwd());
+  });
 
   ipcMain.handle("fs:list-dir", async (_event, cwd: string, path: string) =>
     fileService.listDir(cwd || activeCwd(), path),

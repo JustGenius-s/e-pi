@@ -397,6 +397,7 @@ export interface EPiApi {
     generateMessage(cwd: string, stagedOnly: boolean): Promise<GitCommitMessageResult>;
     commit(cwd: string, message: string): Promise<GitOperationResult>;
     push(cwd: string): Promise<GitOperationResult>;
+    pull(cwd: string): Promise<GitOperationResult>;
   };
   fs: {
     listDir(cwd: string, path: string): Promise<FileEntry[]>;

@@ -238,6 +238,15 @@ export class GitService {
     };
   }
 
+  async pull(cwd: string): Promise<GitOperationResult> {
+    const result = await runGit(cwd, ["pull"], 120_000);
+    if (result.code !== 0) {
+      return { ok: false, message: result.stderr.trim() || result.stdout.trim() || "git pull failed" };
+    }
+    const pulled = result.stdout.trim() || result.stderr.trim();
+    return { ok: true, message: pulled || "Pulled" };
+  }
+
   /** Generate a commit message from the current diff using the default pi model. */
   async generateMessage(cwd: string, stagedOnly: boolean): Promise<GitCommitMessageResult> {
     const diffArgs = stagedOnly ? ["diff", "--no-color", "--cached"] : ["diff", "--no-color", "HEAD"];

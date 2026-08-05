@@ -1,4 +1,4 @@
-import { ChevronRight, FileText, Folder, FolderOpen, LayoutPanelLeft, RefreshCw } from "lucide-react";
+import { ChevronRight, FileText, Folder, FolderOpen, RefreshCw } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { formatBytes } from "../lib/format";
@@ -7,7 +7,6 @@ import { IconButton } from "./IconButton";
 
 interface FileTreeViewProps {
   cwd: string;
-  onBack: () => void;
 }
 
 interface TreeNode extends FileEntry {
@@ -22,7 +21,7 @@ function treeNode(entry: FileEntry): TreeNode {
 }
 
 /** Lazy directory tree with a preview pane for files. */
-export const FileTreeView = memo(function FileTreeView({ cwd, onBack }: FileTreeViewProps) {
+export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProps) {
   const [root, setRoot] = useState<TreeNode>();
   const [rootError, setRootError] = useState<string>();
   const [selected, setSelected] = useState<string>();
@@ -160,10 +159,6 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onBack }: FileTree
         <div className="git-empty-panel">加载中…</div>
       )}
       <div className="tool-view-bar">
-        <button type="button" className="tool-view-bar-back" onClick={onBack}>
-          <LayoutPanelLeft size={12} />
-          内容列表
-        </button>
         <IconButton
           label="Refresh"
           onClick={() => {

@@ -1,11 +1,9 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
-import { LayoutPanelLeft } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 
 interface SideTerminalViewProps {
   cwd: string;
-  onBack: () => void;
 }
 
 /**
@@ -13,7 +11,7 @@ interface SideTerminalViewProps {
  * process and is killed when this view unmounts (switching view or closing
  * the panel); re-opening starts a fresh shell.
  */
-export const SideTerminalView = memo(function SideTerminalView({ cwd, onBack }: SideTerminalViewProps) {
+export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerminalViewProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const [state, setState] = useState<"starting" | "ready" | "error">("starting");
@@ -126,12 +124,6 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd, onBack }: 
       {state === "starting" ? <div className="git-empty-panel">启动终端…</div> : null}
       {state === "error" ? <div className="git-error">{error}</div> : null}
       <div className="tool-terminal-host" ref={hostRef} aria-label="Embedded terminal" />
-      <div className="tool-view-bar">
-        <button type="button" className="tool-view-bar-back" onClick={onBack}>
-          <LayoutPanelLeft size={12} />
-          内容列表
-        </button>
-      </div>
     </div>
   );
 });
