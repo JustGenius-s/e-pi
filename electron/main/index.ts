@@ -21,6 +21,7 @@ import type {
   SkillMutation,
   SkillSetEnabledRequest,
 } from "../../src/types/contracts";
+import { ensureNpmOnPath } from "./npm-path";
 import { debugLog, resetDebugLog } from "./services/debug-log";
 import { FileService } from "./services/file-service";
 import { GitService } from "./services/git-service";
@@ -30,7 +31,6 @@ import { PiRuntime } from "./services/pi-runtime";
 import { SessionService } from "./services/session-service";
 import { SideTerminalService } from "./services/side-terminal-service";
 import { SkillService } from "./services/skill-service";
-import { ensureNpmOnPath } from "./npm-path";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const runtime = new PiRuntime();

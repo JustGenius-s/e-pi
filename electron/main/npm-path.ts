@@ -49,7 +49,11 @@ function findNpmDir(): string | undefined {
   // Prefer directories that also provide `node` — npm's shebang resolves it
   // through PATH, so a bare npm binary alone would still fail to run.
   for (const dir of candidates) {
-    if (dir && names.some((name) => existsSync(join(dir, name))) && existsSync(join(dir, isWin ? "node.exe" : "node"))) {
+    if (
+      dir &&
+      names.some((name) => existsSync(join(dir, name))) &&
+      existsSync(join(dir, isWin ? "node.exe" : "node"))
+    ) {
       return dir;
     }
   }
