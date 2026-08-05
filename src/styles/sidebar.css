@@ -508,6 +508,11 @@
   background: color-mix(in oklch, var(--avatar-color) 28%, var(--sidebar));
 }
 
+/* The collapsed-mode rule hides menu-button label spans; keep the avatar. */
+.sidebar-root[data-state="collapsed"] .sidebar-menu-button > span.project-avatar {
+  display: grid;
+}
+
 /* Hover flyout listing a project's sessions (collapsed mode). */
 .project-flyout {
   width: 230px;
