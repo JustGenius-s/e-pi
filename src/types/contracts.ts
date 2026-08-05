@@ -274,6 +274,13 @@ export interface GitStatus {
   stagedCount: number;
   unstagedCount: number;
   untrackedCount: number;
+  /** Line-change stats per work path, available without loading full diffs. */
+  numstat: Record<string, GitNumstat>;
+}
+
+export interface GitNumstat {
+  additions: number;
+  deletions: number;
 }
 
 export interface GitDiffResult {

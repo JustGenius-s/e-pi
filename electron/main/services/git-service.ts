@@ -10,6 +10,7 @@ import type {
   GitCommitMessageResult,
   GitDiffResult,
   GitFileEntry,
+  GitNumstat,
   GitOperationResult,
   GitStatus,
 } from "../../../src/types/contracts";
@@ -120,6 +121,55 @@ function parseUpstreamLine(line: string): { upstream?: string; ahead: number; be
   return { upstream, ahead, behind };
 }
 
+/**
+ * Line-change stats for every changed file without loading full diffs.
+ * Tracked files come from `git diff --numstat`; untracked files are counted
+ * from disk (additions = line count). Binary files report 0/0.
+ */
+async function numstatForFiles(cwd: string, files: GitFileEntry[]): Promise<Record<string, GitNumstat>> {
+  const numstat: Record<string, GitNumstat> = {};
+  const tracked = files.filter((file) => !file.untracked);
+  if (tracked.length > 0) {
+    const result = await runGit(cwd, ["diff", "--numstat", "-z", "--no-color", "HEAD", "--"]);
+    // -z format: "<add>\t<del>\t<path>\0" per file; renames append "<old>\0".
+    const parts = result.stdout.split("\0");
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      const match = /^(\d+)\t(\d+)\t(.*)$/s.exec(part ?? "");
+      if (!match) continue;
+      const additions = Number(match[1]);
+      const deletions = Number(match[2]);
+      let path = match[3] ?? "";
+      // Rename/copy: the next field holds the old path; skip it.
+      const next = parts[i + 1];
+      if (next !== undefined && !/^\d+\t\d+\t/.test(next)) i++;
+      if (path) numstat[path] = { additions, deletions };
+    }
+  }
+  await Promise.all(
+    files
+      .filter((file) => file.untracked)
+      .map(async (file) => {
+        try {
+          const buffer = await readFile(join(cwd, file.workPath));
+          const additions = buffer.includes(0) ? 0 : countLines(buffer);
+          numstat[file.workPath] = { additions, deletions: 0 };
+        } catch {
+          // File vanished between status and stat; leave it unset.
+        }
+      }),
+  );
+  return numstat;
+}
+
+function countLines(buffer: Buffer): number {
+  let count = 0;
+  for (const byte of buffer) if (byte === 0x0a) count++;
+  // A trailing newline is conventional; count a final unterminated line too.
+  if (buffer.length > 0 && buffer[buffer.length - 1] !== 0x0a) count++;
+  return count;
+}
+
 /** Diff text for a single file: worktree + index vs HEAD; untracked files render as new files. */
 async function diffForFile(cwd: string, entry: GitFileEntry): Promise<GitDiffResult> {
   let stdout: string;
@@ -166,6 +216,7 @@ export class GitService {
       else if (file.staged) stagedCount++;
       if (!file.untracked && file.status[1] !== " " && file.status[1] !== "?") unstagedCount++;
     }
+    const numstat = await numstatForFiles(cwd, files);
 
     return {
       repoRoot: root.stdout.trim(),
@@ -177,6 +228,7 @@ export class GitService {
       stagedCount,
       unstagedCount,
       untrackedCount,
+      numstat,
     };
   }
 

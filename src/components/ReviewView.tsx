@@ -14,11 +14,10 @@ import {
   Sparkles,
   Square,
 } from "lucide-react";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 
-import { parseDiff } from "../lib/diff";
 import { pathBaseName } from "../lib/format";
-import type { GitDiffResult, GitFileEntry, GitStatus } from "../types/contracts";
+import type { GitDiffResult, GitFileEntry, GitNumstat, GitStatus } from "../types/contracts";
 import { DiffView, type DiffStyle } from "./DiffView";
 import { IconButton } from "./IconButton";
 import { Button } from "./ui/button";
@@ -77,14 +76,16 @@ interface FileSectionProps {
   diffError: string | undefined;
   loading: boolean;
   diffStyle: DiffStyle;
+  numstat?: GitNumstat;
   onToggle: () => void;
   onToggleStage: (entry: GitFileEntry) => void;
   sectionRef: (el: HTMLDivElement | null) => void;
 }
 
 /**
- * One changed file: a header row (stage checkbox, status badge, name,
- * directory, +/- stats) that expands/collapses its diff body below it.
+ * One changed file: a header row (status badge, name, directory, +/- stats,
+ * hover-revealed stage checkbox + chevron) that expands/collapses its diff
+ * body below it.
  */
 const FileSection = memo(function FileSection({
   entry,
@@ -93,14 +94,14 @@ const FileSection = memo(function FileSection({
   diffError,
   loading,
   diffStyle,
+  numstat,
   onToggle,
   onToggleStage,
   sectionRef,
 }: FileSectionProps) {
   const lastSlash = entry.path.lastIndexOf("/");
   const dir = lastSlash >= 0 ? entry.path.slice(0, lastSlash + 1) : "";
-  const parsed = useMemo(() => (diff ? parseDiff(diff.diff) : undefined), [diff]);
-  const stats = parsed !== undefined && (parsed.additions > 0 || parsed.deletions > 0) ? parsed : undefined;
+  const stats = numstat !== undefined && (numstat.additions > 0 || numstat.deletions > 0) ? numstat : undefined;
   return (
     <div className="git-file-section" ref={sectionRef}>
       <div
@@ -110,13 +111,21 @@ const FileSection = memo(function FileSection({
         className={`git-file${expanded ? " expanded" : ""}`}
         onClick={onToggle}
       >
-        <span className="git-file-chevron">
-          <ChevronRight size={11} className={expanded ? "rotated" : ""} />
+        <span className={`git-file-status git-file-status-${statusTone(entry)}`}>{statusLetter(entry)}</span>
+        <span className="git-file-name" title={entry.path}>
+          {pathBaseName(entry.path)}
         </span>
+        {dir ? <span className="git-file-dir">{dir}</span> : null}
+        {stats ? (
+          <span className="git-file-stats">
+            <em className="git-file-stats-add">+{stats.additions}</em>
+            <em className="git-file-stats-del">−{stats.deletions}</em>
+          </span>
+        ) : null}
         <Tooltip>
           <TooltipTrigger asChild>
             <button
-              className={`git-file-stage git-file-stage-${fileStatusLabel(entry)}`}
+              className={`git-file-stage git-file-stage-${fileStatusLabel(entry)} git-file-action`}
               aria-label={`${entry.staged ? "Unstage" : "Stage"} ${pathBaseName(entry.workPath)}`}
               onClick={(event) => {
                 event.stopPropagation();
@@ -130,17 +139,9 @@ const FileSection = memo(function FileSection({
             {statusIcon(entry)} {fileStatusLabel(entry)}
           </TooltipContent>
         </Tooltip>
-        <span className={`git-file-status git-file-status-${statusTone(entry)}`}>{statusLetter(entry)}</span>
-        <span className="git-file-name" title={entry.path}>
-          {pathBaseName(entry.path)}
+        <span className="git-file-chevron git-file-action">
+          <ChevronRight size={11} className={expanded ? "rotated" : ""} />
         </span>
-        {dir ? <span className="git-file-dir">{dir}</span> : null}
-        {stats ? (
-          <span className="git-file-stats">
-            <em className="git-file-stats-add">+{stats.additions}</em>
-            <em className="git-file-stats-del">−{stats.deletions}</em>
-          </span>
-        ) : null}
       </div>
       {expanded ? (
         <div className="git-diff-wrap">
@@ -518,6 +519,7 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
                   diffError={diffErrors[entry.workPath]}
                   loading={loadingPaths.has(entry.workPath)}
                   diffStyle={diffStyle}
+                  numstat={status.numstat?.[entry.workPath]}
                   onToggle={() => toggleFile(entry)}
                   onToggleStage={(file) => void toggleStage(file)}
                   sectionRef={(el) => {
