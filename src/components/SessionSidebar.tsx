@@ -1,4 +1,16 @@
-import { FilePlus, Folder, FolderOpen, FolderPlus, Moon, Package, Plus, Settings2, Sparkles, Sun } from "lucide-react";
+import {
+  FilePlus,
+  Folder,
+  FolderOpen,
+  FolderPlus,
+  Moon,
+  Package,
+  Plus,
+  Settings2,
+  Sparkles,
+  SquarePen,
+  Sun,
+} from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
@@ -152,13 +164,34 @@ interface CollapsedProjectFlyoutProps {
   runtimeStates?: Record<string, PiRuntimeState>;
   onSelect: (session: SessionSummary) => void;
   onExpand: () => void;
+  /** Create a new session in this project. */
+  onCreate: (cwd: string) => void;
+}
+
+/** Menu items shared by the group-header "+" and the collapsed footer button. */
+function NewSessionMenuItems({ onNewSession, onNewProject }: { onNewSession: () => void; onNewProject: () => void }) {
+  return (
+    <>
+      <DropdownMenuItem onSelect={onNewSession}>
+        <FilePlus size={14} />
+        <span>新会话</span>
+        <DropdownMenuShortcut>Home</DropdownMenuShortcut>
+      </DropdownMenuItem>
+      <DropdownMenuItem onSelect={onNewProject}>
+        <FolderPlus size={14} />
+        <span>新项目</span>
+        <DropdownMenuShortcut>选择文件夹</DropdownMenuShortcut>
+      </DropdownMenuItem>
+    </>
+  );
 }
 
 /**
  * Collapsed (icon) mode: one folder button per project. Hovering opens a
  * flyout listing the project's sessions — clicking a session switches to it
  * without expanding the sidebar; clicking the folder itself expands the
- * sidebar and opens that project.
+ * sidebar and opens that project. The header "+" creates a session in the
+ * project directly.
  */
 function CollapsedProjectFlyout({
   project,
@@ -167,6 +200,7 @@ function CollapsedProjectFlyout({
   runtimeStates,
   onSelect,
   onExpand,
+  onCreate,
 }: CollapsedProjectFlyoutProps) {
   const [open, setOpen] = useState(false);
   const active = project.sessions.some((session) => session.path === activeSessionPath);
@@ -179,7 +213,22 @@ function CollapsedProjectFlyout({
         </SidebarMenuButton>
       </HoverCardTrigger>
       <HoverCardContent side="right" sideOffset={10} align="start" className="project-flyout">
-        <div className="project-flyout-title">{label}</div>
+        <div className="project-flyout-header">
+          <span className="project-flyout-title">{label}</span>
+          <button
+            type="button"
+            className="project-flyout-add"
+            aria-label={`New session in ${label}`}
+            title={`New session in ${label}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              setOpen(false);
+              onCreate(project.cwd);
+            }}
+          >
+            <Plus size={12} />
+          </button>
+        </div>
         <ul className="project-flyout-sessions">
           {project.sessions.map((session) => {
             const isActiveSession = session.path === activeSessionPath;
@@ -314,16 +363,7 @@ export function SessionSidebar({
                   </SidebarGroupAction>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-[11rem]">
-                  <DropdownMenuItem onSelect={() => onCreate(homeCwd)}>
-                    <FilePlus size={14} />
-                    <span>新会话</span>
-                    <DropdownMenuShortcut>Home</DropdownMenuShortcut>
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => onCreateProject()}>
-                    <FolderPlus size={14} />
-                    <span>新项目</span>
-                    <DropdownMenuShortcut>选择文件夹</DropdownMenuShortcut>
-                  </DropdownMenuItem>
+                  <NewSessionMenuItems onNewSession={() => onCreate(homeCwd)} onNewProject={() => onCreateProject()} />
                 </DropdownMenuContent>
               </DropdownMenu>
             </SidebarGroupLabel>
@@ -332,6 +372,25 @@ export function SessionSidebar({
           <SidebarGroupContent>
             {state === "collapsed" ? (
               <SidebarMenu>
+                <SidebarMenuItem>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <SidebarMenuButton
+                        className="collapsed-new-session"
+                        tooltip="New session or project"
+                        aria-label="New session or project"
+                      >
+                        <SquarePen />
+                      </SidebarMenuButton>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-[11rem]">
+                      <NewSessionMenuItems
+                        onNewSession={() => onCreate(homeCwd)}
+                        onNewProject={() => onCreateProject()}
+                      />
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </SidebarMenuItem>
                 {projects.map((project) => (
                   <SidebarMenuItem key={project.cwd}>
                     <CollapsedProjectFlyout
@@ -341,6 +400,7 @@ export function SessionSidebar({
                       runtimeStates={runtimeStates}
                       onSelect={onSelect}
                       onExpand={() => expandToProject(project.cwd)}
+                      onCreate={onCreate}
                     />
                   </SidebarMenuItem>
                 ))}
