@@ -391,6 +391,28 @@
   height: 100%;
 }
 
+/* Right-side tool panel: nested provider inside app-main. The wrapper stays
+   a flex item (width from the sidebar itself); the rail and borders mirror. */
+.sidebar-layout.tool-panel-layout {
+  width: auto;
+  flex: 0 0 auto;
+}
+
+.sidebar-root[data-side="right"] .sidebar-container {
+  border-right: none;
+  border-left: 1px solid var(--sidebar-border);
+}
+
+.sidebar-root[data-side="right"] ~ .sidebar-rail {
+  right: auto;
+  left: -4px;
+}
+
+.sidebar-root[data-side="right"] ~ .sidebar-rail:hover::after {
+  right: auto;
+  left: 3px;
+}
+
 .sidebar-root[data-state="collapsed"] .sidebar-group-label,
 .sidebar-root[data-state="collapsed"] .sidebar-menu-button > span,
 .sidebar-root[data-state="collapsed"] .sidebar-menu-button > time,

@@ -248,6 +248,62 @@ export interface CustomProviderRemoveRequest {
   providerId: string;
 }
 
+/** Git porcelain status letter: staged index status + worktree status. */
+export interface GitFileEntry {
+  /** Display path; renamed files show as "old -> new". */
+  path: string;
+  /** Path to use for git operations (the new path for renames). */
+  workPath: string;
+  /** Two-letter porcelain status, e.g. "M ", " M", "AM", "??", "UU". */
+  status: string;
+  staged: boolean;
+  untracked: boolean;
+  conflict: boolean;
+}
+
+export interface GitStatus {
+  repoRoot: string;
+  branch: string;
+  /** Upstream tracking ref, e.g. "origin/main". */
+  upstream?: string;
+  ahead: number;
+  behind: number;
+  files: GitFileEntry[];
+  stagedCount: number;
+  unstagedCount: number;
+  untrackedCount: number;
+}
+
+export interface GitDiffResult {
+  path: string;
+  diff: string;
+  truncated: boolean;
+}
+
+export interface GitOperationResult {
+  ok: boolean;
+  message: string;
+}
+
+export interface GitCommitMessageResult {
+  message: string;
+  model: string;
+}
+
+export interface FileEntry {
+  name: string;
+  /** Absolute path. */
+  path: string;
+  type: "dir" | "file";
+  size?: number;
+}
+
+export interface FileContentResult {
+  content: string;
+  truncated: boolean;
+  binary: boolean;
+}
+
 export type ModelLoginEvent =
   | {
       type: "prompt";
@@ -332,5 +388,25 @@ export interface EPiApi {
     addPath(request: SkillAddPathRequest): Promise<SkillRecord[]>;
     remove(request: SkillMutation): Promise<SkillRecord[]>;
     setEnabled(request: SkillSetEnabledRequest): Promise<SkillRecord[]>;
+  };
+  git: {
+    status(cwd: string): Promise<GitStatus>;
+    diff(cwd: string, path: string): Promise<GitDiffResult>;
+    stage(cwd: string, paths: string[]): Promise<GitOperationResult>;
+    unstage(cwd: string, paths: string[]): Promise<GitOperationResult>;
+    generateMessage(cwd: string, stagedOnly: boolean): Promise<GitCommitMessageResult>;
+    commit(cwd: string, message: string): Promise<GitOperationResult>;
+    push(cwd: string): Promise<GitOperationResult>;
+  };
+  fs: {
+    listDir(cwd: string, path: string): Promise<FileEntry[]>;
+    readFile(cwd: string, path: string): Promise<FileContentResult>;
+  };
+  sideTerminal: {
+    spawn(cwd: string): Promise<string>;
+    write(id: string, data: string): void;
+    resize(id: string, size: ResizeTerminalRequest): void;
+    kill(id: string): void;
+    onData(listener: (id: string, data: string) => void): () => void;
   };
 }

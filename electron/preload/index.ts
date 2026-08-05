@@ -6,6 +6,13 @@ import type {
   CustomProviderConfig,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
+  EPiApi,
+  FileContentResult,
+  FileEntry,
+  GitCommitMessageResult,
+  GitDiffResult,
+  GitOperationResult,
+  GitStatus,
   ModelLoginEvent,
   ModelLoginRequest,
   ModelLoginResponse,
@@ -15,9 +22,8 @@ import type {
   PackageRecord,
   PackageUpdateInfo,
   PackageUpdateRequest,
-  RemotePackageInfo,
-  EPiApi,
   PiRuntimeState,
+  RemotePackageInfo,
   RenameSessionRequest,
   ResizeTerminalRequest,
   SetDefaultModelRequest,
@@ -107,6 +113,35 @@ const api: EPiApi = {
     remove: (request: SkillMutation) => ipcRenderer.invoke("skills:remove", request) as Promise<SkillRecord[]>,
     setEnabled: (request: SkillSetEnabledRequest) =>
       ipcRenderer.invoke("skills:set-enabled", request) as Promise<SkillRecord[]>,
+  },
+  git: {
+    status: (cwd: string) => ipcRenderer.invoke("git:status", cwd) as Promise<GitStatus>,
+    diff: (cwd: string, path: string) => ipcRenderer.invoke("git:diff", cwd, path) as Promise<GitDiffResult>,
+    stage: (cwd: string, paths: string[]) => ipcRenderer.invoke("git:stage", cwd, paths) as Promise<GitOperationResult>,
+    unstage: (cwd: string, paths: string[]) =>
+      ipcRenderer.invoke("git:unstage", cwd, paths) as Promise<GitOperationResult>,
+    generateMessage: (cwd: string, stagedOnly: boolean) =>
+      ipcRenderer.invoke("git:generate-message", cwd, stagedOnly) as Promise<GitCommitMessageResult>,
+    commit: (cwd: string, message: string) =>
+      ipcRenderer.invoke("git:commit", cwd, message) as Promise<GitOperationResult>,
+    push: (cwd: string) => ipcRenderer.invoke("git:push", cwd) as Promise<GitOperationResult>,
+  },
+  fs: {
+    listDir: (cwd: string, path: string) => ipcRenderer.invoke("fs:list-dir", cwd, path) as Promise<FileEntry[]>,
+    readFile: (cwd: string, path: string) =>
+      ipcRenderer.invoke("fs:read-file", cwd, path) as Promise<FileContentResult>,
+  },
+  sideTerminal: {
+    spawn: (cwd: string) => ipcRenderer.invoke("side-terminal:spawn", cwd) as Promise<string>,
+    write: (id: string, data: string) => ipcRenderer.send("side-terminal:write", id, data),
+    resize: (id: string, size: ResizeTerminalRequest) => ipcRenderer.send("side-terminal:resize", id, size),
+    kill: (id: string) => ipcRenderer.send("side-terminal:kill", id),
+    onData: (listener: (id: string, data: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { id: string; data: string }): void =>
+        listener(payload.id, payload.data);
+      ipcRenderer.on("side-terminal:data", handler);
+      return () => ipcRenderer.removeListener("side-terminal:data", handler);
+    },
   },
 };
 

@@ -22,10 +22,13 @@ import type {
   SkillSetEnabledRequest,
 } from "../../src/types/contracts";
 import { debugLog, resetDebugLog } from "./services/debug-log";
+import { FileService } from "./services/file-service";
+import { GitService } from "./services/git-service";
 import { ModelService } from "./services/model-service";
 import { PackageService } from "./services/package-service";
 import { PiRuntime } from "./services/pi-runtime";
 import { SessionService } from "./services/session-service";
+import { SideTerminalService } from "./services/side-terminal-service";
 import { SkillService } from "./services/skill-service";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
@@ -34,6 +37,9 @@ const sessions = new SessionService();
 const packages = new PackageService();
 const models = new ModelService();
 const skills = new SkillService();
+const git = new GitService();
+const fileService = new FileService();
+const sideTerminals = new SideTerminalService();
 let mainWindow: BrowserWindow | undefined;
 
 function sendToRenderer(channel: string, payload: unknown): void {
@@ -198,6 +204,41 @@ function registerHandlers(): void {
   ipcMain.handle("skills:remove", async (_event, request: SkillMutation) => skills.remove(request));
   ipcMain.handle("skills:set-enabled", async (_event, request: SkillSetEnabledRequest) => skills.setEnabled(request));
 
+  ipcMain.handle("git:status", async (_event, cwd: string) => {
+    debugLog("[ipc] git:status", { cwd });
+    return git.status(cwd || activeCwd());
+  });
+  ipcMain.handle("git:diff", async (_event, cwd: string, path: string) => git.diff(cwd || activeCwd(), path));
+  ipcMain.handle("git:stage", async (_event, cwd: string, paths: string[]) => git.stage(cwd || activeCwd(), paths));
+  ipcMain.handle("git:unstage", async (_event, cwd: string, paths: string[]) => git.unstage(cwd || activeCwd(), paths));
+  ipcMain.handle("git:generate-message", async (_event, cwd: string, stagedOnly: boolean) => {
+    debugLog("[ipc] git:generate-message", { cwd, stagedOnly });
+    return git.generateMessage(cwd || activeCwd(), stagedOnly);
+  });
+  ipcMain.handle("git:commit", async (_event, cwd: string, message: string) => {
+    debugLog("[ipc] git:commit", { cwd, subject: message.split("\n")[0] });
+    return git.commit(cwd || activeCwd(), message);
+  });
+  ipcMain.handle("git:push", async (_event, cwd: string) => {
+    debugLog("[ipc] git:push", { cwd });
+    return git.push(cwd || activeCwd());
+  });
+
+  ipcMain.handle("fs:list-dir", async (_event, cwd: string, path: string) =>
+    fileService.listDir(cwd || activeCwd(), path),
+  );
+  ipcMain.handle("fs:read-file", async (_event, cwd: string, path: string) =>
+    fileService.readFile(cwd || activeCwd(), path),
+  );
+
+  ipcMain.handle("side-terminal:spawn", async (_event, cwd: string) => sideTerminals.spawn(cwd || activeCwd()));
+  ipcMain.on("side-terminal:write", (_event, id: string, data: string) => sideTerminals.write(id, data));
+  ipcMain.on("side-terminal:resize", (_event, id: string, size: ResizeTerminalRequest) =>
+    sideTerminals.resize(id, size.cols, size.rows),
+  );
+  ipcMain.on("side-terminal:kill", (_event, id: string) => sideTerminals.kill(id));
+  sideTerminals.onData((id, data) => sendToRenderer("side-terminal:data", { id, data }));
+
   ipcMain.handle("models:list", () => models.list(activeCwd()));
   ipcMain.handle("models:login", async (_event, request: ModelLoginRequest) => {
     const state = await models.login(request, activeCwd(), (loginEvent) => {
@@ -310,6 +351,7 @@ if (!hasLock) {
 
   app.on("before-quit", () => {
     void runtime.stop();
+    sideTerminals.killAll();
   });
 
   app.on("window-all-closed", () => {

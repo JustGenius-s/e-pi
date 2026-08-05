@@ -11,21 +11,24 @@ import { cn } from "@/lib/utils";
 
 type SidebarState = "expanded" | "collapsed";
 
+type SidebarSide = "left" | "right";
+
 /** Drag-to-resize bounds for the sidebar rail (px). */
 const SIDEBAR_WIDTH_MIN = 256;
 const SIDEBAR_WIDTH_MAX = 520;
 const SIDEBAR_WIDTH_DEFAULT = 320;
 // v2: old key was bumped so previously saved test widths (which would
-// otherwise override the new default) are ignored.
+// otherwise override the new default) are ignored. Sidebars keep their own
+// key so left/right widths don't clobber each other.
 const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width-v2";
 
 const clampSidebarWidth = (width: number) => Math.min(SIDEBAR_WIDTH_MAX, Math.max(SIDEBAR_WIDTH_MIN, width));
 
-function readSavedSidebarWidth(): number {
+function readSavedSidebarWidth(storageKey: string): number {
   try {
     // getItem returns null when the key is absent — Number(null) is 0, which
     // would clamp to the minimum. Only accept real stored values.
-    const saved = window.localStorage.getItem(SIDEBAR_WIDTH_STORAGE_KEY);
+    const saved = window.localStorage.getItem(storageKey);
     if (saved !== null) {
       const parsed = Number(saved);
       if (Number.isFinite(parsed)) return clampSidebarWidth(parsed);
@@ -41,6 +44,7 @@ interface SidebarContextValue {
   setOpen: (open: boolean) => void;
   toggleSidebar: () => void;
   state: SidebarState;
+  side: SidebarSide;
   /** Current target sidebar width in px (what --sidebar-width resolves to). */
   getWidth: () => number;
   /**
@@ -62,6 +66,8 @@ function SidebarProvider({
   open: openProp,
   defaultOpen = true,
   onOpenChange,
+  side = "left",
+  storageKey = SIDEBAR_WIDTH_STORAGE_KEY,
   className,
   style,
   children,
@@ -70,6 +76,9 @@ function SidebarProvider({
   open?: boolean;
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  side?: SidebarSide;
+  /** LocalStorage key for the persisted width; per-side keys avoid clobbering. */
+  storageKey?: string;
 }) {
   const [openState, setOpenState] = React.useState(defaultOpen);
   const open = openProp ?? openState;
@@ -83,31 +92,34 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => setOpen(!open), [open, setOpen]);
   const state: SidebarState = open ? "expanded" : "collapsed";
 
-  const [width, setWidth] = React.useState(readSavedSidebarWidth);
+  const [width, setWidth] = React.useState(() => readSavedSidebarWidth(storageKey));
   const widthRef = React.useRef(width);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const getWidth = React.useCallback(() => widthRef.current, []);
-  const applyWidth = React.useCallback((next: number, persist: boolean) => {
-    const clamped = clampSidebarWidth(next);
-    widthRef.current = clamped;
-    // Live drags mutate the CSS variable directly so React never re-renders
-    // per pointermove (the wrapper re-renders often; a stale style prop would
-    // otherwise reset the width mid-drag, but React only writes style props
-    // that actually changed, so the direct mutation survives until commit).
-    wrapperRef.current?.style.setProperty("--sidebar-width", `${clamped}px`);
-    if (persist) {
-      setWidth(clamped);
-      try {
-        window.localStorage.setItem(SIDEBAR_WIDTH_STORAGE_KEY, String(Math.round(clamped)));
-      } catch {
-        // Storage unavailable — width just won't survive a restart.
+  const applyWidth = React.useCallback(
+    (next: number, persist: boolean) => {
+      const clamped = clampSidebarWidth(next);
+      widthRef.current = clamped;
+      // Live drags mutate the CSS variable directly so React never re-renders
+      // per pointermove (the wrapper re-renders often; a stale style prop would
+      // otherwise reset the width mid-drag, but React only writes style props
+      // that actually changed, so the direct mutation survives until commit).
+      wrapperRef.current?.style.setProperty("--sidebar-width", `${clamped}px`);
+      if (persist) {
+        setWidth(clamped);
+        try {
+          window.localStorage.setItem(storageKey, String(Math.round(clamped)));
+        } catch {
+          // Storage unavailable — width just won't survive a restart.
+        }
       }
-    }
-  }, []);
+    },
+    [storageKey],
+  );
 
   const contextValue = React.useMemo(
-    () => ({ open, setOpen, toggleSidebar, state, getWidth, applyWidth }),
-    [open, setOpen, toggleSidebar, state, getWidth, applyWidth],
+    () => ({ open, setOpen, toggleSidebar, state, side, getWidth, applyWidth }),
+    [open, setOpen, toggleSidebar, state, side, getWidth, applyWidth],
   );
 
   return (
@@ -192,11 +204,13 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
 }
 
 function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"button">) {
-  const { state, setOpen, toggleSidebar, getWidth, applyWidth } = useSidebar();
+  const { state, side, setOpen, toggleSidebar, getWidth, applyWidth } = useSidebar();
   const [resizing, setResizing] = React.useState(false);
   const drag = React.useRef<{ startX: number; startWidth: number; moved: number } | undefined>(undefined);
   /** A real drag must not also fire the click-to-toggle. */
   const suppressClick = React.useRef(false);
+  /** Dragging the right edge of a left sidebar widens it; mirrored for right. */
+  const direction = side === "right" ? -1 : 1;
 
   return (
     <button
@@ -224,7 +238,7 @@ function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"but
         if (!active) return;
         const delta = event.clientX - active.startX;
         active.moved = Math.max(active.moved, Math.abs(delta));
-        applyWidth(active.startWidth + delta, false);
+        applyWidth(active.startWidth + delta * direction, false);
       }}
       onPointerUp={(event) => {
         const active = drag.current;
@@ -237,7 +251,7 @@ function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"but
         // Commit the final width to React state and localStorage so it
         // survives re-renders and restarts.
         if (active.moved >= 1) {
-          applyWidth(active.startWidth + (event.clientX - active.startX), true);
+          applyWidth(active.startWidth + (event.clientX - active.startX) * direction, true);
         }
         suppressClick.current = active.moved >= 4;
       }}

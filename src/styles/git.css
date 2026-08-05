@@ -1,0 +1,545 @@
+/* Right-hand tool panel: file list, diff, commit message editor, actions. */
+
+.tool-panel-body {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--background);
+}
+
+/* --- Review meta (branch info above the file list) --- */
+
+.git-review-meta {
+  display: flex;
+  min-height: 30px;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  font-size: 10.5px;
+}
+
+.git-review-meta strong {
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 11.5px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-review-meta span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-review-meta em {
+  flex: 0 0 auto;
+  padding-left: 5px;
+  color: var(--chart-1);
+  border-left: 1px solid var(--border);
+  font-style: normal;
+}
+
+/* --- View bottom bar (back to list, refresh) --- */
+
+.tool-view-bar {
+  display: flex;
+  min-height: 32px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 8px 0 10px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklch, var(--card) 90%, var(--foreground));
+}
+
+.tool-view-bar-back {
+  display: inline-flex;
+  min-height: 24px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font: inherit;
+  font-size: 10.5px;
+  cursor: pointer;
+}
+
+.tool-view-bar-back:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+/* no-drag lives on a wrapper div, not the <button> itself: Electron's
+   -webkit-app-region handling is unreliable on native button elements. */
+.topbar-panel-toggle {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-git-toggle[data-slot="button"] {
+  color: var(--muted-foreground);
+  border-radius: 7px;
+}
+.topbar-git-toggle[data-slot="button"]:hover {
+  color: var(--foreground);
+}
+.topbar-git-toggle[data-slot="button"].active {
+  color: var(--primary);
+  background: color-mix(in oklch, var(--primary) 10%, transparent);
+}
+
+.git-error {
+  flex: 0 0 auto;
+  padding: 7px 12px;
+  color: var(--destructive);
+  border-bottom: 1px solid color-mix(in oklch, var(--destructive) 30%, transparent);
+  background: color-mix(in oklch, var(--destructive) 10%, transparent);
+  font-size: 10.5px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* --- File list --- */
+
+.git-file-list {
+  min-height: 90px;
+  max-height: 32%;
+  flex: 0 0 auto;
+  overflow-y: auto;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+
+.git-file {
+  display: grid;
+  grid-template-columns: 20px minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 2px;
+  min-height: 26px;
+  padding: 0 10px 0 6px;
+  font-size: 11px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.git-file:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.git-file.selected {
+  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+}
+
+.git-file-stage {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.git-file-stage:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+.git-file-stage-staged {
+  color: var(--primary);
+}
+
+.git-file-stage-untracked {
+  color: var(--chart-2);
+}
+
+.git-file-stage-conflict {
+  color: var(--destructive);
+}
+
+.git-file-name {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-file-dir {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-empty {
+  padding: 18px 12px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* --- Diff --- */
+
+.git-diff-wrap {
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: auto;
+  background: color-mix(in oklch, var(--background) 92%, var(--foreground));
+  scrollbar-width: thin;
+}
+
+.git-diff {
+  padding: 6px 0;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.git-diff > div {
+  padding: 0 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.git-diff-meta {
+  color: var(--muted-foreground);
+}
+
+.git-diff-hunk {
+  color: var(--chart-2);
+}
+
+.git-diff-add {
+  color: oklch(0.72 0.18 152);
+  background: color-mix(in oklch, oklch(0.72 0.18 152) 9%, transparent);
+}
+
+.git-diff-del {
+  color: color-mix(in oklch, var(--destructive) 82%, var(--foreground));
+  background: color-mix(in oklch, var(--destructive) 11%, transparent);
+}
+
+.git-diff-truncated {
+  padding: 6px 10px;
+  color: var(--chart-1);
+  font-size: 10px;
+}
+
+.git-diff-empty {
+  padding: 20px 12px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  text-align: center;
+}
+
+/* --- Footer: message + actions --- */
+
+.git-panel-foot {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-top: 1px solid var(--border);
+  background: color-mix(in oklch, var(--card) 90%, var(--foreground));
+}
+
+.git-message-input[data-slot="textarea"] {
+  min-height: 64px;
+  max-height: 132px;
+  font-size: 11px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.git-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.git-actions [data-slot="button"] {
+  height: 27px;
+  gap: 5px;
+  padding: 0 9px;
+  font-size: 11px;
+}
+
+.git-actions [data-slot="button"]:last-child {
+  margin-left: auto;
+}
+
+.git-status-line {
+  min-height: 14px;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.git-notice {
+  color: var(--muted-foreground);
+}
+
+.git-busy {
+  color: var(--chart-2);
+  animation: git-busy-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes git-busy-pulse {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.git-empty-panel {
+  display: grid;
+  flex: 1 1 auto;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+
+/* --- Tool panel body (view container) --- */
+
+.git-panel-body {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* --- Launch pad (view list) --- */
+
+.tool-launch {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+}
+
+.tool-launch-cards {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+}
+
+.tool-launch-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 10px;
+  padding: 12px 14px;
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in oklch, var(--card) 85%, var(--foreground));
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 130ms ease,
+    background 130ms ease,
+    transform 130ms ease;
+}
+
+.tool-launch-card:hover {
+  border-color: color-mix(in oklch, var(--foreground) 30%, var(--border));
+  background: color-mix(in oklch, var(--card) 60%, var(--foreground));
+  transform: translateY(-1px);
+}
+
+.tool-launch-card > svg {
+  grid-row: 1 / 3;
+  color: var(--primary);
+}
+
+.tool-launch-card-title {
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.tool-launch-card-desc {
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+}
+
+/* --- File tree --- */
+
+.tool-file-tree {
+  min-height: 90px;
+  max-height: 46%;
+  flex: 0 0 auto;
+  overflow-y: auto;
+  padding: 4px 0;
+  border-bottom: 1px solid var(--border);
+  scrollbar-width: thin;
+}
+
+.tool-file-row {
+  display: flex;
+  width: 100%;
+  min-height: 25px;
+  align-items: center;
+  gap: 5px;
+  padding-right: 8px;
+  color: var(--foreground);
+  border: 0;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tool-file-row:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.tool-file-row.selected {
+  background: color-mix(in oklch, var(--foreground) 9%, transparent);
+}
+
+.tool-file-chevron {
+  display: grid;
+  width: 14px;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--muted-foreground);
+}
+
+.tool-file-chevron svg {
+  transition: transform 120ms ease;
+}
+
+.tool-file-chevron svg.rotated {
+  transform: rotate(90deg);
+}
+
+.tool-file-dir-icon {
+  flex: 0 0 auto;
+  color: var(--chart-2);
+}
+
+.tool-file-file-icon {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+
+.tool-file-name {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-file-size {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.tool-file-loading,
+.tool-file-error {
+  padding: 3px 8px 3px 32px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+}
+
+.tool-file-error {
+  color: var(--destructive);
+}
+
+.tool-file-preview {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+  background: color-mix(in oklch, var(--background) 92%, var(--foreground));
+}
+
+.tool-file-preview-head {
+  flex: 0 0 auto;
+  padding: 6px 10px;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+}
+
+.tool-file-preview-content {
+  min-height: 0;
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.55;
+  white-space: pre;
+  scrollbar-width: thin;
+}
+
+.tool-file-preview-empty {
+  display: grid;
+  flex: 1 1 auto;
+  place-items: center;
+  padding: 20px;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  text-align: center;
+}
+
+/* --- Embedded terminal --- */
+
+.tool-terminal-host {
+  min-height: 0;
+  flex: 1 1 auto;
+  padding: 8px 10px;
+  overflow: hidden;
+  user-select: text;
+}
+
+.tool-terminal-host .xterm {
+  height: 100%;
+}
+
+.tool-terminal-host .xterm-viewport {
+  scrollbar-color: var(--input) transparent;
+}

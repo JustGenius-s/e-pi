@@ -9,7 +9,8 @@ import { PackagePanel } from "./components/PackagePanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SkillPanel } from "./components/SkillPanel";
 import { clearTerminalBuffer, TerminalPanel } from "./components/TerminalPanel";
-import { SidebarInset, SidebarProvider } from "./components/ui/sidebar";
+import { ToolPanel } from "./components/ToolPanel";
+import { SidebarInset, SidebarProvider, SidebarRail, Sidebar } from "./components/ui/sidebar";
 import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
 
 export function App() {
@@ -26,6 +27,7 @@ export function App() {
   const [renameName, setRenameName] = useState("");
   const [removeTarget, setRemoveTarget] = useState<SessionSummary>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(true);
 
   const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;
@@ -95,6 +97,10 @@ export function App() {
       }
       if (event.key === "Escape" && packageOpen) setPackageOpen(false);
       if (event.key === "Escape" && skillOpen) setSkillOpen(false);
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g") {
+        event.preventDefault();
+        setPanelOpen((current) => !current);
+      }
     };
     window.addEventListener("keydown", listener);
     return () => window.removeEventListener("keydown", listener);
@@ -214,7 +220,11 @@ export function App() {
   return (
     <div className="app-shell" data-modal-open={modalOpen ? "" : undefined}>
       <SidebarProvider className="app-content">
-        <AppHeader activeSession={activeSession} />
+        <AppHeader
+          activeSession={activeSession}
+          panelOpen={panelOpen}
+          onTogglePanel={() => setPanelOpen((current) => !current)}
+        />
 
         <div className="app-main">
           <SessionSidebar
@@ -235,6 +245,7 @@ export function App() {
           />
 
           <SidebarInset className="workspace">
+            {" "}
             <div className="terminal-frame">
               {loading ? (
                 <div className="workspace-empty">
@@ -253,7 +264,6 @@ export function App() {
                 </div>
               )}
             </div>
-
             {error ? (
               <div className="runtime-error" role="alert">
                 <X size={14} />
@@ -263,7 +273,6 @@ export function App() {
                 </IconButton>
               </div>
             ) : null}
-
             <Composer
               sessionPath={activePath}
               status={runtimeState?.status ?? "idle"}
@@ -284,6 +293,18 @@ export function App() {
               onInterrupt={() => activePath && window.ePi.runtime.interrupt(activePath)}
             />
           </SidebarInset>
+          <SidebarProvider
+            side="right"
+            storageKey="tool-panel-width-v2"
+            open={panelOpen}
+            onOpenChange={setPanelOpen}
+            className="tool-panel-layout"
+          >
+            <Sidebar side="right" collapsible="offcanvas" className="tool-panel-sidebar">
+              <ToolPanel cwd={activeCwd} />
+            </Sidebar>
+            <SidebarRail />
+          </SidebarProvider>
         </div>
       </SidebarProvider>
 
