@@ -1,4 +1,5 @@
 import {
+  BadgePlus,
   FilePlus,
   Folder,
   FolderOpen,
@@ -8,10 +9,9 @@ import {
   Plus,
   Settings2,
   Sparkles,
-  SquarePen,
   Sun,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
 import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
 import { useTheme } from "../lib/theme";
@@ -168,6 +168,23 @@ interface CollapsedProjectFlyoutProps {
   onCreate: (cwd: string) => void;
 }
 
+/** Mid-tone hues for project avatars; the square tints them per theme. */
+const PROJECT_AVATAR_COLORS = [
+  "oklch(0.66 0.17 25)",
+  "oklch(0.65 0.15 120)",
+  "oklch(0.62 0.18 240)",
+  "oklch(0.6 0.2 300)",
+  "oklch(0.68 0.14 85)",
+  "oklch(0.6 0.15 180)",
+] as const;
+
+/** Deterministic per-project color (stable across renders/sessions). */
+function projectAvatarColor(cwd: string): string {
+  let hash = 0;
+  for (let i = 0; i < cwd.length; i++) hash = (hash * 31 + cwd.charCodeAt(i)) >>> 0;
+  return PROJECT_AVATAR_COLORS[hash % PROJECT_AVATAR_COLORS.length];
+}
+
 /** Menu items shared by the group-header "+" and the collapsed footer button. */
 function NewSessionMenuItems({ onNewSession, onNewProject }: { onNewSession: () => void; onNewProject: () => void }) {
   return (
@@ -204,12 +221,15 @@ function CollapsedProjectFlyout({
 }: CollapsedProjectFlyoutProps) {
   const [open, setOpen] = useState(false);
   const active = project.sessions.some((session) => session.path === activeSessionPath);
+  const avatarStyle = { "--avatar-color": projectAvatarColor(project.cwd) } as CSSProperties;
   return (
     <HoverCard open={open} onOpenChange={setOpen} openDelay={120} closeDelay={60}>
       <HoverCardTrigger asChild>
         {/* No tooltip prop: the flyout itself carries the project label. */}
         <SidebarMenuButton className="collapsed-project-button" isActive={active} aria-label={label} onClick={onExpand}>
-          <Folder />
+          <span className="project-avatar" style={avatarStyle} aria-hidden="true">
+            {label.charAt(0).toUpperCase()}
+          </span>
         </SidebarMenuButton>
       </HoverCardTrigger>
       <HoverCardContent side="right" sideOffset={10} align="start" className="project-flyout">
@@ -380,7 +400,7 @@ export function SessionSidebar({
                         tooltip="New session or project"
                         aria-label="New session or project"
                       >
-                        <SquarePen />
+                        <BadgePlus />
                       </SidebarMenuButton>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-[11rem]">
