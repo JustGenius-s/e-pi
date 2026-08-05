@@ -366,8 +366,7 @@ export function Composer({
           // candidate instead of sending. composingRef is the primary signal
           // (covers macOS, where the commit-Enter arrives after compositionend
           // with isComposing false); isComposing/keyCode 229 are fallbacks.
-          const composing =
-            composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+          const composing = composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
           if (event.key === "Enter" && !event.shiftKey && !composing) {
             event.preventDefault();
             void submit();
