@@ -9,7 +9,8 @@ import { PackagePanel } from "./components/PackagePanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SkillPanel } from "./components/SkillPanel";
 import { clearTerminalBuffer, TerminalPanel } from "./components/TerminalPanel";
-import { ToolPanel } from "./components/ToolPanel";
+import { PANEL_VIEWS, ToolPanel } from "./components/ToolPanel";
+import type { PanelView } from "./components/ToolPanel";
 import { SidebarInset, SidebarProvider, SidebarRail, Sidebar } from "./components/ui/sidebar";
 import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
 
@@ -28,6 +29,7 @@ export function App() {
   const [removeTarget, setRemoveTarget] = useState<SessionSummary>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  const [panelView, setPanelView] = useState<PanelView>();
 
   const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;
@@ -100,6 +102,15 @@ export function App() {
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g") {
         event.preventDefault();
         setPanelOpen((current) => !current);
+      }
+      if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) {
+        const index = Number(event.key) - 1;
+        const target = PANEL_VIEWS[index];
+        if (target) {
+          event.preventDefault();
+          setPanelOpen(true);
+          setPanelView(target);
+        }
       }
     };
     window.addEventListener("keydown", listener);
@@ -301,7 +312,7 @@ export function App() {
             className="tool-panel-layout"
           >
             <Sidebar side="right" collapsible="offcanvas" className="tool-panel-sidebar">
-              <ToolPanel cwd={activeCwd} />
+              <ToolPanel cwd={activeCwd} view={panelView} onViewChange={setPanelView} platform={appInfo?.platform} />
             </Sidebar>
             <SidebarRail />
           </SidebarProvider>

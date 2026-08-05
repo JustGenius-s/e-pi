@@ -343,56 +343,40 @@
   min-height: 0;
   flex: 1 1 auto;
   flex-direction: column;
-  align-items: center;
   justify-content: center;
-  gap: 14px;
-  padding: 24px;
+  gap: 2px;
+  padding: 12px;
 }
 
-.tool-launch-cards {
-  display: grid;
-  width: 100%;
-  gap: 10px;
-}
-
-.tool-launch-card {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  grid-template-rows: auto auto;
+.tool-launch-item {
+  display: flex;
   align-items: center;
-  column-gap: 10px;
-  padding: 12px 14px;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
   color: var(--foreground);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: color-mix(in oklch, var(--card) 85%, var(--foreground));
+  font: inherit;
   text-align: left;
   cursor: pointer;
-  transition:
-    border-color 130ms ease,
-    background 130ms ease,
-    transform 130ms ease;
+  transition: background 130ms ease;
 }
 
-.tool-launch-card:hover {
-  border-color: color-mix(in oklch, var(--foreground) 30%, var(--border));
-  background: color-mix(in oklch, var(--card) 60%, var(--foreground));
-  transform: translateY(-1px);
+.tool-launch-item:hover {
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
 }
 
-.tool-launch-card > svg {
-  grid-row: 1 / 3;
+.tool-launch-item > svg {
+  flex: 0 0 auto;
   color: var(--primary);
 }
 
-.tool-launch-card-title {
+.tool-launch-item-title {
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 13px;
-  font-weight: 650;
-}
-
-.tool-launch-card-desc {
-  color: var(--muted-foreground);
-  font-size: 10.5px;
 }
 
 /* --- File tree --- */
