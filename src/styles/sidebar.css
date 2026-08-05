@@ -472,8 +472,79 @@
 .sidebar-root[data-state="collapsed"] .sidebar-menu-button > span,
 .sidebar-root[data-state="collapsed"] .sidebar-menu-button > time,
 .sidebar-root[data-state="collapsed"] .sidebar-theme-toggle,
-.sidebar-root[data-state="collapsed"] .project-header {
+.sidebar-root[data-state="collapsed"] .project-header,
+.sidebar-root[data-state="collapsed"] .project-sessions,
+.sidebar-root[data-state="collapsed"] .sidebar-empty {
   display: none;
+}
+
+/* Collapsed-mode project folder buttons: the standard menu-button styles
+   (icon-only, centered) apply; active project gets the accent highlight. */
+
+/* Hover flyout listing a project's sessions (collapsed mode). */
+.project-flyout {
+  width: 230px;
+  padding: 6px;
+}
+
+.project-flyout-title {
+  padding: 2px 8px 6px;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-flyout-sessions {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: 2px;
+  list-style: none;
+}
+
+.project-flyout-session {
+  display: grid;
+  width: 100%;
+  min-height: 30px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--popover-foreground);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: default;
+  transition: background-color 120ms ease;
+}
+
+.project-flyout-session:hover,
+.project-flyout-session[data-active="true"] {
+  background: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.project-flyout-session time {
+  color: var(--muted-foreground);
+  font-size: 9px;
+}
+
+.project-flyout-session[data-active="true"] time {
+  color: inherit;
+}
+
+.project-flyout-session-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sidebar-root[data-state="collapsed"] .sidebar-group,
