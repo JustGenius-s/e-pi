@@ -30,6 +30,7 @@ import { PiRuntime } from "./services/pi-runtime";
 import { SessionService } from "./services/session-service";
 import { SideTerminalService } from "./services/side-terminal-service";
 import { SkillService } from "./services/skill-service";
+import { ensureNpmOnPath } from "./npm-path";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const runtime = new PiRuntime();
@@ -353,7 +354,14 @@ if (!hasLock) {
 
   app.whenReady().then(() => {
     resetDebugLog();
-    debugLog("app started", { version: app.getVersion(), platform: process.platform });
+    // Packaged apps may miss npm on PATH (spawn npm ENOENT) — resolve it
+    // before any package operation can run.
+    const npmDir = ensureNpmOnPath();
+    debugLog("app started", {
+      version: app.getVersion(),
+      platform: process.platform,
+      ...(npmDir ? { npm: npmDir } : {}),
+    });
     registerHandlers();
     void cleanupStalePastedImages();
     createWindow();

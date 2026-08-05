@@ -178,10 +178,8 @@ export class PackageService {
     const source = normalizePackageSource(request.source);
     const manager = this.#manager(request.cwd);
     try {
-      // No install-scope distinction anymore: install into both the project
-      // and the user (global) root so the package is available everywhere.
-      // Both calls are idempotent for already-configured scopes.
-      await manager.installAndPersist(source, { local: true });
+      // All installs target the user (global) scope — the drawer has no
+      // project-vs-global distinction, everything is installed globally.
       await manager.installAndPersist(source, { local: false });
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : String(reason);

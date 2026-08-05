@@ -14,7 +14,8 @@
     "format:check": "oxfmt --check .",
     "test": "vitest run",
     "build": "npm run typecheck && npm run test && electron-vite build",
-    "dist:mac": "npm run build && electron-builder --mac",
+    "fetch:node": "node scripts/fetch-node.mjs",
+    "dist:mac": "npm run fetch:node && npm run build && electron-builder --mac",
     "postinstall": "install-electron --no && electron-builder install-app-deps",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
@@ -78,12 +79,17 @@
     "files": [
       "out/**",
       "resources/**",
+      "!resources/node/**",
       "package.json"
     ],
     "extraResources": [
       {
         "from": "resources/e-pi-bridge.ts",
         "to": "e-pi-bridge.ts"
+      },
+      {
+        "from": "resources/node",
+        "to": "node"
       }
     ],
     "mac": {

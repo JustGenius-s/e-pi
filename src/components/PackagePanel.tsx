@@ -284,9 +284,9 @@ export const PackagePanel = memo(function PackagePanel({ open, cwd, onOpenChange
   // bare npm name so `npm:@scope/name` and `@scope/name` both line up.
   const installedNames = useMemo(() => new Set(packages.map((item) => item.source.replace(/^npm:/, ""))), [packages]);
 
-  // Installs always target both scopes now, so the same source appears once
-  // per scope; show a single row per package (project record wins, mirroring
-  // pi's project-over-global dedupe).
+  // Installs always target the user (global) scope; legacy project-scope
+  // entries can still coexist, so collapse the same source to one row
+  // (project record wins, mirroring pi's project-over-global dedupe).
   const displayPackages = useMemo(() => {
     const bySource = new Map<string, PackageRecord>();
     for (const item of packages) {

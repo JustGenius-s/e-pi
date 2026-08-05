@@ -36,6 +36,30 @@ function resolveBridgePath(): string {
   return join(app.getAppPath(), "resources", "e-pi-bridge.ts");
 }
 
+/**
+ * The binary that runs each session's pi process. Defaults to the bundled
+ * sidecar Node (`resources/node/bin/node`) — a plain Node binary with no
+ * app-bundle association. Spawning the Electron main binary
+ * (`process.execPath`) instead makes macOS treat the child as an app-shaped
+ * process it cannot register properly, so every new session pops a stray
+ * generic "exec" icon in the Dock. `PI_NODE_BINARY` overrides the choice;
+ * falls back to `process.execPath` when no Node sidecar is present.
+ */
+function resolveNodeBinary(): string {
+  const custom = process.env.PI_NODE_BINARY?.trim();
+  if (custom) return custom;
+  const candidates = [
+    // Packaged: E-Pi.app/Contents/Resources/node/bin/node
+    join(process.resourcesPath, "node", "bin", "node"),
+    // Dev: <repo>/resources/node/bin/node
+    join(app.getAppPath(), "resources", "node", "bin", "node"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return candidate;
+  }
+  return process.execPath;
+}
+
 function copyState(state: PiRuntimeState): PiRuntimeState {
   return { ...state };
 }
@@ -259,10 +283,9 @@ export class PiRuntime {
     });
 
     try {
-      const customNodeBinary = process.env.PI_NODE_BINARY?.trim();
-      const nodeBinary = customNodeBinary || process.execPath;
+      const nodeBinary = resolveNodeBinary();
       const args = [resolvePiEntry(), "--session", sessionPath, "--extension", resolveBridgePath()];
-      debugLog("[runtime] spawning pi", { args, cwd, sessionPath });
+      debugLog("[runtime] spawning pi", { nodeBinary, args, cwd, sessionPath });
 
       const child = spawn(nodeBinary, args, {
         name: "xterm-256color",
@@ -271,7 +294,9 @@ export class PiRuntime {
         cwd,
         env: {
           ...process.env,
-          ...(customNodeBinary ? {} : { ELECTRON_RUN_AS_NODE: "1" }),
+          // The Electron binary only runs as plain Node when this is set;
+          // the bundled sidecar Node is already plain Node.
+          ...(nodeBinary === process.execPath ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
           TERM: "xterm-256color",
           COLORTERM: "truecolor",
           E_PI: "true",
