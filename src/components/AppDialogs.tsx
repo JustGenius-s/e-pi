@@ -1,3 +1,5 @@
+import { useRef } from "react";
+
 import { sessionTitle } from "../lib/format";
 import type { AppInfo, SessionSummary } from "../types/contracts";
 import { ModelSettings } from "./ModelSettings";
@@ -15,6 +17,46 @@ import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
 import { Input } from "./ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+
+interface RenameInputProps {
+  value: string;
+  onChange: (name: string) => void;
+  onCommit: () => void;
+}
+
+/**
+ * Session-name field. Enter commits the rename unless an IME composition is
+ * in progress (e.g. Chinese pinyin candidate selection). Tracks the
+ * composition session ourselves because on macOS the committing Enter keydown
+ * can arrive *after* compositionend with isComposing already false; the
+ * deferred reset keeps the guard armed through that keydown (WebKit bug
+ * 165004, also observable in Electron).
+ */
+function RenameInput({ value, onChange, onCommit }: RenameInputProps) {
+  const composingRef = useRef(false);
+  return (
+    <Input
+      autoFocus
+      value={value}
+      aria-label="Session name"
+      onChange={(event) => onChange(event.target.value)}
+      onCompositionStart={() => {
+        composingRef.current = true;
+      }}
+      onCompositionEnd={() => {
+        window.setTimeout(() => {
+          composingRef.current = false;
+        }, 0);
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter") return;
+        if (composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+        event.preventDefault();
+        onCommit();
+      }}
+    />
+  );
+}
 
 interface AppDialogsProps {
   renameTarget?: SessionSummary;
@@ -51,18 +93,7 @@ export function AppDialogs({
             <DialogTitle>Rename session</DialogTitle>
             <DialogDescription>Give this session a short name so it is easier to find later.</DialogDescription>
           </DialogHeader>
-          <Input
-            autoFocus
-            value={renameName}
-            aria-label="Session name"
-            onChange={(event) => onRenameNameChange(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                onCommitRename();
-              }
-            }}
-          />
+          <RenameInput value={renameName} onChange={onRenameNameChange} onCommit={onCommitRename} />
           <DialogFooter>
             <Button variant="outline" onClick={onCloseRename}>
               Cancel

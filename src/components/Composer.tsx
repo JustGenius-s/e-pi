@@ -1,5 +1,5 @@
 import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square, X } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type {
   ContextUsageState,
@@ -100,6 +100,13 @@ export function Composer({
   const [selectedSkill, setSelectedSkill] = useState<SkillRecord>();
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  // Tracks the IME composition session ourselves: on macOS the Enter keydown
+  // that commits a composition can arrive *after* compositionend with
+  // isComposing already false (WebKit bug 165004, also observable in
+  // Electron). The ref is reset one tick after compositionend (see the
+  // textarea handler) so the commit-Enter is still swallowed, but a later
+  // send-Enter is not.
+  const composingRef = useRef(false);
   const busy = status === "starting" || status === "stopping" || submitting;
   const hasContent = Boolean(text.trim() || files.length > 0 || selectedSkill);
   const showStop = status === "running" && activity === "busy";
@@ -344,8 +351,24 @@ export function Composer({
             })
             .catch(() => undefined);
         }}
+        onCompositionStart={() => {
+          composingRef.current = true;
+        }}
+        onCompositionEnd={() => {
+          // Defer the reset one tick: the committing Enter keydown can arrive
+          // right after this with isComposing already false.
+          window.setTimeout(() => {
+            composingRef.current = false;
+          }, 0);
+        }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.shiftKey) {
+          // Enter during IME composition (e.g. Chinese pinyin) confirms the
+          // candidate instead of sending. composingRef is the primary signal
+          // (covers macOS, where the commit-Enter arrives after compositionend
+          // with isComposing false); isComposing/keyCode 229 are fallbacks.
+          const composing =
+            composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+          if (event.key === "Enter" && !event.shiftKey && !composing) {
             event.preventDefault();
             void submit();
           }
