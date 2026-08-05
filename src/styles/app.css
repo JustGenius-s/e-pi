@@ -13,3 +13,9 @@
 
 /* Tailwind v4 class-based dark variant (shadcn components use dark: utilities). */
 @custom-variant dark (&:is(.dark *));
+
+/* 全局滚动条：统一深色细条，避免未设样式的容器显示系统原生白色滚动条。 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--input) transparent;
+}

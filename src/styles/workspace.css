@@ -106,7 +106,6 @@
 }
 
 .terminal-panel .xterm-viewport {
-  scrollbar-color: var(--input) transparent;
 }
 
 .workspace-empty {

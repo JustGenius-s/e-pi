@@ -70,7 +70,6 @@
   min-height: 0;
   margin-top: 8px;
   overflow-y: auto;
-  scrollbar-color: var(--input) transparent;
 }
 
 .model-provider-row {
@@ -267,7 +266,6 @@
   min-height: 0;
   flex: 1;
   overflow-y: auto;
-  scrollbar-color: var(--input) transparent;
 }
 
 .model-row {
