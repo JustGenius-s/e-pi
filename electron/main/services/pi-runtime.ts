@@ -26,6 +26,20 @@ const ACTIVITY_SUFFIX = ".e-pi-activity.json";
 const READY_TIMEOUT_MS = 30_000;
 
 function resolvePiEntry(): string {
+  if (app.isPackaged) {
+    // The sidecar Node is plain Node — it cannot read the asar archive, so
+    // the pi CLI must be launched from the real files electron-builder
+    // unpacked to app.asar.unpacked (see build.asarUnpack in package.json).
+    return join(
+      process.resourcesPath,
+      "app.asar.unpacked",
+      "node_modules",
+      "@earendil-works",
+      "pi-coding-agent",
+      "dist",
+      "cli.js",
+    );
+  }
   const indexPath = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
   return join(dirname(indexPath), "cli.js");
 }

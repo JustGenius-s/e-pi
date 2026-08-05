@@ -7,7 +7,7 @@
  * machine (Finder-launched apps have no PATH to find npm anyway).
  *
  * Usage: npm run fetch:node          (uses the pinned LTS version)
- *        NODE_VERSION=v22.12.0 npm run fetch:node   (override)
+ * NODE_VERSION=v22.12.0 npm run fetch:node   (override)
  */
 import { execFileSync } from "node:child_process";
 import {
@@ -86,6 +86,10 @@ try {
   // npm CLI needs to stay inside lib/node_modules/npm (its internal `../lib`
   // requires are relative to it) — so ship shell/cmd launchers instead.
   cpSync(join(srcRoot, "lib", "node_modules", "npm"), join(TARGET, "lib", "node_modules", "npm"), { recursive: true });
+  // npm ships ~2.5MB of docs/man pages the packaged app never shows.
+  for (const dir of ["docs", "man"]) {
+    rmSync(join(TARGET, "lib", "node_modules", "npm", dir), { recursive: true, force: true });
+  }
   writeLaunchers(TARGET);
   chmodSync(join(TARGET, "bin", "node"), 0o755);
 
@@ -97,10 +101,7 @@ try {
 
 /** Keep the generated folder self-documenting (the whole dir is git-ignored). */
 function writeMetaFiles(target) {
-  writeFileSync(
-    join(target, ".gitignore"),
-    "*\n!.gitignore\n!README.md\n",
-  );
+  writeFileSync(join(target, ".gitignore"), "*\n!.gitignore\n!README.md\n");
   writeFileSync(
     join(target, "README.md"),
     "# Bundled Node.js runtime\n\n" +
@@ -114,7 +115,7 @@ function writeMetaFiles(target) {
 function writeLaunchers(target) {
   if (process.platform === "win32") {
     // Windows can't run shebang shims; node.exe is the binary.
-    const body = "@echo off\r\nset DIR=%~dp0\r\n\"%DIR%node.exe\" \"%DIR%lib\\node_modules\\npm\\bin\\npm-cli.js\" %*\r\n";
+    const body = '@echo off\r\nset DIR=%~dp0\r\n"%DIR%node.exe" "%DIR%lib\\node_modules\\npm\\bin\\npm-cli.js" %*\r\n';
     writeFileSync(join(target, "bin", "npm.cmd"), body);
     writeFileSync(join(target, "bin", "npx.cmd"), body.replace("npm-cli.js", "npx-cli.js"));
     return;
