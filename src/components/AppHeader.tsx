@@ -17,6 +17,10 @@ export function AppHeader({ activeSession, panelOpen, onTogglePanel }: AppHeader
       <div className="window-drag-region" />
       <div className="brand-lockup">
         <SidebarTrigger />
+        <div className="brand-mark-lockup" aria-label="E-Pi">
+          <img className="brand-mark" src="./e-pi-mark.svg" alt="" aria-hidden="true" />
+          <span className="brand-name">E-Pi</span>
+        </div>
       </div>
       <div className="topbar-actions">
         <div className="workspace-title">
