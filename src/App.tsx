@@ -27,6 +27,11 @@ export function App() {
   const [renameTarget, setRenameTarget] = useState<SessionSummary>();
   const [renameName, setRenameName] = useState("");
   const [removeTarget, setRemoveTarget] = useState<SessionSummary>();
+  /**
+   * Session created by this window session; its terminal gets focus so interactive prompts (e.g. project trust) are
+   * immediately answerable.
+   */
+  const [justCreatedPath, setJustCreatedPath] = useState<string>();
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   /** Open tool-panel tabs plus the active one; review is a singleton. */
@@ -124,14 +129,27 @@ export function App() {
     try {
       const session = await window.ePi.sessions.create({ cwd: targetCwd });
       window.ePi.app.log(`[app] createSession created=${session.path} cwd=${session.cwd}`);
-      setSessions((current) => [session, ...current]);
       setActivePath(session.path);
+      setJustCreatedPath(session.path);
+      // Re-sort from the source of truth instead of blind-prepending: background
+      // agent activity can change other sessions' recency since the last list,
+      // and a stale prepend would leave the sidebar in the wrong order until the
+      // next refresh (visible as a second jump).
+      await refreshSessions();
       await activate(session.path);
       return session;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
       return undefined;
     }
+  };
+
+  /** New project: ask the user for a folder, then start a session inside it. */
+  const createProjectSession = async (): Promise<void> => {
+    setError(undefined);
+    const cwd = await window.ePi.app.chooseDirectory(appInfo?.defaultCwd);
+    if (!cwd) return;
+    await createSession(cwd);
   };
 
   const selectSession = (session: SessionSummary) => {
@@ -278,6 +296,7 @@ export function App() {
             platform={appInfo?.platform}
             onSelect={selectSession}
             onCreate={createSession}
+            onCreateProject={() => void createProjectSession()}
             onRename={(session) => void renameSession(session)}
             onRemove={(session) => void removeSession(session)}
             onOpenFolder={(cwd) => void window.ePi.app.openPath(cwd)}
@@ -296,7 +315,10 @@ export function App() {
                   <div className="skeleton-line" />
                 </div>
               ) : activeSession ? (
-                <TerminalPanel sessionKey={activeSession.path} />
+                <TerminalPanel
+                  sessionKey={activeSession.path}
+                  autoFocus={activePath === justCreatedPath && runtimeState?.status === "starting"}
+                />
               ) : (
                 <div className="workspace-empty">
                   <div className="empty-terminal-icon">

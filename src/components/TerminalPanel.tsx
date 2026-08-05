@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 
 interface TerminalPanelProps {
   sessionKey: string;
+  /** Focus the terminal while it is interactive (e.g. a trust prompt on a freshly created session). */
+  autoFocus?: boolean;
 }
 
 /**
@@ -63,7 +65,7 @@ function ensureBufferFeeder(): void {
   window.ePi.runtime.onAnyData((sessionPath, data) => appendTerminalBuffer(sessionPath, data));
 }
 
-export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
+export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitTimerRef = useRef<number | undefined>(undefined);
@@ -208,6 +210,10 @@ export function TerminalPanel({ sessionKey }: TerminalPanelProps) {
       terminal.dispose();
     };
   }, [sessionKey]);
+
+  useEffect(() => {
+    if (autoFocus) terminalRef.current?.focus();
+  }, [autoFocus]);
 
   return (
     <>

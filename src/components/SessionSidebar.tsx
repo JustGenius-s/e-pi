@@ -1,4 +1,4 @@
-import { Folder, FolderOpen, Package, Plus, Settings2, Sparkles } from "lucide-react";
+import { FilePlus, Folder, FolderOpen, FolderPlus, Package, Plus, Settings2, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
@@ -10,6 +10,13 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "./ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuShortcut,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import {
   Sidebar,
   SidebarContent,
@@ -33,6 +40,8 @@ interface SessionSidebarProps {
   platform?: NodeJS.Platform;
   onSelect: (session: SessionSummary) => void;
   onCreate: (cwd?: string) => void;
+  /** Pick a folder, then create a session inside it (new project). */
+  onCreateProject: () => void;
   onRename: (session: SessionSummary) => void;
   onRemove: (session: SessionSummary) => void;
   onOpenFolder: (cwd: string) => void;
@@ -141,6 +150,7 @@ export function SessionSidebar({
   platform,
   onSelect,
   onCreate,
+  onCreateProject,
   onRename,
   onRemove,
   onOpenFolder,
@@ -205,13 +215,25 @@ export function SessionSidebar({
         <SidebarGroup className="sidebar-session-group">
           <SidebarGroupLabel>
             Sessions
-            <SidebarGroupAction
-              onClick={() => onCreate(homeCwd)}
-              aria-label="New session in home directory"
-              title="New session in Home"
-            >
-              <Plus size={12} />
-            </SidebarGroupAction>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <SidebarGroupAction aria-label="New session or project" title="New session or project">
+                  <Plus size={12} />
+                </SidebarGroupAction>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-[11rem]">
+                <DropdownMenuItem onSelect={() => onCreate(homeCwd)}>
+                  <FilePlus size={14} />
+                  <span>新会话</span>
+                  <DropdownMenuShortcut>Home</DropdownMenuShortcut>
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => onCreateProject()}>
+                  <FolderPlus size={14} />
+                  <span>新项目</span>
+                  <DropdownMenuShortcut>选择文件夹</DropdownMenuShortcut>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </SidebarGroupLabel>
 
           <SidebarGroupContent>

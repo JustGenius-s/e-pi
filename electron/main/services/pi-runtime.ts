@@ -151,15 +151,22 @@ export class PiRuntime {
 
   write(sessionPath: string, data: string): void {
     const instance = this.#instances.get(sessionPath);
-    if (!instance || instance.state.status !== "running") {
-      debugLog("[runtime] write DROPPED (not running)", {
+    // Interactive prompts (e.g. the project-trust selector) appear while the
+    // runtime is still "starting" — before the bridge sidecar reports ready —
+    // so forward input as soon as the pty process exists.
+    if (
+      !instance ||
+      instance.process === undefined ||
+      (instance.state.status !== "starting" && instance.state.status !== "running")
+    ) {
+      debugLog("[runtime] write DROPPED", {
         sessionPath,
         status: instance?.state.status,
         len: data.length,
       });
       return;
     }
-    instance.process?.write(data);
+    instance.process.write(data);
   }
 
   submit(sessionPath: string, text: string): void {
@@ -184,8 +191,9 @@ export class PiRuntime {
 
   interrupt(sessionPath: string): void {
     const instance = this.#instances.get(sessionPath);
-    if (!instance || instance.state.status !== "running") return;
-    instance.process?.write("\x1b");
+    if (!instance || instance.process === undefined) return;
+    if (instance.state.status !== "starting" && instance.state.status !== "running") return;
+    instance.process.write("\x1b");
   }
 
   resize(sessionPath: string, { cols, rows }: ResizeTerminalRequest): void {
@@ -342,9 +350,12 @@ export class PiRuntime {
     const activityPath = join(dirname(instance.sessionPath), `${basename(instance.sessionPath)}${ACTIVITY_SUFFIX}`);
     await new Promise<void>((resolve, reject) => {
       let reading = false;
+      let timeout: NodeJS.Timeout | undefined;
+      let stopOutput: { dispose: () => void } | undefined;
       const finish = (error?: Error): void => {
+        stopOutput?.dispose();
         clearInterval(interval);
-        clearTimeout(timeout);
+        if (timeout) clearTimeout(timeout);
         if (error) reject(error);
         else resolve();
       };
@@ -366,10 +377,16 @@ export class PiRuntime {
           });
       };
       const interval = setInterval(check, 25);
-      const timeout = setTimeout(
-        () => finish(new Error("Pi terminal did not become ready in time.")),
-        READY_TIMEOUT_MS,
-      );
+      // Re-arm the deadline on output: interactive prompts (e.g. the project
+      // trust selector) render frames long before the bridge sidecar reports
+      // ready, so a hard timeout would kill the process while the user is
+      // still deciding.
+      stopOutput = child.onData((data) => {
+        if (data.length === 0) return;
+        if (timeout) clearTimeout(timeout);
+        timeout = setTimeout(() => finish(new Error("Pi terminal did not become ready in time.")), READY_TIMEOUT_MS);
+      });
+      timeout = setTimeout(() => finish(new Error("Pi terminal did not become ready in time.")), READY_TIMEOUT_MS);
       check();
     });
     debugLog("[runtime] terminal ready", { sessionPath: instance.sessionPath, pid: child.pid });
