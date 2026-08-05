@@ -2,7 +2,7 @@ import { ChevronRight, FileText, Folder, FolderOpen, RefreshCw } from "lucide-re
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { formatBytes } from "../lib/format";
-import type { FileContentResult, FileEntry } from "../types/contracts";
+import type { FileEntry } from "../types/contracts";
 import { IconButton } from "./IconButton";
 
 interface FileTreeViewProps {
@@ -20,13 +20,10 @@ function treeNode(entry: FileEntry): TreeNode {
   return { ...entry };
 }
 
-/** Lazy directory tree with a preview pane for files. */
+/** Lazy directory tree. */
 export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProps) {
   const [root, setRoot] = useState<TreeNode>();
   const [rootError, setRootError] = useState<string>();
-  const [selected, setSelected] = useState<string>();
-  const [preview, setPreview] = useState<FileContentResult>();
-  const [previewError, setPreviewError] = useState<string>();
   const loadingPaths = useRef(new Set<string>());
 
   const loadDir = useCallback(
@@ -46,48 +43,28 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   // Load the root directory.
   useEffect(() => {
     setRoot(undefined);
-    setSelected(undefined);
-    setPreview(undefined);
-    setPreviewError(undefined);
     setRootError(undefined);
     void loadDir(
       cwd,
       (entries) =>
-        setRoot({ name: cwd.split("/").pop() || cwd, path: cwd, type: "dir", children: entries.map(treeNode) }),
+        setRoot({
+          name: cwd.split("/").pop() || cwd,
+          path: cwd,
+          type: "dir",
+          expanded: true,
+          children: entries.map(treeNode),
+        }),
       setRootError,
     );
   }, [cwd, loadDir]);
 
-  // Load file preview when a file is selected.
-  useEffect(() => {
-    if (!selected) {
-      setPreview(undefined);
-      return;
-    }
-    let cancelled = false;
-    setPreview(undefined);
-    setPreviewError(undefined);
-    void window.ePi.fs
-      .readFile(cwd, selected)
-      .then((result) => {
-        if (!cancelled) setPreview(result);
-      })
-      .catch((reason: unknown) => {
-        if (!cancelled) setPreviewError(reason instanceof Error ? reason.message : String(reason));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [cwd, selected]);
-
   const toggle = (node: TreeNode) => {
-    if (node.type === "file") {
-      setSelected(node.path);
-      return;
-    }
+    if (node.type === "file") return;
     if (node.children) {
-      // Collapse; keep children cached so reopening is instant.
-      setRoot((current) => expandPath(current, node.path, false));
+      // Toggle: expand if collapsed, collapse if expanded; keep children
+      // cached so reopening is instant.
+      const willExpand = node.expanded !== true;
+      setRoot((current) => expandPath(current, node.path, willExpand));
       return;
     }
     // Lazy-load children.
@@ -102,12 +79,11 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   const renderTree = (node: TreeNode, depth: number): React.ReactNode => {
     const isDir = node.type === "dir";
     const expanded = isDir && node.expanded === true;
-    const isSelected = node.type === "file" && node.path === selected;
     return (
       <div key={node.path}>
         <button
           type="button"
-          className={`tool-file-row${isSelected ? " selected" : ""}`}
+          className="tool-file-row"
           style={{ paddingLeft: `${8 + depth * 12}px` }}
           onClick={() => toggle(node)}
         >
@@ -140,21 +116,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
       {rootError ? <div className="git-error">{rootError}</div> : null}
 
       {root ? (
-        <>
-          <div className="tool-file-tree">{renderTree(root, 0)}</div>
-          <div className="tool-file-preview">
-            {preview ? (
-              <>
-                <div className="tool-file-preview-head">{selected?.split("/").pop()}</div>
-                <pre className="tool-file-preview-content">{preview.content}</pre>
-              </>
-            ) : previewError ? (
-              <div className="tool-file-preview-empty">{previewError}</div>
-            ) : (
-              <div className="tool-file-preview-empty">选择一个文件查看内容</div>
-            )}
-          </div>
-        </>
+        <div className="tool-file-tree">{renderTree(root, 0)}</div>
       ) : (
         <div className="git-empty-panel">加载中…</div>
       )}
@@ -166,7 +128,13 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
             void loadDir(
               cwd,
               (entries) =>
-                setRoot({ name: cwd.split("/").pop() || cwd, path: cwd, type: "dir", children: entries.map(treeNode) }),
+                setRoot({
+                  name: cwd.split("/").pop() || cwd,
+                  path: cwd,
+                  type: "dir",
+                  expanded: true,
+                  children: entries.map(treeNode),
+                }),
               setRootError,
             );
           }}
