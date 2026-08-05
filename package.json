@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "E-Pi is a focused desktop shell for Pi sessions, packages, and terminal workflows.",
+  "author": "JustGenius",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
