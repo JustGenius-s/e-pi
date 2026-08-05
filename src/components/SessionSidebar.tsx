@@ -168,14 +168,14 @@ interface CollapsedProjectFlyoutProps {
   onCreate: (cwd: string) => void;
 }
 
-/** Mid-tone hues for project avatars; the square tints them per theme. */
+/** Mid-tone hues for project avatars; dark enough for white letters. */
 const PROJECT_AVATAR_COLORS = [
-  "oklch(0.66 0.17 25)",
-  "oklch(0.65 0.15 120)",
-  "oklch(0.62 0.18 240)",
-  "oklch(0.6 0.2 300)",
-  "oklch(0.68 0.14 85)",
-  "oklch(0.6 0.15 180)",
+  "oklch(0.58 0.17 25)",
+  "oklch(0.57 0.15 120)",
+  "oklch(0.56 0.18 240)",
+  "oklch(0.55 0.19 300)",
+  "oklch(0.6 0.14 85)",
+  "oklch(0.55 0.15 180)",
 ] as const;
 
 /** Deterministic per-project color (stable across renders/sessions). */

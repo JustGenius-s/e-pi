@@ -492,8 +492,9 @@
 /* Collapsed-mode project folder buttons: the standard menu-button styles
    (icon-only, centered) apply; active project gets the accent highlight. */
 
-/* Project letter avatar: first letter on a per-project colored square,
-   tinted against the sidebar so it reads in both themes. */
+/* Project letter avatar: first letter on a solid per-project colored
+   square, white text. Only the project containing the active session is
+   highlighted (menu-button active state); avatars themselves are neutral. */
 .project-avatar {
   display: grid;
   width: 26px;
@@ -504,8 +505,8 @@
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
-  color: color-mix(in oklch, var(--avatar-color) 85%, var(--sidebar-foreground));
-  background: color-mix(in oklch, var(--avatar-color) 28%, var(--sidebar));
+  color: #fff;
+  background: var(--avatar-color);
 }
 
 /* The collapsed-mode rule hides menu-button label spans; keep the avatar. */
