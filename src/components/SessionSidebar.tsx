@@ -160,6 +160,7 @@ function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
 interface CollapsedProjectFlyoutProps {
   project: ProjectGroup;
   label: string;
+  /** Marks the current session inside the flyout list. */
   activeSessionPath?: string;
   runtimeStates?: Record<string, PiRuntimeState>;
   onSelect: (session: SessionSummary) => void;
@@ -220,13 +221,12 @@ function CollapsedProjectFlyout({
   onCreate,
 }: CollapsedProjectFlyoutProps) {
   const [open, setOpen] = useState(false);
-  const active = project.sessions.some((session) => session.path === activeSessionPath);
   const avatarStyle = { "--avatar-color": projectAvatarColor(project.cwd) } as CSSProperties;
   return (
     <HoverCard open={open} onOpenChange={setOpen} openDelay={120} closeDelay={60}>
       <HoverCardTrigger asChild>
         {/* No tooltip prop: the flyout itself carries the project label. */}
-        <SidebarMenuButton className="collapsed-project-button" isActive={active} aria-label={label} onClick={onExpand}>
+        <SidebarMenuButton className="collapsed-project-button" aria-label={label} onClick={onExpand}>
           <span className="project-avatar" style={avatarStyle} aria-hidden="true">
             {label.charAt(0).toUpperCase()}
           </span>
