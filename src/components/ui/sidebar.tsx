@@ -207,12 +207,10 @@ function SidebarTrigger({ className, onClick, ...props }: React.ComponentProps<t
   );
 }
 
-function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"button">) {
-  const { state, side, setOpen, toggleSidebar, getWidth, applyWidth } = useSidebar();
+function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
+  const { state, side, setOpen, getWidth, applyWidth } = useSidebar();
   const [resizing, setResizing] = React.useState(false);
   const drag = React.useRef<{ startX: number; startWidth: number; moved: number } | undefined>(undefined);
-  /** A real drag must not also fire the click-to-toggle. */
-  const suppressClick = React.useRef(false);
   /** Dragging the right edge of a left sidebar widens it; mirrored for right. */
   const direction = side === "right" ? -1 : 1;
 
@@ -220,20 +218,16 @@ function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"but
     <button
       data-slot="sidebar-rail"
       data-resizing={resizing ? "true" : undefined}
-      aria-label="Toggle sidebar"
+      aria-label="调整侧边栏宽度"
       tabIndex={-1}
       onPointerDown={(event) => {
         if (event.button !== 0) return;
         event.preventDefault();
-        // Dragging the edge of a collapsed sidebar expands it first, like
-        // most IDEs, so the drag starts from the target (expanded) width.
-        if (state === "collapsed") setOpen(true);
         drag.current = {
           startX: event.clientX,
           startWidth: getWidth(),
           moved: 0,
         };
-        suppressClick.current = false;
         event.currentTarget.setPointerCapture(event.pointerId);
         setResizing(true);
       }}
@@ -242,6 +236,10 @@ function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"but
         if (!active) return;
         const delta = event.clientX - active.startX;
         active.moved = Math.max(active.moved, Math.abs(delta));
+        // Dragging the edge of a collapsed sidebar expands it first, like
+        // most IDEs, so the drag starts from the target (expanded) width.
+        // Only expand on real motion — a plain click must not toggle.
+        if (state === "collapsed") setOpen(true);
         applyWidth(active.startWidth + delta * direction, false);
       }}
       onPointerUp={(event) => {
@@ -257,20 +255,10 @@ function SidebarRail({ className, onClick, ...props }: React.ComponentProps<"but
         if (active.moved >= 1) {
           applyWidth(active.startWidth + (event.clientX - active.startX) * direction, true);
         }
-        suppressClick.current = active.moved >= 4;
       }}
       onPointerCancel={() => {
         drag.current = undefined;
         setResizing(false);
-      }}
-      onClick={(event) => {
-        if (suppressClick.current) {
-          suppressClick.current = false;
-          event.preventDefault();
-          return;
-        }
-        onClick?.(event);
-        if (!event.defaultPrevented) toggleSidebar();
       }}
       className={cn("sidebar-rail", className)}
       {...props}
