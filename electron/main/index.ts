@@ -220,6 +220,13 @@ function registerHandlers(): void {
     debugLog("[ipc] git:status", { cwd });
     return git.status(cwd || activeCwd());
   });
+  ipcMain.handle("git:watch-start", (_event, cwd: string) => {
+    const target = cwd || activeCwd();
+    void git.watch(target, (changedCwd) => sendToRenderer("git:changed", changedCwd));
+  });
+  ipcMain.handle("git:watch-stop", (_event, cwd: string) => {
+    git.unwatch(cwd || activeCwd());
+  });
   ipcMain.handle("git:diff", async (_event, cwd: string, path: string) => git.diff(cwd || activeCwd(), path));
   ipcMain.handle("git:stage", async (_event, cwd: string, paths: string[]) => git.stage(cwd || activeCwd(), paths));
   ipcMain.handle("git:unstage", async (_event, cwd: string, paths: string[]) => git.unstage(cwd || activeCwd(), paths));

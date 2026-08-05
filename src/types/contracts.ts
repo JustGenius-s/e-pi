@@ -437,6 +437,12 @@ export interface EPiApi {
     commit(cwd: string, message: string): Promise<GitOperationResult>;
     push(cwd: string): Promise<GitOperationResult>;
     pull(cwd: string): Promise<GitOperationResult>;
+    /** Start watching the repo at `cwd` for status-affecting changes. */
+    watchStart(cwd: string): Promise<void>;
+    /** Stop the watcher if it is watching `cwd`. */
+    watchStop(cwd: string): Promise<void>;
+    /** Subscribe to watcher fires; returns an unsubscribe function. */
+    onChanged(listener: (cwd: string) => void): () => void;
   };
   fs: {
     listDir(cwd: string, path: string): Promise<FileEntry[]>;

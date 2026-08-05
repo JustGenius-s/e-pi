@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { GitService } from "../electron/main/services/git-service";
+import { GitService, classifyWatchEvent } from "../electron/main/services/git-service";
 
 function run(repo: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
@@ -143,5 +143,30 @@ describe("GitService", () => {
 
   it("fails outside a git repository", async () => {
     await expect(service.status("/")).rejects.toThrow("Not a git repository");
+  });
+});
+
+describe("classifyWatchEvent", () => {
+  it("classifies working-tree changes as repo events", () => {
+    expect(classifyWatchEvent("src/a.ts")).toBe("repo");
+    expect(classifyWatchEvent("a.txt")).toBe("repo");
+    expect(classifyWatchEvent(".gitignore")).toBe("repo");
+    expect(classifyWatchEvent("")).toBe("repo");
+  });
+
+  it("ignores node_modules at any depth", () => {
+    expect(classifyWatchEvent("node_modules/x/index.js")).toBe("ignore");
+    expect(classifyWatchEvent("packages/app/node_modules/y")).toBe("ignore");
+  });
+
+  it("flags .git state changes but not .git internals", () => {
+    expect(classifyWatchEvent(".git/index")).toBe("git-state");
+    expect(classifyWatchEvent(".git/HEAD")).toBe("git-state");
+    expect(classifyWatchEvent(".git/refs/heads/main")).toBe("git-state");
+    expect(classifyWatchEvent(".git/refs/tags/v1.0")).toBe("git-state");
+    expect(classifyWatchEvent(".git/MERGE_HEAD")).toBe("git-state");
+    expect(classifyWatchEvent(".git/objects/ab/cdef")).toBe("ignore");
+    expect(classifyWatchEvent(".git/logs/HEAD")).toBe("ignore");
+    expect(classifyWatchEvent(".git/packed-refs")).toBe("ignore");
   });
 });

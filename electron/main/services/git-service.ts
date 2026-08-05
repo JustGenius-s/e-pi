@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { watch, type FSWatcher } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,31 @@ import type {
 } from "../../../src/types/contracts";
 
 const execFileAsync = promisify(execFile);
+
+/**
+ * Classify a relative fs.watch event path under the repo root.
+ *
+ * - "repo": working-tree change (file created/edited/deleted) — refresh.
+ * - "git-state": a .git internals change that alters status (index, HEAD, refs, merge/FETCH/ORIG heads, config) — refresh
+ *   (with self-trigger guard).
+ * - "ignore": neither (node_modules, .git objects/logs/packfiles, …). ".gitignore" edits are repo changes (they affect
+ *   untracked filtering).
+ */
+export function classifyWatchEvent(relativePath: string): "repo" | "git-state" | "ignore" {
+  const rel = relativePath.replace(/\\/g, "/");
+  if (rel === "") return "repo";
+  const segments = rel.split("/");
+  if (segments[0] === ".gitignore") return "repo";
+  if (segments[0] !== ".git") {
+    return segments.some((segment) => segment === "node_modules") ? "ignore" : "repo";
+  }
+  // Under .git: only index/HEAD/refs/merge-ish heads/config change status.
+  const rest = segments.slice(1).join("/");
+  if (rest === "") return "git-state";
+  if (/^(index|HEAD|FETCH_HEAD|ORIG_HEAD|MERGE_HEAD|CHERRY_PICK_HEAD|config)$/.test(rest)) return "git-state";
+  if (/^refs(\/|$)/.test(rest)) return "git-state";
+  return "ignore";
+}
 
 interface ExecResult {
   stdout: string;
@@ -196,6 +222,78 @@ async function diffForFile(cwd: string, entry: GitFileEntry): Promise<GitDiffRes
 }
 
 export class GitService {
+  #watcher: FSWatcher | undefined;
+  #watchedCwd: string | undefined;
+  #onChange: ((cwd: string) => void) | undefined;
+  #watchTimer: NodeJS.Timeout | undefined;
+  #watchFirstEvent = 0;
+  /** When the last `status()` finished; .git events shortly after are self-generated. */
+  #lastStatusAt = 0;
+
+  /**
+   * Start watching a repo for status-affecting changes. At most one repo is
+   * watched at a time; calling with a new cwd replaces the previous watch.
+   * Changes are debounced (trailing 600ms, hard 2s cap) and reported via
+   * `onChange(cwd)`. Watching is best-effort: if it fails, callers keep the
+   * existing agent-activity/action refreshes.
+   */
+  async watch(cwd: string, onChange: (cwd: string) => void): Promise<void> {
+    if (this.#watchedCwd === cwd && this.#onChange === onChange && this.#watcher) return;
+    this.unwatch();
+    this.#watchedCwd = cwd;
+    this.#onChange = onChange;
+    // Watch the repo root, not the session's subdir, so the whole repo and
+    // its .git are covered even when the workspace is a subdirectory.
+    const root = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
+    if (this.#watchedCwd !== cwd) return; // superseded by a newer watch()
+    const rootPath = root.code === 0 && root.stdout.trim() ? root.stdout.trim() : cwd;
+    try {
+      this.#watcher = watch(rootPath, { recursive: true }, (_event, filename) => {
+        this.#onWatchEvent(filename);
+      });
+    } catch {
+      this.#watcher = undefined;
+    }
+  }
+
+  unwatch(cwd?: string): void {
+    if (cwd !== undefined && cwd !== this.#watchedCwd) return;
+    if (this.#watchTimer) {
+      clearTimeout(this.#watchTimer);
+      this.#watchTimer = undefined;
+    }
+    this.#watcher?.close();
+    this.#watcher = undefined;
+    this.#watchedCwd = undefined;
+    this.#onChange = undefined;
+  }
+
+  #onWatchEvent(filename: string | null): void {
+    const kind = classifyWatchEvent(filename ?? "");
+    if (kind === "ignore") return;
+    // Our own refresh() runs git status, which can rewrite .git/index;
+    // ignore .git events shortly after a status to avoid a refresh loop.
+    if (kind === "git-state" && Date.now() - this.#lastStatusAt < 1_500) return;
+    this.#scheduleWatchFire();
+  }
+
+  /** Trailing debounce; keep refreshing during continuous changes (max ~2s apart). */
+  #scheduleWatchFire(): void {
+    const now = Date.now();
+    if (this.#watchFirstEvent === 0) this.#watchFirstEvent = now;
+    if (this.#watchTimer) clearTimeout(this.#watchTimer);
+    const elapsed = now - this.#watchFirstEvent;
+    const delay = elapsed >= 2_000 ? 0 : Math.max(600 - elapsed, 0);
+    this.#watchTimer = setTimeout(() => this.#fireWatch(), delay);
+  }
+
+  #fireWatch(): void {
+    this.#watchTimer = undefined;
+    this.#watchFirstEvent = 0;
+    const cwd = this.#watchedCwd;
+    if (cwd) this.#onChange?.(cwd);
+  }
+
   async status(cwd: string): Promise<GitStatus> {
     const root = await runGit(cwd, ["rev-parse", "--show-toplevel"]);
     if (root.code !== 0 || !root.stdout.trim()) {
@@ -218,6 +316,7 @@ export class GitService {
     }
     const numstat = await numstatForFiles(cwd, files);
 
+    this.#lastStatusAt = Date.now();
     return {
       repoRoot: root.stdout.trim(),
       branch,

@@ -133,6 +133,13 @@ const api: EPiApi = {
       ipcRenderer.invoke("git:commit", cwd, message) as Promise<GitOperationResult>,
     push: (cwd: string) => ipcRenderer.invoke("git:push", cwd) as Promise<GitOperationResult>,
     pull: (cwd: string) => ipcRenderer.invoke("git:pull", cwd) as Promise<GitOperationResult>,
+    watchStart: (cwd: string) => ipcRenderer.invoke("git:watch-start", cwd) as Promise<void>,
+    watchStop: (cwd: string) => ipcRenderer.invoke("git:watch-stop", cwd) as Promise<void>,
+    onChanged: (listener: (cwd: string) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, cwd: string): void => listener(cwd);
+      ipcRenderer.on("git:changed", handler);
+      return () => ipcRenderer.removeListener("git:changed", handler);
+    },
   },
   fs: {
     listDir: (cwd: string, path: string) => ipcRenderer.invoke("fs:list-dir", cwd, path) as Promise<FileEntry[]>,

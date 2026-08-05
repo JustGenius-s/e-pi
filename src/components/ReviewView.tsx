@@ -243,6 +243,22 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
     });
   }, [cwd, refresh]);
 
+  // Watch the repo for status-affecting changes (main process debounces and
+  // pushes an event): external edits and terminal git commands now refresh
+  // the panel in near real-time, not just agent activity. The main process
+  // keeps a single watcher, keyed by cwd.
+  useEffect(() => {
+    if (!cwd) return;
+    void window.ePi.git.watchStart(cwd);
+    const stop = window.ePi.git.onChanged((changedCwd) => {
+      if (changedCwd === cwd) void refresh();
+    });
+    return () => {
+      stop();
+      void window.ePi.git.watchStop(cwd);
+    };
+  }, [cwd, refresh]);
+
   /** Fetch a file's diff once; results are cached in state keyed by path. */
   const loadDiff = useCallback(
     (path: string) => {
