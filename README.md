@@ -19,14 +19,14 @@ E-Pi 是一个基于 Electron 的桌面应用，为 [Pi Coding Agent](https://gi
 
 ## 技术栈
 
-| 层 | 技术 |
-|---|---|
-| 桌面框架 | Electron 43 + electron-vite |
-| 前端 | React 19、TypeScript、Tailwind CSS 4、Radix UI |
-| 终端 | xterm.js + WebGL 渲染 |
-| 核心 | [@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)（pi 本体）、node-pty |
-| 测试 | Vitest |
-| 质量 | oxlint、oxfmt、Husky + lint-staged |
+| 层       | 技术                                                                                                                  |
+| -------- | --------------------------------------------------------------------------------------------------------------------- |
+| 桌面框架 | Electron 43 + electron-vite                                                                                           |
+| 前端     | React 19、TypeScript、Tailwind CSS 4、Radix UI                                                                        |
+| 终端     | xterm.js + WebGL 渲染                                                                                                 |
+| 核心     | [@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)（pi 本体）、node-pty |
+| 测试     | Vitest                                                                                                                |
+| 质量     | oxlint、oxfmt、Husky + lint-staged                                                                                    |
 
 ## 快速开始
 
@@ -51,16 +51,16 @@ pnpm start
 
 ### 常用命令
 
-| 命令 | 说明 |
-|---|---|
-| `pnpm dev` | 开发模式，热重载 |
-| `pnpm build` | 类型检查 + 测试 + 构建 |
-| `pnpm start` | 预览已构建的应用 |
-| `pnpm test` | 运行 Vitest 测试 |
-| `pnpm lint` / `pnpm lint:fix` | 代码检查 |
-| `pnpm format` / `pnpm format:check` | 代码格式化 |
-| `pnpm typecheck` | TypeScript 类型检查 |
-| `pnpm dist:mac` | 打包 macOS 安装包（dmg + zip） |
+| 命令                                | 说明                           |
+| ----------------------------------- | ------------------------------ |
+| `pnpm dev`                          | 开发模式，热重载               |
+| `pnpm build`                        | 类型检查 + 测试 + 构建         |
+| `pnpm start`                        | 预览已构建的应用               |
+| `pnpm test`                         | 运行 Vitest 测试               |
+| `pnpm lint` / `pnpm lint:fix`       | 代码检查                       |
+| `pnpm format` / `pnpm format:check` | 代码格式化                     |
+| `pnpm typecheck`                    | TypeScript 类型检查            |
+| `pnpm dist:mac`                     | 打包 macOS 安装包（dmg + zip） |
 
 ## 项目结构
 
