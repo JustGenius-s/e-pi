@@ -181,6 +181,21 @@ export interface ModelManagementState {
   error?: string;
 }
 
+export type CommandSource = "builtin" | "template" | "plugin" | "skill";
+
+/**
+ * A slash command shown in the composer's command list. `name` is without the
+ * leading "/", e.g. "model" or "skill:code-review". Mirrors the autocomplete
+ * commands pi's TUI feeds to its editor.
+ */
+export interface CommandRecord {
+  name: string;
+  description?: string;
+  /** Argument hint displayed next to the name, e.g. "<provider/model>". */
+  argumentHint?: string;
+  source: CommandSource;
+}
+
 export type SkillScope = "user" | "project";
 
 export type SkillSource = "user" | "project" | "path";
@@ -400,6 +415,10 @@ export interface EPiApi {
     customSave(request: CustomProviderRequest): Promise<CustomProviderConfig[]>;
     customRemove(request: CustomProviderRemoveRequest): Promise<CustomProviderConfig[]>;
     onLoginEvent(listener: (event: ModelLoginEvent) => void): () => void;
+  };
+  commands: {
+    /** Slash commands available in the composer: pi built-ins + prompt templates. */
+    list(cwd: string): Promise<CommandRecord[]>;
   };
   skills: {
     list(cwd: string): Promise<SkillRecord[]>;

@@ -1,7 +1,10 @@
 import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square, X } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 import type {
+  CommandRecord,
+  CommandSource,
   ContextUsageState,
   ModelManagementState,
   ModelRecord,
@@ -70,6 +73,13 @@ const THINKING_LEVELS: Array<{ value: ThinkingLevel; label: string; note: string
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
 const isImage = (path: string) => IMAGE_EXT.test(path);
 
+/** Group labels for the command list, in display order. */
+const COMMAND_GROUPS: Array<{ label: string; sources: CommandSource[] }> = [
+  { label: "系统", sources: ["builtin"] },
+  { label: "插件", sources: ["template", "plugin"] },
+  { label: "技能", sources: ["skill"] },
+];
+
 function displayModel(model: ModelRecord): string {
   return model.name || model.id;
 }
@@ -89,6 +99,13 @@ export function Composer({
   onInterrupt,
 }: ComposerProps) {
   const [text, setText] = useState("");
+  const [commands, setCommands] = useState<CommandRecord[]>([]);
+  const [caret, setCaret] = useState(0);
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [popupDismissed, setPopupDismissed] = useState(false);
+  const [inputFocused, setInputFocused] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const popupListRef = useRef<HTMLDivElement>(null);
   const [models, setModels] = useState<ModelManagementState>();
   const [pendingModel, setPendingModel] = useState<{ sessionPath?: string; ref: string }>();
   const [thinking, setThinking] = useState<ThinkingLevel>("medium");
@@ -133,6 +150,15 @@ export function Composer({
       .list()
       .then(setModels)
       .catch(() => undefined);
+  }, [cwd]);
+
+  useEffect(() => {
+    setCommands([]);
+    if (!cwd) return;
+    window.ePi.commands
+      .list(cwd)
+      .then(setCommands)
+      .catch(() => setCommands([]));
   }, [cwd]);
 
   useEffect(() => {
@@ -252,6 +278,134 @@ export function Composer({
     if (sessionPath) await window.ePi.runtime.submit(sessionPath, `/e-pi-thinking ${value}`);
   };
 
+  /**
+   * Slash commands shown by the command-list popup: pi built-ins + prompt
+   * templates (via commands IPC) + skills (already loaded for the "+" menu),
+   * mirroring the autocomplete data pi's TUI feeds its editor. Deduped by
+   * name — the first entry wins, matching the TUI's builtin-over-extension
+   * precedence.
+   */
+  const allCommands = useMemo(() => {
+    const seen = new Set<string>();
+    const result: CommandRecord[] = [];
+    for (const command of commands) {
+      if (seen.has(command.name)) continue;
+      seen.add(command.name);
+      result.push(command);
+    }
+    for (const skill of skills) {
+      const name = `skill:${skill.name}`;
+      if (seen.has(name)) continue;
+      seen.add(name);
+      result.push({ name, description: skill.description, source: "skill" });
+    }
+    return result;
+  }, [commands, skills]);
+
+  /**
+   * Command completion context, mirroring the TUI: the current line (from the
+   * last newline to the caret) must start with "/" and contain no space yet.
+   * The text after "/" up to the caret is the filter query.
+   */
+  const lineStart = text.lastIndexOf("\n", caret - 1) + 1;
+  const linePrefix = text.slice(lineStart, caret);
+  const commandQuery = linePrefix.startsWith("/") && !linePrefix.includes(" ") ? linePrefix.slice(1) : null;
+
+  const filteredCommands = useMemo(() => {
+    if (commandQuery === null) return [];
+    const query = commandQuery.toLowerCase();
+    if (!query) return allCommands;
+    const scored: Array<{ command: CommandRecord; score: number }> = [];
+    for (const command of allCommands) {
+      const name = command.name.toLowerCase();
+      if (name.startsWith(query)) scored.push({ command, score: 0 });
+      else if (name.includes(query)) scored.push({ command, score: 1 });
+      else if ((command.description ?? "").toLowerCase().includes(query)) scored.push({ command, score: 2 });
+    }
+    scored.sort((a, b) => a.score - b.score);
+    return scored.map((entry) => entry.command);
+  }, [allCommands, commandQuery]);
+
+  const popupOpen = inputFocused && commandQuery !== null && !popupDismissed && filteredCommands.length > 0;
+  const clampedIndex = filteredCommands.length === 0 ? 0 : Math.min(selectedIndex, filteredCommands.length - 1);
+
+  // Group the filtered list by label (系统/插件/技能), keeping the global
+  // flattened index per group so keyboard navigation still walks all rows.
+  const commandGroups = useMemo(() => {
+    let offset = 0;
+    const groups: Array<{ source: CommandSource; label: string; items: CommandRecord[]; start: number }> = [];
+    for (const { label, sources } of COMMAND_GROUPS) {
+      const items = filteredCommands.filter((command) => sources.includes(command.source));
+      if (items.length === 0) continue;
+      groups.push({ source: sources[0]!, label, items, start: offset });
+      offset += items.length;
+    }
+    return groups;
+  }, [filteredCommands]);
+
+  // Anchor the popup just above the textarea. It lives in a portal (the shell
+  // clips overflow), positioned with `bottom` so it grows upward like the
+  // TUI's dropdown instead of covering the input.
+  const [popupAnchor, setPopupAnchor] = useState<{ left: number; bottom: number; width: number }>();
+  useEffect(() => {
+    if (!popupOpen) {
+      setPopupAnchor(undefined);
+      return;
+    }
+    const measure = () => {
+      const element = textareaRef.current;
+      if (!element) return;
+      const rect = element.getBoundingClientRect();
+      setPopupAnchor({
+        // Bottom flush against the textarea, sides inset so the panel reads
+        // narrower than the input.
+        left: rect.left + 8,
+        bottom: window.innerHeight - rect.top,
+        width: rect.width - 16,
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [popupOpen, text]);
+
+  // Re-point the selection at the top whenever the filter text changes.
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [commandQuery]);
+
+  // Keep the highlighted row in view while navigating.
+  useEffect(() => {
+    if (!popupOpen) return;
+    const selected = popupListRef.current?.querySelector<HTMLElement>('[data-selected="true"]');
+    selected?.scrollIntoView({ block: "nearest" });
+  }, [clampedIndex, popupOpen]);
+
+  const syncCaret = (element: HTMLTextAreaElement): void => {
+    const next = element.selectionStart;
+    if (next !== caret) setCaret(next);
+  };
+
+  /** Insert "/name " at the caret, replacing the typed prefix (TUI-style). */
+  const acceptCommand = (command: CommandRecord): void => {
+    const ta = textareaRef.current;
+    const at = ta ? ta.selectionStart : caret;
+    const start = text.lastIndexOf("\n", at - 1) + 1;
+    const next = `${text.slice(0, start)}/${command.name} ${text.slice(at)}`;
+    setText(next);
+    setPopupDismissed(true);
+    const nextCaret = start + command.name.length + 2;
+    setCaret(nextCaret);
+    requestAnimationFrame(() => {
+      const element = textareaRef.current;
+      if (element) element.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
   return (
     <div
       className="composer-shell"
@@ -335,9 +489,19 @@ export function Composer({
         </DialogContent>
       </Dialog>
       <Textarea
+        ref={textareaRef}
         aria-label="Message Pi"
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          setText(event.target.value);
+          syncCaret(event.target);
+          setPopupDismissed(false);
+        }}
+        onSelect={(event) => syncCaret(event.currentTarget)}
+        onClick={(event) => syncCaret(event.currentTarget)}
+        onKeyUp={(event) => syncCaret(event.currentTarget)}
+        onFocus={() => setInputFocused(true)}
+        onBlur={() => setInputFocused(false)}
         onPaste={(event) => {
           const hasImage = Array.from(event.clipboardData.items).some(
             (item) => item.kind === "file" && item.type.startsWith("image/"),
@@ -367,6 +531,35 @@ export function Composer({
           // (covers macOS, where the commit-Enter arrives after compositionend
           // with isComposing false); isComposing/keyCode 229 are fallbacks.
           const composing = composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+          // With the command list open, arrows move the selection and Enter/
+          // Tab insert the highlighted command (TUI autocomplete behavior).
+          if (popupOpen) {
+            if (event.key === "ArrowDown") {
+              event.preventDefault();
+              setSelectedIndex((index) => (index + 1) % filteredCommands.length);
+              return;
+            }
+            if (event.key === "ArrowUp") {
+              event.preventDefault();
+              setSelectedIndex((index) => (index - 1 + filteredCommands.length) % filteredCommands.length);
+              return;
+            }
+            if (event.key === "Tab") {
+              event.preventDefault();
+              acceptCommand(filteredCommands[clampedIndex]!);
+              return;
+            }
+            if (event.key === "Escape") {
+              event.preventDefault();
+              setPopupDismissed(true);
+              return;
+            }
+            if (event.key === "Enter" && !event.shiftKey && !composing) {
+              event.preventDefault();
+              acceptCommand(filteredCommands[clampedIndex]!);
+              return;
+            }
+          }
           if (event.key === "Enter" && !event.shiftKey && !composing) {
             event.preventDefault();
             void submit();
@@ -376,6 +569,52 @@ export function Composer({
         disabled={disabled || busy}
         rows={1}
       />
+      {popupOpen && popupAnchor
+        ? createPortal(
+            <div
+              className="composer-command-popup"
+              style={{ left: popupAnchor.left, bottom: popupAnchor.bottom, width: popupAnchor.width }}
+              role="listbox"
+              aria-label="Commands"
+            >
+              <div className="composer-command-list" ref={popupListRef}>
+                {commandGroups.map((group) => (
+                  <div className="composer-command-group" role="group" aria-label={group.label} key={group.source}>
+                    <div className="composer-command-group-header">{group.label}</div>
+                    {group.items.map((command, localIndex) => {
+                      const index = group.start + localIndex;
+                      const selected = index === clampedIndex;
+                      return (
+                        <button
+                          key={`${command.source}:${command.name}`}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          data-selected={selected ? "true" : undefined}
+                          className="composer-command-row"
+                          onMouseDown={(event) => {
+                            // Keep focus on the textarea so the popup context survives.
+                            event.preventDefault();
+                            acceptCommand(command);
+                          }}
+                        >
+                          <span className="composer-command-name">/{command.name}</span>
+                          {command.argumentHint ? (
+                            <span className="composer-command-hint">{command.argumentHint}</span>
+                          ) : null}
+                          {command.description ? (
+                            <span className="composer-command-desc">{command.description}</span>
+                          ) : null}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
       <div className="composer-toolbar">
         <div className="composer-tools">
           <DropdownMenu

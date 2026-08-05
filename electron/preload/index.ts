@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import type {
   AppInfo,
+  CommandRecord,
   CreateSessionRequest,
   CustomProviderConfig,
   CustomProviderRemoveRequest,
@@ -107,6 +108,9 @@ const api: EPiApi = {
     customRemove: (request: CustomProviderRemoveRequest) =>
       ipcRenderer.invoke("models:custom-remove", request) as Promise<CustomProviderConfig[]>,
     onLoginEvent: (listener: (event: ModelLoginEvent) => void) => subscribe("models:login-event", listener),
+  },
+  commands: {
+    list: (cwd: string) => ipcRenderer.invoke("commands:list", cwd) as Promise<CommandRecord[]>,
   },
   skills: {
     list: (cwd: string) => ipcRenderer.invoke("skills:list", cwd) as Promise<SkillRecord[]>,

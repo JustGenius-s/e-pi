@@ -22,6 +22,7 @@ import type {
   SkillSetEnabledRequest,
 } from "../../src/types/contracts";
 import { ensureNpmOnPath } from "./npm-path";
+import { CommandService } from "./services/command-service";
 import { debugLog, resetDebugLog } from "./services/debug-log";
 import { FileService } from "./services/file-service";
 import { GitService } from "./services/git-service";
@@ -38,6 +39,7 @@ const sessions = new SessionService();
 const packages = new PackageService();
 const models = new ModelService();
 const skills = new SkillService();
+const commands = new CommandService();
 const git = new GitService();
 const fileService = new FileService();
 const sideTerminals = new SideTerminalService();
@@ -204,6 +206,8 @@ function registerHandlers(): void {
   ipcMain.handle("packages:install", (_event, request: PackageMutation) => packages.install(request));
   ipcMain.handle("packages:remove", (_event, request: PackageMutation) => packages.remove(request));
   ipcMain.handle("packages:update", (_event, request: PackageUpdateRequest) => packages.update(request));
+
+  ipcMain.handle("commands:list", (_event, cwd: string) => commands.list(cwd || activeCwd()));
 
   ipcMain.handle("skills:list", (_event, cwd: string) => skills.list(cwd || activeCwd()));
   ipcMain.handle("skills:read", (_event, cwd: string, filePath: string) => skills.read(cwd || activeCwd(), filePath));
