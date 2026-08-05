@@ -10,10 +10,37 @@
 
 .skill-install-section {
   display: flex;
+  flex: 0 0 auto;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   padding: 12px 0;
   border-bottom: 1px solid var(--border);
+}
+
+.skill-install-section [data-slot="button"] {
+  flex: 0 0 auto;
+}
+
+.skill-search {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+}
+
+.skill-search > svg {
+  position: absolute;
+  left: 9px;
+  z-index: 1;
+  color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+.skill-search [data-slot="input"] {
+  height: 32px;
+  padding-left: 30px;
+  font-size: 11px;
 }
 
 .skill-drawer-body {
@@ -36,34 +63,27 @@
 
 .skill-panel-item {
   display: flex;
-  flex-direction: column;
   margin-bottom: 6px;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
 }
 
-.skill-panel-item[data-active="true"] {
-  border-color: var(--ring);
-}
-
-.skill-panel-select {
+.skill-panel-row {
   display: flex;
-  min-height: 44px;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 3px;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
   padding: 7px 10px;
-  background: transparent;
-  color: var(--foreground);
-  text-align: left;
 }
 
-.skill-panel-select:hover,
-.skill-panel-select:focus-visible {
-  outline: none;
-  background: var(--accent);
+.skill-panel-info {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
 }
 
 .skill-panel-name {
@@ -84,21 +104,6 @@
   display: flex;
   align-items: center;
   gap: 6px;
-}
-
-.skill-panel-detail {
-  display: flex;
-  flex-direction: column;
-  padding: 12px;
-  border-top: 1px solid var(--border);
-  background: var(--muted);
-}
-
-.skill-panel-actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 6px;
-  margin-top: 12px;
 }
 
 .skill-panel-empty {

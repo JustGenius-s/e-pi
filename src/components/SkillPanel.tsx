@@ -1,8 +1,8 @@
-import { FolderOpen, FolderPlus, LoaderCircle, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { FolderOpen, FolderPlus, LoaderCircle, Plus, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 import type { SkillRecord, SkillScope } from "../types/contracts";
-import { IconButton } from "./IconButton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -45,12 +45,10 @@ function sourceLabel(source: SkillRecord["source"]): string {
 
 export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelProps) {
   const [skills, setSkills] = useState<SkillRecord[]>([]);
-  const [selectedPath, setSelectedPath] = useState<string>();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
-  const [preview, setPreview] = useState<string>();
   const [needsReload, setNeedsReload] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState("");
@@ -58,26 +56,17 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
   const [newScope, setNewScope] = useState<SkillScope>("project");
   const [removeTarget, setRemoveTarget] = useState<SkillRecord>();
 
-  const refresh = useCallback(
-    async (opts?: { keepSelection?: boolean }) => {
-      setLoading(true);
-      setError(undefined);
-      try {
-        const next = await window.ePi.skills.list(cwd);
-        setSkills(next);
-        if (!opts?.keepSelection) {
-          setSelectedPath((current) =>
-            current && next.some((skill) => skill.filePath === current) ? current : next[0]?.filePath,
-          );
-        }
-      } catch (reason) {
-        setError(reason instanceof Error ? reason.message : String(reason));
-      } finally {
-        setLoading(false);
-      }
-    },
-    [cwd],
-  );
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(undefined);
+    try {
+      setSkills(await window.ePi.skills.list(cwd));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoading(false);
+    }
+  }, [cwd]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,25 +78,6 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
     setNeedsReload(false);
   }, [cwd]);
 
-  useEffect(() => {
-    if (!open || !selectedPath) {
-      setPreview(undefined);
-      return;
-    }
-    let mounted = true;
-    window.ePi.skills
-      .read(cwd, selectedPath)
-      .then((content) => {
-        if (mounted) setPreview(content);
-      })
-      .catch(() => {
-        if (mounted) setPreview(undefined);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, [cwd, open, selectedPath]);
-
   const filtered = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) return skills;
@@ -116,14 +86,17 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
 
   const validName = SKILL_NAME_PATTERN.test(newName.trim());
 
-  const run = async (action: () => Promise<SkillRecord[]>) => {
+  const run = async (action: () => Promise<SkillRecord[]>, successMessage?: string) => {
     setBusy(true);
     setError(undefined);
     try {
       setSkills(await action());
       setNeedsReload(true);
+      if (successMessage) toast.success(successMessage);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(message);
     } finally {
       setBusy(false);
     }
@@ -134,24 +107,26 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
 
   const remove = async () => {
     if (!removeTarget) return;
-    await run(() => window.ePi.skills.remove({ cwd, filePath: removeTarget.filePath }));
+    await run(() => window.ePi.skills.remove({ cwd, filePath: removeTarget.filePath }), `${removeTarget.name} deleted`);
     setRemoveTarget(undefined);
   };
 
   const addPath = async (scope: SkillScope) => {
     const path = await window.ePi.app.chooseDirectory(cwd);
     if (!path) return;
-    await run(() => window.ePi.skills.addPath({ cwd, scope, path }));
+    await run(() => window.ePi.skills.addPath({ cwd, scope, path }), "Skill path added");
   };
 
   const create = async () => {
-    await run(() =>
-      window.ePi.skills.create({
-        cwd,
-        scope: newScope,
-        name: newName.trim(),
-        description: newDescription.trim(),
-      }),
+    await run(
+      () =>
+        window.ePi.skills.create({
+          cwd,
+          scope: newScope,
+          name: newName.trim(),
+          description: newDescription.trim(),
+        }),
+      `${newName.trim()} created`,
     );
     setCreateOpen(false);
     setNewName("");
@@ -161,11 +136,12 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
   const reloadPi = async () => {
     await onReloadPi();
     setNeedsReload(false);
+    toast.success("Pi reloaded");
   };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="skill-drawer" aria-describedby="skill-drawer-description">
+      <SheetContent className="skill-drawer" showCloseButton={false} aria-describedby="skill-drawer-description">
         <SheetDescription id="skill-drawer-description" className="sr-only">
           View and manage Pi skills for the current workspace.
         </SheetDescription>
@@ -219,9 +195,6 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
               <h3>
                 Skills <span>{skills.length}</span>
               </h3>
-              <IconButton label="Refresh skills" onClick={() => void refresh({ keepSelection: true })} disabled={busy}>
-                <RefreshCw size={14} />
-              </IconButton>
             </div>
 
             {loading && skills.length === 0 ? (
@@ -233,81 +206,24 @@ export function SkillPanel({ open, cwd, onOpenChange, onReloadPi }: SkillPanelPr
             ) : (
               <ScrollArea className="skill-panel-list" type="auto">
                 {filtered.map((skill) => (
-                  <div className="skill-panel-item" data-active={skill.filePath === selectedPath} key={skill.filePath}>
-                    <button
-                      className="skill-panel-select"
-                      onClick={() => setSelectedPath(skill.filePath)}
-                      type="button"
-                      title={skill.description || skill.baseDir}
-                    >
-                      <span className="skill-panel-name" data-disabled={!skill.enabled}>
-                        {skill.name}
-                      </span>
-                      <span className="skill-panel-meta">
-                        <Badge variant="outline">{sourceLabel(skill.source)}</Badge>
-                        <span
-                          className={`skill-row-dot ${skill.enabled ? "is-on" : ""}`}
-                          aria-label={skill.enabled ? "Enabled" : "Disabled"}
-                        />
-                      </span>
-                    </button>
-
-                    {skill.filePath === selectedPath ? (
-                      <div className="skill-panel-detail">
-                        {skill.description ? <p className="skill-description">{skill.description}</p> : null}
-
-                        <div className="skill-status">
-                          <span className="skill-status-label">Enabled</span>
-                          <div className="skill-status-control">
-                            <Switch
-                              size="sm"
-                              checked={skill.enabled}
-                              disabled={busy}
-                              onCheckedChange={(enabled) => void setEnabled(skill, enabled)}
-                              aria-label={`Toggle ${skill.name}`}
-                            />
-                            <span className="skill-status-hint">
-                              {skill.enabled
-                                ? "Pi can load this skill when a task matches."
-                                : "Disabled — Pi will not auto-invoke it. Use /skill:name to run it manually."}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="skill-path" title={skill.baseDir}>
-                          <span>{skill.baseDir}</span>
-                        </div>
-
-                        <div className="skill-panel-actions">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => void window.ePi.app.openPath(skill.baseDir)}
-                            disabled={busy}
-                          >
-                            <FolderOpen size={14} />
-                            Show in Finder
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="text-destructive"
-                            onClick={() => setRemoveTarget(skill)}
-                            disabled={busy}
-                          >
-                            <Trash2 size={14} />
-                            Delete
-                          </Button>
-                        </div>
-
-                        <div className="skill-preview-heading">
-                          <span>SKILL.md</span>
-                        </div>
-                        <ScrollArea className="skill-preview" type="auto">
-                          <pre>{preview ?? "Loading…"}</pre>
-                        </ScrollArea>
+                  <div className="skill-panel-item" key={skill.filePath}>
+                    <div className="skill-panel-row">
+                      <div className="skill-panel-info" title={skill.description || skill.baseDir}>
+                        <span className="skill-panel-name" data-disabled={!skill.enabled}>
+                          {skill.name}
+                        </span>
+                        <span className="skill-panel-meta">
+                          <Badge variant="outline">{sourceLabel(skill.source)}</Badge>
+                        </span>
                       </div>
-                    ) : null}
+                      <Switch
+                        size="sm"
+                        checked={skill.enabled}
+                        disabled={busy}
+                        onCheckedChange={(enabled) => void setEnabled(skill, enabled)}
+                        aria-label={`Toggle ${skill.name}`}
+                      />
+                    </div>
                   </div>
                 ))}
               </ScrollArea>

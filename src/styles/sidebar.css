@@ -98,7 +98,18 @@
 
 .sidebar-package-group {
   flex: 0 0 auto;
+  margin-top: 10px;
   padding-bottom: 4px;
+}
+
+/* Skills / Packages 分组：字体调大 */
+.sidebar-package-group .sidebar-menu-button {
+  font-size: 13px;
+}
+
+.sidebar-package-group .sidebar-menu-button > svg {
+  width: 16px;
+  height: 16px;
 }
 
 .sidebar-session-group {

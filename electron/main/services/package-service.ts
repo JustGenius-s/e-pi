@@ -7,6 +7,7 @@ import { DefaultPackageManager, getAgentDir, SettingsManager } from "@earendil-w
 import { net } from "electron";
 
 import type {
+  PackageDownloads,
   PackageMutation,
   PackageProgress,
   PackageRecord,
@@ -23,8 +24,11 @@ const UPDATES_TTL_MS = 5 * 60_000;
 const NPM_VIEW_TIMEOUT_MS = 20_000;
 const NPM_SEARCH_TIMEOUT_MS = 15_000;
 const NPM_SEARCH_URL = "https://registry.npmjs.org/-/v1/search";
+const NPM_DOWNLOADS_URL = "https://api.npmjs.org/downloads/point/last-month";
 /** How long the last registry search result is kept; makes tab switches instant. */
 const SEARCH_TTL_MS = 10 * 60_000;
+/** How long per-package download stats are kept before hitting the API again. */
+const DOWNLOADS_TTL_MS = 10 * 60_000;
 
 function readPackageVersion(installedPath: string): string | undefined {
   try {
@@ -60,6 +64,7 @@ export class PackageService {
   #progressListener: PackageProgressListener | undefined;
   #updatesCache: { key: string; at: number; updates: PackageUpdateInfo[] } | undefined;
   #searchCache: { key: string; at: number; results: RemotePackageInfo[] } | undefined;
+  #downloadsCache: { key: string; at: number; downloads: PackageDownloads } | undefined;
 
   setProgressListener(listener: PackageProgressListener | undefined): void {
     this.#progressListener = listener;
@@ -151,11 +156,33 @@ export class PackageService {
     return results;
   }
 
+  /**
+   * Npm download stats for the last month (api.npmjs.org point endpoint),
+   * cached briefly per package name.
+   */
+  async downloads(name: string): Promise<PackageDownloads> {
+    const key = name.trim().toLowerCase();
+    const now = Date.now();
+    if (this.#downloadsCache && this.#downloadsCache.key === key && now - this.#downloadsCache.at < DOWNLOADS_TTL_MS) {
+      return this.#downloadsCache.downloads;
+    }
+    const url = `${NPM_DOWNLOADS_URL}/${encodeURIComponent(key)}`;
+    const response = await net.fetch(url, { signal: AbortSignal.timeout(NPM_SEARCH_TIMEOUT_MS) });
+    if (!response.ok) throw new Error(`npm downloads failed (HTTP ${response.status})`);
+    const downloads = (await response.json()) as PackageDownloads;
+    this.#downloadsCache = { key, at: now, downloads };
+    return downloads;
+  }
+
   async install(request: PackageMutation): Promise<PackageRecord[]> {
     const source = normalizePackageSource(request.source);
     const manager = this.#manager(request.cwd);
     try {
-      await manager.installAndPersist(source, { local: request.scope === "project" });
+      // No install-scope distinction anymore: install into both the project
+      // and the user (global) root so the package is available everywhere.
+      // Both calls are idempotent for already-configured scopes.
+      await manager.installAndPersist(source, { local: true });
+      await manager.installAndPersist(source, { local: false });
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : String(reason);
       throw new Error(`Failed to install ${source}: ${message}`, { cause: reason });
@@ -166,7 +193,11 @@ export class PackageService {
   async remove(request: PackageMutation): Promise<PackageRecord[]> {
     const source = normalizePackageSource(request.source);
     const manager = this.#manager(request.cwd);
-    await manager.removeAndPersist(source, { local: request.scope === "project" });
+    // Remove from both scopes. Legacy single-scope entries are handled too:
+    // npm uninstall is a no-op for packages not present, and removeGit skips
+    // missing directories.
+    await manager.removeAndPersist(source, { local: true });
+    await manager.removeAndPersist(source, { local: false });
     return this.#listWithVersions(manager);
   }
 

@@ -108,6 +108,14 @@ export interface RemotePackageInfo {
   popularity?: number;
 }
 
+/** Npm download stats for a package (api.npmjs.org point endpoint). */
+export interface PackageDownloads {
+  package: string;
+  downloads: number;
+  start: string;
+  end: string;
+}
+
 export type PackageAction = "install" | "remove" | "update" | "clone" | "pull";
 
 export interface PackageProgress {
@@ -120,7 +128,6 @@ export interface PackageProgress {
 export interface PackageMutation {
   source: string;
   cwd: string;
-  scope: "user" | "project";
 }
 
 export interface PackageUpdateRequest {
@@ -375,6 +382,8 @@ export interface EPiApi {
     checkUpdates(cwd: string, force?: boolean): Promise<PackageUpdateInfo[]>;
     /** Search the npm registry for Pi packages (`keywords:pi-package` filtered). */
     search(query: string): Promise<RemotePackageInfo[]>;
+    /** Npm download stats for the last month; cached briefly in the main process. */
+    downloads(name: string): Promise<PackageDownloads>;
     install(request: PackageMutation): Promise<PackageRecord[]>;
     remove(request: PackageMutation): Promise<PackageRecord[]>;
     update(request: PackageUpdateRequest): Promise<PackageRecord[]>;

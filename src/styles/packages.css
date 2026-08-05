@@ -37,6 +37,7 @@
 }
 
 .package-drawer-tabs {
+  flex: 1;
   min-width: 0;
 }
 
@@ -54,13 +55,6 @@
 
 .package-drawer-tabs [data-slot="tabs-trigger"]:hover {
   background: var(--muted);
-}
-
-.package-scope-select {
-  flex: 0 0 auto;
-  width: 104px;
-  height: 32px;
-  font-size: 11px;
 }
 
 .package-drawer-body {
@@ -185,7 +179,7 @@
   overflow: hidden;
   color: var(--card-foreground);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -193,7 +187,17 @@
 
 .package-row-main span {
   color: var(--muted-foreground);
-  font-size: 9px;
+  font-size: 10.5px;
+}
+
+.package-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.package-link:hover {
+  color: var(--primary);
+  text-decoration: underline;
 }
 
 .package-browse-section {
@@ -234,20 +238,105 @@
   pointer-events: none;
 }
 
-.package-remote-row {
-  min-height: 56px;
+.package-hover-card {
+  width: 264px;
+  overflow: hidden;
 }
 
-.package-remote-desc {
+.package-hover-card-inner {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.package-hover-card-inner > * {
+  min-width: 0;
+}
+
+.package-hover-card-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.package-hover-card-head strong {
+  min-width: 0;
   overflow: hidden;
+  color: var(--card-foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.package-remote-meta {
+.package-hover-card-head span {
+  flex: 0 0 auto;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 8.5px;
+  font-size: 10px;
+}
+
+.package-hover-desc {
+  margin: 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: var(--muted-foreground);
+  font-size: 10.5px;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+}
+
+.package-hover-stats {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+}
+
+.package-hover-stats > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.package-hover-stats dt {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 9.5px;
+}
+
+.package-hover-stats dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: var(--card-foreground);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.package-hover-stats .package-hover-downloads {
+  color: var(--primary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.package-hover-link {
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  color: var(--primary);
+  font-size: 10px;
+  text-decoration: none;
+}
+
+.package-hover-link:hover {
+  text-decoration: underline;
 }
 
 .package-row-side {
@@ -257,15 +346,8 @@
   gap: 8px;
 }
 
-.package-update-badge {
-  padding: 2px 7px;
+.package-update-action svg {
   color: var(--chart-2);
-  border: 1px solid color-mix(in oklch, var(--chart-2) 35%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--chart-2) 10%, transparent);
-  font-family: var(--font-mono);
-  font-size: 8.5px;
-  white-space: nowrap;
 }
 
 .package-row-actions {

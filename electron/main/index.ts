@@ -199,6 +199,7 @@ function registerHandlers(): void {
     packages.checkUpdates(cwd || activeCwd(), force),
   );
   ipcMain.handle("packages:search", (_event, query: string) => packages.searchRemote(query));
+  ipcMain.handle("packages:downloads", (_event, name: string) => packages.downloads(name));
   ipcMain.handle("packages:install", (_event, request: PackageMutation) => packages.install(request));
   ipcMain.handle("packages:remove", (_event, request: PackageMutation) => packages.remove(request));
   ipcMain.handle("packages:update", (_event, request: PackageUpdateRequest) => packages.update(request));

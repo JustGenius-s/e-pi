@@ -18,6 +18,7 @@ import type {
   ModelLoginResponse,
   ModelManagementState,
   PackageMutation,
+  PackageDownloads,
   PackageProgress,
   PackageRecord,
   PackageUpdateInfo,
@@ -85,6 +86,7 @@ const api: EPiApi = {
     checkUpdates: (cwd: string, force?: boolean) =>
       ipcRenderer.invoke("packages:check-updates", cwd, force) as Promise<PackageUpdateInfo[]>,
     search: (query: string) => ipcRenderer.invoke("packages:search", query) as Promise<RemotePackageInfo[]>,
+    downloads: (name: string) => ipcRenderer.invoke("packages:downloads", name) as Promise<PackageDownloads>,
     install: (request: PackageMutation) => ipcRenderer.invoke("packages:install", request) as Promise<PackageRecord[]>,
     remove: (request: PackageMutation) => ipcRenderer.invoke("packages:remove", request) as Promise<PackageRecord[]>,
     update: (request: PackageUpdateRequest) =>

@@ -1,5 +1,6 @@
 import { Terminal, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { AppDialogs } from "./components/AppDialogs";
 import { AppHeader } from "./components/AppHeader";
@@ -139,7 +140,9 @@ export function App() {
       await activate(session.path);
       return session;
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Failed to create session: ${message}`);
       return undefined;
     }
   };
@@ -170,8 +173,11 @@ export function App() {
       await window.ePi.sessions.rename({ path: renameTarget.path, name: renameName.trim() });
       await refreshSessions();
       setRenameTarget(undefined);
+      toast.success("Session renamed");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Failed to rename session: ${message}`);
     }
   };
 
@@ -186,8 +192,11 @@ export function App() {
       await refreshSessions();
       if (activePath === removeTarget.path) setActivePath(undefined);
       setRemoveTarget(undefined);
+      toast.success("Session deleted");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Failed to delete session: ${message}`);
     }
   };
 
