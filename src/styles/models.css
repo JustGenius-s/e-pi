@@ -23,12 +23,36 @@
 }
 
 .model-settings {
-  display: grid;
+  display: flex;
   height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-top: 1px solid var(--border);
+}
+
+.model-settings-header {
+  display: flex;
+  flex: 0 0 auto;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.model-settings-header .model-provider-search {
+  flex: 0 1 320px;
+  min-width: 0;
+}
+
+.model-settings-body {
+  display: grid;
+  flex: 1 1 auto;
   min-height: 0;
   grid-template-columns: 220px minmax(0, 1fr);
   overflow: hidden;
-  border-top: 1px solid var(--border);
 }
 
 .model-provider-pane,
@@ -40,7 +64,7 @@
 .model-provider-pane {
   display: flex;
   flex-direction: column;
-  padding: 12px 12px 0 0;
+  padding: 10px 12px 0 0;
   border-right: 1px solid var(--border);
 }
 
@@ -368,18 +392,6 @@
 }
 
 /* --- custom provider management --- */
-
-.model-provider-toolbar {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 6px;
-}
-
-.model-provider-toolbar .model-provider-search {
-  flex: 1 1 auto;
-  min-width: 0;
-}
 
 .model-custom-row {
   display: flex;

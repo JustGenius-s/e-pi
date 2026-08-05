@@ -27,7 +27,7 @@
     display: none;
   }
 
-  .model-settings {
+  .model-settings-body {
     grid-template-columns: 180px minmax(0, 1fr);
   }
 

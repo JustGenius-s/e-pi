@@ -334,220 +334,222 @@ export function ModelSettings({ active }: ModelSettingsProps) {
 
   return (
     <div className="model-settings">
-      <aside className="model-provider-pane">
-        <div className="model-provider-toolbar">
-          <label className="model-provider-search">
-            <Search size={14} />
-            <span className="sr-only">Search providers</span>
-            <Input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search providers"
-              type="search"
-            />
-          </label>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => openCustomEditor()}
-            disabled={Boolean(login)}
-            title="Add a custom provider (base URL + key) to ~/.pi/models.json"
-          >
-            <Plus size={14} />
-            Custom
-          </Button>
-        </div>
+      <div className="model-settings-header">
+        <label className="model-provider-search">
+          <Search size={14} />
+          <span className="sr-only">Search providers</span>
+          <Input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search providers"
+            type="search"
+          />
+        </label>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => openCustomEditor()}
+          disabled={Boolean(login)}
+          title="Add a custom provider (base URL + key) to ~/.pi/models.json"
+        >
+          <Plus size={14} />
+          Custom
+        </Button>
+      </div>
 
-        <div className="model-provider-list">
-          {loading ? (
-            <div className="model-settings-loading">
-              <LoaderCircle className="spin" size={15} /> Loading providers
-            </div>
-          ) : filteredProviders.length === 0 ? (
-            <div className="model-settings-empty">No providers found</div>
-          ) : (
-            filteredProviders.map((item) => (
-              <button
-                className="model-provider-row"
-                data-active={item.id === selectedProviderId}
-                key={item.id}
-                onClick={() => setSelectedProviderId(item.id)}
-                type="button"
-              >
-                <span>{item.name}</span>
-                {item.configured ? <CircleCheck size={14} aria-label="Configured" /> : null}
-                <small>{item.models.length} models</small>
-              </button>
-            ))
-          )}
-        </div>
-      </aside>
-
-      <section className="model-detail-pane">
-        {provider ? (
-          <>
-            <div className="model-provider-heading">
-              <div>
-                <h3>{provider.name}</h3>
-                <span>{provider.id}</span>
+      <div className="model-settings-body">
+        <aside className="model-provider-pane">
+          <div className="model-provider-list">
+            {loading ? (
+              <div className="model-settings-loading">
+                <LoaderCircle className="spin" size={15} /> Loading providers
               </div>
-              <div className="model-provider-actions">
-                {provider.supportsOAuth ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => startLogin(provider, "oauth")}
-                    disabled={Boolean(login)}
-                  >
-                    <LogIn /> Account
-                  </Button>
-                ) : null}
-                {provider.supportsApiKey ? (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => startLogin(provider, "api_key")}
-                    disabled={Boolean(login)}
-                  >
-                    <KeyRound /> API key
-                  </Button>
-                ) : null}
-                {provider.storedAuthType ? (
-                  <Button
-                    aria-label={`Disconnect ${provider.name}`}
-                    size="icon-sm"
-                    variant="ghost"
-                    onClick={() => void logout(provider)}
-                    disabled={busyLogout || Boolean(login)}
-                    title="Disconnect"
-                  >
-                    {busyLogout ? <LoaderCircle className="spin" /> : <LogOut />}
-                  </Button>
-                ) : null}
-              </div>
-            </div>
+            ) : filteredProviders.length === 0 ? (
+              <div className="model-settings-empty">No providers found</div>
+            ) : (
+              filteredProviders.map((item) => (
+                <button
+                  className="model-provider-row"
+                  data-active={item.id === selectedProviderId}
+                  key={item.id}
+                  onClick={() => setSelectedProviderId(item.id)}
+                  type="button"
+                >
+                  <span>{item.name}</span>
+                  {item.configured ? <CircleCheck size={14} aria-label="Configured" /> : null}
+                  <small>{item.models.length} models</small>
+                </button>
+              ))
+            )}
+          </div>
+        </aside>
 
-            <div className="model-auth-status" data-configured={provider.configured}>
-              <span className="model-auth-dot" />
-              {provider.configured ? provider.authSource || "Configured" : "Not configured"}
-            </div>
-
-            {custom ? (
-              <div className="model-custom-row">
-                <span className="model-custom-badge">Custom · models.json</span>
-                <div className="model-custom-actions">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => openCustomEditor(custom)}
-                    disabled={Boolean(login) || busyCustom}
-                  >
-                    <Pencil size={13} />
-                    Edit
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="text-destructive"
-                    onClick={() => setCustomRemove(custom.id)}
-                    disabled={busyCustom}
-                  >
-                    <Trash2 size={13} />
-                    Remove
-                  </Button>
+        <section className="model-detail-pane">
+          {provider ? (
+            <>
+              <div className="model-provider-heading">
+                <div>
+                  <h3>{provider.name}</h3>
+                  <span>{provider.id}</span>
                 </div>
-              </div>
-            ) : null}
-
-            {login?.providerId === provider.id ? (
-              <div className="model-login-flow">
-                <div className="model-login-heading">
-                  <strong>{loginLabel(login.authType)}</strong>
-                  <Button size="xs" variant="ghost" onClick={cancelLogin}>
-                    Cancel
-                  </Button>
-                </div>
-                <p>{login.error || login.message}</p>
-                {login.deviceCode ? <code>{login.deviceCode}</code> : null}
-                {login.prompt?.promptType === "select" ? (
-                  <div className="model-login-options">
-                    {login.prompt.options?.map((option) => (
-                      <Button key={option.id} variant="outline" onClick={() => answerPrompt(option.id)}>
-                        {option.label}
-                      </Button>
-                    ))}
-                  </div>
-                ) : login.prompt ? (
-                  <form
-                    className="model-login-input"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      answerPrompt(login.value);
-                    }}
-                  >
-                    <Input
-                      autoFocus
-                      type={login.prompt.promptType === "secret" ? "password" : "text"}
-                      value={login.value}
-                      placeholder={login.prompt.placeholder}
-                      onChange={(event) =>
-                        setLogin((current) => (current ? { ...current, value: event.target.value } : current))
-                      }
-                    />
-                    <Button type="submit" disabled={!login.value.trim()}>
-                      Continue
+                <div className="model-provider-actions">
+                  {provider.supportsOAuth ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => startLogin(provider, "oauth")}
+                      disabled={Boolean(login)}
+                    >
+                      <LogIn /> Account
                     </Button>
-                  </form>
-                ) : login.error ? null : (
-                  <LoaderCircle className="spin" size={16} />
+                  ) : null}
+                  {provider.supportsApiKey ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => startLogin(provider, "api_key")}
+                      disabled={Boolean(login)}
+                    >
+                      <KeyRound /> API key
+                    </Button>
+                  ) : null}
+                  {provider.storedAuthType ? (
+                    <Button
+                      aria-label={`Disconnect ${provider.name}`}
+                      size="icon-sm"
+                      variant="ghost"
+                      onClick={() => void logout(provider)}
+                      disabled={busyLogout || Boolean(login)}
+                      title="Disconnect"
+                    >
+                      {busyLogout ? <LoaderCircle className="spin" /> : <LogOut />}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="model-auth-status" data-configured={provider.configured}>
+                <span className="model-auth-dot" />
+                {provider.configured ? provider.authSource || "Configured" : "Not configured"}
+              </div>
+
+              {custom ? (
+                <div className="model-custom-row">
+                  <span className="model-custom-badge">Custom · models.json</span>
+                  <div className="model-custom-actions">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => openCustomEditor(custom)}
+                      disabled={Boolean(login) || busyCustom}
+                    >
+                      <Pencil size={13} />
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-destructive"
+                      onClick={() => setCustomRemove(custom.id)}
+                      disabled={busyCustom}
+                    >
+                      <Trash2 size={13} />
+                      Remove
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              {login?.providerId === provider.id ? (
+                <div className="model-login-flow">
+                  <div className="model-login-heading">
+                    <strong>{loginLabel(login.authType)}</strong>
+                    <Button size="xs" variant="ghost" onClick={cancelLogin}>
+                      Cancel
+                    </Button>
+                  </div>
+                  <p>{login.error || login.message}</p>
+                  {login.deviceCode ? <code>{login.deviceCode}</code> : null}
+                  {login.prompt?.promptType === "select" ? (
+                    <div className="model-login-options">
+                      {login.prompt.options?.map((option) => (
+                        <Button key={option.id} variant="outline" onClick={() => answerPrompt(option.id)}>
+                          {option.label}
+                        </Button>
+                      ))}
+                    </div>
+                  ) : login.prompt ? (
+                    <form
+                      className="model-login-input"
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        answerPrompt(login.value);
+                      }}
+                    >
+                      <Input
+                        autoFocus
+                        type={login.prompt.promptType === "secret" ? "password" : "text"}
+                        value={login.value}
+                        placeholder={login.prompt.placeholder}
+                        onChange={(event) =>
+                          setLogin((current) => (current ? { ...current, value: event.target.value } : current))
+                        }
+                      />
+                      <Button type="submit" disabled={!login.value.trim()}>
+                        Continue
+                      </Button>
+                    </form>
+                  ) : login.error ? null : (
+                    <LoaderCircle className="spin" size={16} />
+                  )}
+                </div>
+              ) : null}
+
+              {error || state?.error ? (
+                <div className="model-settings-error" role="alert">
+                  {error || state?.error}
+                </div>
+              ) : null}
+
+              <div className="model-list-heading">
+                <span>Models</span>
+                <small>{provider.models.filter((model) => model.available).length} available</small>
+              </div>
+              <div className="model-list">
+                {provider.models.length === 0 ? (
+                  <div className="model-settings-empty">No models available</div>
+                ) : (
+                  provider.models.map((model) => {
+                    const ref = `${model.provider}/${model.id}`;
+                    const selected = ref === defaultModelRef;
+                    return (
+                      <button
+                        className="model-row"
+                        data-selected={selected}
+                        disabled={!model.available || Boolean(busyModel)}
+                        key={ref}
+                        onClick={() => void setDefaultModel(model.provider, model.id)}
+                        type="button"
+                      >
+                        <span className="model-row-check">
+                          {busyModel === ref ? <LoaderCircle className="spin" /> : selected ? <Check /> : null}
+                        </span>
+                        <span className="model-row-name">{model.name}</span>
+                        <span className="model-row-meta">
+                          {formatTokens(model.contextWindow)} context
+                          {model.reasoning ? " · reasoning" : ""}
+                        </span>
+                      </button>
+                    );
+                  })
                 )}
               </div>
-            ) : null}
-
-            {error || state?.error ? (
-              <div className="model-settings-error" role="alert">
-                {error || state?.error}
-              </div>
-            ) : null}
-
-            <div className="model-list-heading">
-              <span>Models</span>
-              <small>{provider.models.filter((model) => model.available).length} available</small>
-            </div>
-            <div className="model-list">
-              {provider.models.length === 0 ? (
-                <div className="model-settings-empty">No models available</div>
-              ) : (
-                provider.models.map((model) => {
-                  const ref = `${model.provider}/${model.id}`;
-                  const selected = ref === defaultModelRef;
-                  return (
-                    <button
-                      className="model-row"
-                      data-selected={selected}
-                      disabled={!model.available || Boolean(busyModel)}
-                      key={ref}
-                      onClick={() => void setDefaultModel(model.provider, model.id)}
-                      type="button"
-                    >
-                      <span className="model-row-check">
-                        {busyModel === ref ? <LoaderCircle className="spin" /> : selected ? <Check /> : null}
-                      </span>
-                      <span className="model-row-name">{model.name}</span>
-                      <span className="model-row-meta">
-                        {formatTokens(model.contextWindow)} context
-                        {model.reasoning ? " · reasoning" : ""}
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </>
-        ) : loading ? null : (
-          <div className="model-settings-empty">Select a provider</div>
-        )}
-      </section>
+            </>
+          ) : loading ? null : (
+            <div className="model-settings-empty">Select a provider</div>
+          )}
+        </section>
+      </div>
 
       <Dialog open={Boolean(customDraft)} onOpenChange={(next) => !next && setCustomDraft(undefined)}>
         <DialogContent className="custom-provider-dialog">
