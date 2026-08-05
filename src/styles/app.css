@@ -10,3 +10,6 @@
 @import "./skills.css";
 @import "./models.css";
 @import "./responsive.css";
+
+/* Tailwind v4 class-based dark variant (shadcn components use dark: utilities). */
+@custom-variant dark (&:is(.dark *));
