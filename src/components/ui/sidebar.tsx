@@ -94,7 +94,9 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => setOpen(!open), [open, setOpen]);
   const state: SidebarState = open ? "expanded" : "collapsed";
 
-  const [width, setWidth] = React.useState(() => readSavedSidebarWidth(storageKey, side === "right" ? SIDEBAR_WIDTH_RIGHT_MAX : SIDEBAR_WIDTH_MAX));
+  const [width, setWidth] = React.useState(() =>
+    readSavedSidebarWidth(storageKey, side === "right" ? SIDEBAR_WIDTH_RIGHT_MAX : SIDEBAR_WIDTH_MAX),
+  );
   const widthRef = React.useRef(width);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const getWidth = React.useCallback(() => widthRef.current, []);
