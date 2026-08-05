@@ -2,6 +2,9 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { memo, useEffect, useRef, useState } from "react";
 
+import { terminalTheme } from "../lib/terminalTheme";
+import { useIsDark } from "../lib/useIsDark";
+
 interface SideTerminalViewProps {
   cwd: string;
 }
@@ -16,6 +19,12 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
   const terminalRef = useRef<Terminal | null>(null);
   const [state, setState] = useState<"starting" | "ready" | "error">("starting");
   const [error, setError] = useState<string>();
+  const isDark = useIsDark();
+  // Latest-value ref so the mount effect can read the theme without re-running
+  // (recreating the terminal) when the theme flips — the update effect below
+  // handles live repaints instead.
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
 
   useEffect(() => {
     let disposed = false;
@@ -53,28 +62,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
         fontSize: 11,
         lineHeight: 1.35,
         scrollback: 8_000,
-        theme: {
-          background: surfaceBackground,
-          foreground: "#d7e0e9",
-          cursor: "#74d6a5",
-          selectionBackground: "#314b58",
-          black: "#18212a",
-          red: "#ed8b92",
-          green: "#74d6a5",
-          yellow: "#e3c47a",
-          blue: "#8db9e8",
-          magenta: "#c6a1df",
-          cyan: "#72c6c7",
-          white: "#d7e0e9",
-          brightBlack: "#526171",
-          brightRed: "#ff9b9f",
-          brightGreen: "#8be6b4",
-          brightYellow: "#f3d994",
-          brightBlue: "#a9cdf5",
-          brightMagenta: "#dbb8f1",
-          brightCyan: "#91e2e0",
-          brightWhite: "#f0f4f7",
-        },
+        theme: terminalTheme(isDarkRef.current, surfaceBackground),
       });
       const fit = new FitAddon();
       terminal.loadAddon(fit);
@@ -118,6 +106,15 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       terminalRef.current = null;
     };
   }, [cwd]);
+
+  // Repaint the terminal when the app theme flips.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const surface = hostRef.current?.parentElement ?? hostRef.current;
+    const surfaceBackground = surface ? getComputedStyle(surface).backgroundColor || "#000000" : "#000000";
+    terminal.options.theme = terminalTheme(isDark, surfaceBackground);
+  }, [isDark]);
 
   return (
     <div className="git-panel-body">

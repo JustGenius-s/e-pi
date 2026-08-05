@@ -1,7 +1,8 @@
-import { FilePlus, Folder, FolderOpen, FolderPlus, Package, Plus, Settings2, Sparkles } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { FilePlus, Folder, FolderOpen, FolderPlus, Moon, Package, Plus, Settings2, Sparkles, Sun } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
+import { useTheme } from "../lib/theme";
 import type { PiRuntimeState, SessionSummary } from "../types/contracts";
 import {
   ContextMenu,
@@ -160,9 +161,17 @@ export function SessionSidebar({
   onOpenSettings,
 }: SessionSidebarProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const { theme, toggleTheme } = useTheme();
+  /**
+   * Stable project order. Sessions arrive sorted by recent activity (so
+   * sessions within a project stay recency-ordered), but the project GROUP
+   * order is frozen from the first load and never reshuffled when sessions
+   * are created — otherwise creating a session would jump its project to the
+   * top. Brand-new projects (e.g. a fresh folder) are inserted at the top;
+   * existing projects keep their position.
+   */
+  const groupOrderRef = useRef<string[] | null>(null);
 
-  // Sessions arrive sorted by most recent activity, so grouping by cwd
-  // preserves both project recency order and per-project recency order.
   const projects = useMemo<ProjectGroup[]>(() => {
     const byCwd = new Map<string, SessionSummary[]>();
     for (const session of sessions) {
@@ -171,10 +180,15 @@ export function SessionSidebar({
       if (list) list.push(session);
       else byCwd.set(cwd, [session]);
     }
-    return [...byCwd.entries()].map(([cwd, projectSessions]) => ({
-      cwd,
-      sessions: projectSessions,
-    }));
+    const knownOrder = groupOrderRef.current;
+    if (knownOrder === null) {
+      // First load: seed the stable order from the initial recency sort.
+      groupOrderRef.current = [...byCwd.keys()];
+      return [...byCwd.entries()].map(([cwd, projectSessions]) => ({ cwd, sessions: projectSessions }));
+    }
+    const newProjects = [...byCwd.keys()].filter((cwd) => !knownOrder.includes(cwd));
+    groupOrderRef.current = [...newProjects, ...knownOrder.filter((cwd) => byCwd.has(cwd))];
+    return groupOrderRef.current.map((cwd) => ({ cwd, sessions: byCwd.get(cwd)! }));
   }, [sessions]);
 
   const toggleProject = (cwd: string) => {
@@ -334,10 +348,21 @@ export function SessionSidebar({
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton tooltip="Settings" onClick={onOpenSettings}>
-              <Settings2 />
-              <span>Settings</span>
-            </SidebarMenuButton>
+            <div className="sidebar-settings-row">
+              <SidebarMenuButton tooltip="Settings" onClick={onOpenSettings} className="sidebar-settings-button">
+                <Settings2 />
+                <span>Settings</span>
+              </SidebarMenuButton>
+              <button
+                type="button"
+                className="sidebar-theme-toggle"
+                title={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                onClick={toggleTheme}
+              >
+                {theme === "dark" ? <Sun /> : <Moon />}
+              </button>
+            </div>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

@@ -344,6 +344,52 @@
   border-top: 1px solid var(--sidebar-border);
 }
 
+/* Settings footer row: the theme toggle sits at the far right, keeping the
+   row single-height instead of stacking a second menu item below it. */
+.sidebar-settings-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 2px;
+}
+
+.sidebar-settings-button {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-theme-toggle {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.sidebar-theme-toggle:hover,
+.sidebar-theme-toggle:focus-visible {
+  color: var(--sidebar-accent-foreground);
+  background: var(--sidebar-accent);
+}
+
+.sidebar-theme-toggle:focus-visible {
+  box-shadow: 0 0 0 2px var(--sidebar-ring);
+}
+
+.sidebar-theme-toggle svg {
+  width: 13px;
+  height: 13px;
+}
+
 .sidebar-rail {
   position: absolute;
   z-index: 20;
@@ -414,6 +460,7 @@
 .sidebar-root[data-state="collapsed"] .sidebar-group-label,
 .sidebar-root[data-state="collapsed"] .sidebar-menu-button > span,
 .sidebar-root[data-state="collapsed"] .sidebar-menu-button > time,
+.sidebar-root[data-state="collapsed"] .sidebar-theme-toggle,
 .sidebar-root[data-state="collapsed"] .project-header {
   display: none;
 }

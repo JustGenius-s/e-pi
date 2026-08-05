@@ -345,6 +345,8 @@ export interface EPiApi {
     imageData(filePath: string, maxSize?: number): Promise<string | null>;
     openPath(path: string): Promise<void>;
     copyText(text: string): Promise<void>;
+    /** Keep native chrome (titlebar, scrollbars) in step with the app theme. */
+    setTheme(theme: "light" | "dark"): Promise<void>;
     log(message: string): void;
   };
   sessions: {

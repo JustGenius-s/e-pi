@@ -4,7 +4,7 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
-import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, shell } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, shell } from "electron";
 
 import type {
   CreateSessionRequest,
@@ -86,6 +86,12 @@ function registerHandlers(): void {
     piVersion: PI_VERSION,
     defaultCwd: app.getPath("home"),
   }));
+
+  // The renderer owns the theme choice (CSS variables + persistence); this
+  // keeps native chrome (macOS traffic lights, scrollbars) in step with it.
+  ipcMain.handle("app:set-theme", (_event, theme: "light" | "dark") => {
+    nativeTheme.themeSource = theme === "dark" ? "dark" : "light";
+  });
 
   ipcMain.handle("app:choose-directory", async (_event, defaultPath?: string) => {
     const result = await dialog.showOpenDialog(mainWindow!, {
@@ -286,7 +292,9 @@ function createWindow(): void {
     minHeight: 620,
     title: "E-Pi",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",
-    backgroundColor: "#000000",
+    // Match the first paint: system-dark windows boot to black, light to
+    // white, so the native frame doesn't flash against the renderer theme.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#000000" : "#ffffff",
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       contextIsolation: true,

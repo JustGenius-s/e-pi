@@ -4,6 +4,9 @@ import { Terminal } from "@xterm/xterm";
 import { ArrowDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
+import { terminalTheme } from "../lib/terminalTheme";
+import { useIsDark } from "../lib/useIsDark";
+
 interface TerminalPanelProps {
   sessionKey: string;
   /** Focus the terminal while it is interactive (e.g. a trust prompt on a freshly created session). */
@@ -71,6 +74,12 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
   const fitTimerRef = useRef<number | undefined>(undefined);
   const fittedOnceRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
+  const isDark = useIsDark();
+  // Latest-value ref so the mount effect can read the theme without re-running
+  // (recreating the terminal) when the theme flips — the update effect below
+  // handles live repaints instead.
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -90,28 +99,7 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
       fontSize: 13,
       lineHeight: 1.32,
       scrollback: 12_000,
-      theme: {
-        background: surfaceBackground,
-        foreground: "#d7e0e9",
-        cursor: "#74d6a5",
-        selectionBackground: "#314b58",
-        black: "#18212a",
-        red: "#ed8b92",
-        green: "#74d6a5",
-        yellow: "#e3c47a",
-        blue: "#8db9e8",
-        magenta: "#c6a1df",
-        cyan: "#72c6c7",
-        white: "#d7e0e9",
-        brightBlack: "#526171",
-        brightRed: "#ff9b9f",
-        brightGreen: "#8be6b4",
-        brightYellow: "#f3d994",
-        brightBlue: "#a9cdf5",
-        brightMagenta: "#dbb8f1",
-        brightCyan: "#91e2e0",
-        brightWhite: "#f0f4f7",
-      },
+      theme: terminalTheme(isDarkRef.current, surfaceBackground),
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
@@ -214,6 +202,16 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
   useEffect(() => {
     if (autoFocus) terminalRef.current?.focus();
   }, [autoFocus]);
+
+  // Repaint the terminal when the app theme flips; the surface background is
+  // re-read so the canvas keeps blending with the panel behind it.
+  useEffect(() => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const surface = hostRef.current?.parentElement ?? hostRef.current;
+    const surfaceBackground = surface ? getComputedStyle(surface).backgroundColor || "#000000" : "#000000";
+    terminal.options.theme = terminalTheme(isDark, surfaceBackground);
+  }, [isDark]);
 
   return (
     <>

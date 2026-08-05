@@ -1,6 +1,8 @@
 import type { FileDiffOptions } from "@pierre/diffs";
 import { PatchDiff } from "@pierre/diffs/react";
-import { memo, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { memo, useMemo, type CSSProperties } from "react";
+
+import { useIsDark } from "../lib/useIsDark";
 
 /** Review diff layout: side-by-side columns or a single unified column. */
 export type DiffStyle = "split" | "unified";
@@ -38,18 +40,6 @@ const WRAPPER_STYLE = {
   "--diffs-min-number-column-width": "4ch",
   "--diffs-gap-block": "0",
 } as CSSProperties;
-
-/** Tracks the `dark` class on <html> so the pierre theme follows e-pi. */
-function useIsDark(): boolean {
-  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
-  useEffect(() => {
-    const root = document.documentElement;
-    const observer = new MutationObserver(() => setIsDark(root.classList.contains("dark")));
-    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
-  return isDark;
-}
 
 /**
  * OpenCode-identical diff body via the `@pierre/diffs` engine (the same
