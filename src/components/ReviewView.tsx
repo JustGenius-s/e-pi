@@ -4,18 +4,22 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronRight,
+  Columns2,
   Folders,
   GitBranch,
   GitCommitHorizontal,
   ListChevronsDownUp,
   ListChevronsUpDown,
+  Rows2,
   Sparkles,
   Square,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { parseDiff } from "../lib/diff";
 import { pathBaseName } from "../lib/format";
 import type { GitDiffResult, GitFileEntry, GitStatus } from "../types/contracts";
+import { DiffView, type DiffStyle } from "./DiffView";
 import { IconButton } from "./IconButton";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
@@ -29,11 +33,33 @@ interface ReviewViewProps {
 
 type Phase = "idle" | "generating" | "committing" | "pushing" | "pulling";
 
+/** LocalStorage key for the persisted review diff layout. */
+const REVIEW_DIFF_STYLE_KEY = "e-pi.git.diffStyle";
+
 function fileStatusLabel(entry: GitFileEntry): string {
   if (entry.conflict) return "conflict";
   if (entry.untracked) return "untracked";
   if (entry.staged) return "staged";
   return "modified";
+}
+
+/** OpenCode-style status letter for the file header badge. */
+function statusLetter(entry: GitFileEntry): string {
+  if (entry.conflict) return "!";
+  if (entry.untracked) return "A";
+  const index = entry.status[0];
+  const work = entry.status[1];
+  if (index === "A") return "A";
+  if (index === "D" || work === "D") return "D";
+  return "M";
+}
+
+function statusTone(entry: GitFileEntry): "add" | "del" | "mod" | "conflict" {
+  if (entry.conflict) return "conflict";
+  const letter = statusLetter(entry);
+  if (letter === "A") return "add";
+  if (letter === "D") return "del";
+  return "mod";
 }
 
 function statusIcon(entry: GitFileEntry): string {
@@ -44,51 +70,21 @@ function statusIcon(entry: GitFileEntry): string {
   return entry.status[1] === "D" ? "D" : "M";
 }
 
-function diffLineClass(line: string): string {
-  if (line.startsWith("+++") || line.startsWith("---") || line.startsWith("diff --git") || line.startsWith("index ")) {
-    return "git-diff-meta";
-  }
-  if (line.startsWith("@@")) return "git-diff-hunk";
-  if (line.startsWith("+")) return "git-diff-add";
-  if (line.startsWith("-")) return "git-diff-del";
-  return "";
-}
-
-/** Memoized diff body: re-rendering App must not re-parse the diff text. */
-const DiffView = memo(function DiffView({ result }: { result: GitDiffResult }) {
-  const lines = useMemo(() => result.diff.split("\n"), [result.diff]);
-  if (!result.diff) {
-    return <div className="git-diff-empty">No changes for this file</div>;
-  }
-  return (
-    <div className="git-diff">
-      {lines.map((line, index) => {
-        const rowKey = `${index}:${line}`;
-        return (
-          <div key={rowKey} className={diffLineClass(line)}>
-            {line || " "}
-          </div>
-        );
-      })}
-      {result.truncated ? <div className="git-diff-truncated">Diff truncated for display</div> : null}
-    </div>
-  );
-});
-
 interface FileSectionProps {
   entry: GitFileEntry;
   expanded: boolean;
   diff: GitDiffResult | undefined;
   diffError: string | undefined;
   loading: boolean;
+  diffStyle: DiffStyle;
   onToggle: () => void;
   onToggleStage: (entry: GitFileEntry) => void;
   sectionRef: (el: HTMLDivElement | null) => void;
 }
 
 /**
- * One changed file: a header row (stage checkbox, name, directory) that
- * expands/collapses its diff body below it.
+ * One changed file: a header row (stage checkbox, status badge, name,
+ * directory, +/- stats) that expands/collapses its diff body below it.
  */
 const FileSection = memo(function FileSection({
   entry,
@@ -96,12 +92,15 @@ const FileSection = memo(function FileSection({
   diff,
   diffError,
   loading,
+  diffStyle,
   onToggle,
   onToggleStage,
   sectionRef,
 }: FileSectionProps) {
   const lastSlash = entry.path.lastIndexOf("/");
   const dir = lastSlash >= 0 ? entry.path.slice(0, lastSlash + 1) : "";
+  const parsed = useMemo(() => (diff ? parseDiff(diff.diff) : undefined), [diff]);
+  const stats = parsed !== undefined && (parsed.additions > 0 || parsed.deletions > 0) ? parsed : undefined;
   return (
     <div className="git-file-section" ref={sectionRef}>
       <div
@@ -131,10 +130,17 @@ const FileSection = memo(function FileSection({
             {statusIcon(entry)} {fileStatusLabel(entry)}
           </TooltipContent>
         </Tooltip>
+        <span className={`git-file-status git-file-status-${statusTone(entry)}`}>{statusLetter(entry)}</span>
         <span className="git-file-name" title={entry.path}>
           {pathBaseName(entry.path)}
         </span>
         {dir ? <span className="git-file-dir">{dir}</span> : null}
+        {stats ? (
+          <span className="git-file-stats">
+            <em className="git-file-stats-add">+{stats.additions}</em>
+            <em className="git-file-stats-del">−{stats.deletions}</em>
+          </span>
+        ) : null}
       </div>
       {expanded ? (
         <div className="git-diff-wrap">
@@ -143,7 +149,7 @@ const FileSection = memo(function FileSection({
           ) : diffError ? (
             <div className="git-diff-error">{diffError}</div>
           ) : diff ? (
-            <DiffView result={diff} />
+            <DiffView patch={diff.diff} style={diffStyle} />
           ) : null}
         </div>
       ) : null}
@@ -169,6 +175,13 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [diffStyle, setDiffStyle] = useState<DiffStyle>(() => {
+    try {
+      return window.localStorage.getItem(REVIEW_DIFF_STYLE_KEY) === "unified" ? "unified" : "split";
+    } catch {
+      return "split";
+    }
+  });
   const lastAutoRefresh = useRef(0);
   const previousActivity = useRef<string>("idle");
   const loadingRef = useRef(new Set<string>());
@@ -402,6 +415,19 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
 
   const busy = phase !== "idle";
 
+  /** Toggle split/unified diff layout, persisted across sessions. */
+  const toggleDiffStyle = () => {
+    setDiffStyle((current) => {
+      const next = current === "split" ? "unified" : "split";
+      try {
+        window.localStorage.setItem(REVIEW_DIFF_STYLE_KEY, next);
+      } catch {
+        // ignore storage failures; the in-memory toggle still applies
+      }
+      return next;
+    });
+  };
+
   return (
     <div className="git-panel-body">
       {/* Top bar: branch info + actions (all on the right). */}
@@ -426,6 +452,9 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
             disabled={!status || status.files.length === 0}
           >
             {allExpanded ? <ListChevronsDownUp size={14} /> : <ListChevronsUpDown size={14} />}
+          </IconButton>
+          <IconButton label={diffStyle === "split" ? "切换为单栏显示" : "切换为分栏显示"} onClick={toggleDiffStyle}>
+            {diffStyle === "split" ? <Columns2 size={14} /> : <Rows2 size={14} />}
           </IconButton>
           <IconButton
             label={showTree ? "隐藏文件树" : "显示文件树"}
@@ -488,6 +517,7 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
                   diff={diffs[entry.workPath]}
                   diffError={diffErrors[entry.workPath]}
                   loading={loadingPaths.has(entry.workPath)}
+                  diffStyle={diffStyle}
                   onToggle={() => toggleFile(entry)}
                   onToggleStage={(file) => void toggleStage(file)}
                   sectionRef={(el) => {

@@ -24,6 +24,10 @@
   --chart-4: oklch(0.92 0 0);
   --chart-5: oklch(0.56 0 0);
   --sidebar: oklch(0.99 0 0);
+  /* OpenCode/pierre diff palette (light). */
+  --diff-add-base: #0dbe4e;
+  --diff-del-base: #ff2e3f;
+  --diff-mod-base: #009fff;
   --sidebar-foreground: oklch(0 0 0);
   --sidebar-primary: oklch(0 0 0);
   --sidebar-primary-foreground: oklch(1 0 0);
@@ -79,6 +83,10 @@
   --chart-4: oklch(0.44 0 0);
   --chart-5: oklch(0.92 0 0);
   --sidebar: oklch(0.18 0 0);
+  /* OpenCode/pierre diff palette (dark). */
+  --diff-add-base: #5ecc71;
+  --diff-del-base: #ff6762;
+  --diff-mod-base: #69b1ff;
   --sidebar-foreground: oklch(1 0 0);
   --sidebar-primary: oklch(1 0 0);
   --sidebar-primary-foreground: oklch(0 0 0);

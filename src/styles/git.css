@@ -183,7 +183,7 @@
 
 .git-file {
   display: grid;
-  grid-template-columns: 14px 20px minmax(0, auto) minmax(0, 1fr);
+  grid-template-columns: 14px 20px 18px minmax(0, auto) minmax(0, 1fr) auto;
   align-items: center;
   gap: 2px;
   min-height: 30px;
@@ -255,6 +255,61 @@
   white-space: nowrap;
 }
 
+/* OpenCode-style status badge: A (added) / M (modified) / D (deleted). */
+
+.git-file-status {
+  display: grid;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.git-file-status-add {
+  color: var(--diff-add-base);
+}
+
+.git-file-status-del {
+  color: var(--diff-del-base);
+}
+
+.git-file-status-mod {
+  color: var(--diff-mod-base);
+}
+
+.git-file-status-conflict {
+  color: var(--destructive);
+}
+
+/* +N -N change stats, right-aligned in the file row. */
+
+.git-file-stats {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 440;
+  line-height: 1;
+  letter-spacing: 0.05px;
+  font-variant-numeric: tabular-nums;
+}
+
+.git-file-stats em {
+  font-style: normal;
+}
+
+.git-file-stats-add {
+  color: var(--diff-add-base);
+}
+
+.git-file-stats-del {
+  color: var(--diff-del-base);
+}
+
 .git-file-dir {
   overflow: hidden;
   color: var(--muted-foreground);
@@ -271,14 +326,28 @@
   text-align: center;
 }
 
-/* --- Diff --- */
+/* --- Diff: @pierre/diffs engine (opencode-identical rendering) --- */
 
 .git-diff-wrap {
+  /* Slightly stronger than the panel background, like opencode's diff bg. */
+  --background-stronger: color-mix(in oklch, var(--background) 90%, var(--foreground));
+  --diff-bg: color-mix(in oklch, var(--background) 92%, var(--foreground));
   min-height: 0;
   max-height: 45vh;
   overflow: auto;
-  background: color-mix(in oklch, var(--background) 92%, var(--foreground));
+  background: var(--diff-bg);
   scrollbar-width: thin;
+}
+
+.git-diff-pierre {
+  min-width: 0;
+}
+
+.git-diff-pierre > * {
+  /* The pierre web component renders as an inline/block element; let it
+     size to its content inside the scrolling wrapper. */
+  display: block;
+  width: 100%;
 }
 
 .git-diff-error {
@@ -287,37 +356,6 @@
   font-size: 12px;
   line-height: 1.5;
   overflow-wrap: anywhere;
-}
-
-.git-diff {
-  padding: 6px 0;
-  font-family: var(--font-mono);
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.git-diff > div {
-  padding: 0 10px;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.git-diff-meta {
-  color: var(--muted-foreground);
-}
-
-.git-diff-hunk {
-  color: var(--chart-2);
-}
-
-.git-diff-add {
-  color: oklch(0.72 0.18 152);
-  background: color-mix(in oklch, oklch(0.72 0.18 152) 9%, transparent);
-}
-
-.git-diff-del {
-  color: color-mix(in oklch, var(--destructive) 82%, var(--foreground));
-  background: color-mix(in oklch, var(--destructive) 11%, transparent);
 }
 
 .git-diff-truncated {

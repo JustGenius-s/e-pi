@@ -1,0 +1,99 @@
+import type { FileDiffOptions } from "@pierre/diffs";
+import { PatchDiff } from "@pierre/diffs/react";
+import { memo, useEffect, useMemo, useState, type CSSProperties } from "react";
+
+/** Review diff layout: side-by-side columns or a single unified column. */
+export type DiffStyle = "split" | "unified";
+
+/**
+ * Diff-row tints adapted to the e-pi theme: deletion/addition bases come from
+ * the theme's `--diff-*` variables (pierre palette, light + dark), and the
+ * line-number column uses the panel's `--background-stronger`. Keeps the
+ * opencode-style 30% alpha blend so rows read as a soft tint over the diff
+ * background instead of standing out with mismatched saturation.
+ */
+const UNSAFE_CSS = `
+:host {
+  /* pierre's theme CSS paints the host with the shiki theme background;
+     drop it so the panel's own diff background (--diff-bg) shows through. */
+  background-color: transparent;
+}
+[data-diff] {
+  --diffs-bg: transparent;
+  --diffs-bg-separator: var(--background-stronger);
+  --diffs-fg: var(--foreground);
+  --diffs-bg-deletion-override: color-mix(in oklch, transparent 70%, var(--diff-del-base));
+  --diffs-bg-addition-override: color-mix(in oklch, transparent 70%, var(--diff-add-base));
+}
+[data-diff] [data-column-number] {
+  background-color: var(--background-stronger, color-mix(in oklch, var(--background) 90%, var(--foreground)));
+}
+`;
+
+const WRAPPER_STYLE = {
+  "--diffs-font-family": 'ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", monospace',
+  "--diffs-font-size": "13px",
+  "--diffs-line-height": "24px",
+  "--diffs-tab-size": "2",
+  "--diffs-min-number-column-width": "4ch",
+  "--diffs-gap-block": "0",
+} as CSSProperties;
+
+/** Tracks the `dark` class on <html> so the pierre theme follows e-pi. */
+function useIsDark(): boolean {
+  const [isDark, setIsDark] = useState(() => document.documentElement.classList.contains("dark"));
+  useEffect(() => {
+    const root = document.documentElement;
+    const observer = new MutationObserver(() => setIsDark(root.classList.contains("dark")));
+    observer.observe(root, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+  return isDark;
+}
+
+/**
+ * OpenCode-identical diff body via the `@pierre/diffs` engine (the same
+ * library opencode desktop uses): Shiki syntax highlighting, bars
+ * indicators, line-info-basic hunk separators, split/unified layouts.
+ */
+export const DiffView = memo(function DiffView({ patch, style }: { patch: string; style: DiffStyle }) {
+  const isDark = useIsDark();
+
+  const options = useMemo<FileDiffOptions<undefined>>(
+    () => ({
+      theme: isDark ? "github-dark" : "github-light",
+      themeType: isDark ? "dark" : "light",
+      disableLineNumbers: false,
+      overflow: "scroll",
+      diffStyle: style,
+      diffIndicators: "bars",
+      hunkSeparators: "line-info-basic",
+      lineDiffType: style === "split" ? "word-alt" : "none",
+      maxLineDiffLength: 1000,
+      expansionLineCount: 20,
+      disableFileHeader: true,
+      unsafeCSS: UNSAFE_CSS,
+    }),
+    [isDark, style],
+  );
+
+  const wrapperStyle = useMemo(() => ({ ...WRAPPER_STYLE }), []);
+
+  if (!patch) {
+    return <div className="git-diff-empty">No changes for this file</div>;
+  }
+  // git marks binary diffs with a meta line like "Binary files a/x and b/x
+  // differ". Anchor at line start so file *content* containing that string
+  // (e.g. parser tests) is not mistaken for a binary diff.
+  if (/^Binary files .+ differ$/m.test(patch)) {
+    return <div className="git-diff-empty">Binary file</div>;
+  }
+  const truncated = patch.includes("\n[diff truncated]\n");
+  const cleanPatch = truncated ? patch.replace(/\n?\[diff truncated\]\n?/g, "") : patch;
+  return (
+    <div className="git-diff-pierre" style={wrapperStyle}>
+      <PatchDiff patch={cleanPatch} options={options} disableWorkerPool />
+      {truncated ? <div className="git-diff-truncated">Diff truncated for display</div> : null}
+    </div>
+  );
+});
