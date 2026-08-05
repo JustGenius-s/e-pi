@@ -324,6 +324,7 @@ export function App() {
               context={runtimeState?.context}
               usage={runtimeState?.usage}
               cacheHitRate={runtimeState?.cacheHitRate}
+              speed={runtimeState?.speed}
               cwd={activeCwd}
               disabled={
                 loading ||

@@ -400,6 +400,7 @@ export class PiRuntime {
               cost?: unknown;
             };
             cacheHitRate?: unknown;
+            speed?: unknown;
           };
           const activity =
             parsed.status === "busy" || parsed.status === "idle" ? (parsed.status as PiActivityStatus) : undefined;
@@ -432,13 +433,15 @@ export class PiRuntime {
                 }
               : undefined;
           const cacheHitRate = typeof parsed.cacheHitRate === "number" ? parsed.cacheHitRate : undefined;
-          const signature = JSON.stringify({ activity, model, context, usage, cacheHitRate });
+          const speed = typeof parsed.speed === "number" && Number.isFinite(parsed.speed) ? parsed.speed : undefined;
+          const signature = JSON.stringify({ activity, model, context, usage, cacheHitRate, speed });
           const previous = JSON.stringify({
             activity: instance.state.activity,
             model: instance.state.model,
             context: instance.state.context,
             usage: instance.state.usage,
             cacheHitRate: instance.state.cacheHitRate,
+            speed: instance.state.speed,
           });
           if (signature !== previous) {
             // Keep the last known value when the sidecar lacks one (e.g. during
@@ -450,6 +453,7 @@ export class PiRuntime {
               context: context ?? instance.state.context,
               usage: usage ?? instance.state.usage,
               cacheHitRate: cacheHitRate ?? instance.state.cacheHitRate,
+              speed: speed ?? instance.state.speed,
             });
           }
         })

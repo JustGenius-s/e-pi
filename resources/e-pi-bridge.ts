@@ -42,6 +42,8 @@ interface BridgeState {
   usage?: BridgeUsage;
   /** Cache hit rate (0-100) of the latest assistant response. */
   cacheHitRate?: number;
+  /** Output speed of the latest assistant response in tokens/sec. */
+  speed?: number;
 }
 
 function emptyUsage(): BridgeUsage {
@@ -84,6 +86,28 @@ function latestCacheHitRate(ctx: ExtensionContext): number | undefined {
     rate = promptTokens > 0 ? (usage.cacheRead / promptTokens) * 100 : undefined;
   }
   return rate;
+}
+
+const CHARS_PER_TOKEN = 4;
+const SPEED_LIVE_INTERVAL_MS = 500;
+/** When the current assistant message started (message_start). */
+let messageStartTs = 0;
+/** When the first streamed delta arrived (excludes time-to-first-token). */
+let firstTokenTs = 0;
+let lastSpeedReportTs = 0;
+/** Characters streamed so far (text + thinking + tool calls), for live estimates. */
+let streamCharCount = 0;
+
+function resetSpeedTracking(): void {
+  messageStartTs = 0;
+  firstTokenTs = 0;
+  lastSpeedReportTs = 0;
+  streamCharCount = 0;
+}
+
+/** Elapsed generation time in ms (from first token, falling back to message start). */
+function speedElapsedMs(): number {
+  return firstTokenTs || messageStartTs ? Date.now() - (firstTokenTs || messageStartTs) : 0;
 }
 
 function contextUsageOf(ctx: ExtensionContext): BridgeContext | undefined {
@@ -225,12 +249,40 @@ export default function ePiBridge(pi: ExtensionAPI): void {
     });
   });
 
+  pi.on("message_start", (event, _ctx) => {
+    if (event.message.role !== "assistant") return;
+    resetSpeedTracking();
+    messageStartTs = Date.now();
+  });
+
+  // While streaming, report a live tokens/sec estimate (chars/4). The exact
+  // number is computed from usage.output at message_end.
+  pi.on("message_update", (event, ctx) => {
+    const ev = event.assistantMessageEvent;
+    if (ev.type !== "text_delta" && ev.type !== "thinking_delta" && ev.type !== "toolcall_delta") return;
+    if (!firstTokenTs) firstTokenTs = Date.now();
+    streamCharCount += ev.delta.length;
+    const now = Date.now();
+    if (now - lastSpeedReportTs < SPEED_LIVE_INTERVAL_MS) return;
+    lastSpeedReportTs = now;
+    const elapsed = speedElapsedMs();
+    if (elapsed <= 0) return;
+    const estimate = streamCharCount / CHARS_PER_TOKEN / (elapsed / 1000);
+    if (estimate > 0) reportState(ctx, { speed: estimate });
+  });
+
   pi.on("message_end", (event, ctx) => {
     if (event.message.role === "assistant") {
       addUsage(sessionUsage, event.message.usage);
       const usage = event.message.usage;
       const promptTokens = usage.input + usage.cacheRead + usage.cacheWrite;
       sessionCacheHitRate = promptTokens > 0 ? (usage.cacheRead / promptTokens) * 100 : undefined;
+      const elapsed = speedElapsedMs();
+      const tokens = usage.output || Math.round(streamCharCount / CHARS_PER_TOKEN);
+      if (elapsed > 0 && tokens > 0) {
+        reportState(ctx, { speed: tokens / (elapsed / 1000) });
+      }
+      resetSpeedTracking();
     }
     reportState(ctx, {
       context: contextUsageOf(ctx),

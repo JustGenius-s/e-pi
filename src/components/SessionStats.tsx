@@ -6,13 +6,17 @@ interface SessionStatsProps {
   context?: ContextUsageState;
   usage: SessionUsageState;
   cacheHitRate?: number;
+  /** Output speed of the latest assistant response (tokens/sec). */
+  speed?: number;
+  /** True while the agent is streaming; live speed is an estimate. */
+  live?: boolean;
 }
 
 /**
  * Context usage ring with a hover details card (tokens, cache, cost).
  * Rendered left of the Send button in the composer toolbar.
  */
-export function SessionStats({ context, usage, cacheHitRate }: SessionStatsProps) {
+export function SessionStats({ context, usage, cacheHitRate, speed, live }: SessionStatsProps) {
   const totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
   const hasCache = usage.cacheRead > 0 || usage.cacheWrite > 0;
   const percent = context?.percent ?? null;
@@ -87,6 +91,10 @@ export function SessionStats({ context, usage, cacheHitRate }: SessionStatsProps
           <div>
             <dt>Cost</dt>
             <dd>${usage.cost.toFixed(3)}</dd>
+          </div>
+          <div>
+            <dt>Speed</dt>
+            <dd>{speed != null ? `${live ? "~" : ""}${speed.toFixed(1)} tok/s` : "—"}</dd>
           </div>
         </dl>
       </HoverCardContent>

@@ -64,6 +64,8 @@ export interface PiRuntimeState {
   usage?: SessionUsageState;
   /** Cache hit rate (0-100) of the latest assistant response; undefined before the first one. */
   cacheHitRate?: number;
+  /** Output speed (tokens/sec) of the latest assistant response; live estimate while streaming. */
+  speed?: number;
   pid?: number;
   exitCode?: number;
   signal?: number;

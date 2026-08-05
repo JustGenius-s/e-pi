@@ -49,6 +49,7 @@ interface ComposerProps {
   context?: ContextUsageState;
   usage?: SessionUsageState;
   cacheHitRate?: number;
+  speed?: number;
   disabled: boolean;
   cwd?: string;
   onSubmit: (messages: string[]) => Promise<boolean>;
@@ -81,6 +82,7 @@ export function Composer({
   context,
   usage,
   cacheHitRate,
+  speed,
   disabled,
   cwd,
   onSubmit,
@@ -461,7 +463,15 @@ export function Composer({
           </Menubar>
         </div>
         <div className="composer-actions">
-          {usage ? <SessionStats context={context} usage={usage} cacheHitRate={cacheHitRate} /> : null}
+          {usage ? (
+            <SessionStats
+              context={context}
+              usage={usage}
+              cacheHitRate={cacheHitRate}
+              speed={speed}
+              live={activity === "busy"}
+            />
+          ) : null}
           <Button
             className="composer-send"
             size="sm"
