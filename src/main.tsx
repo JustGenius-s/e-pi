@@ -20,7 +20,7 @@ createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <TooltipProvider>
       <App />
-      <Toaster position="bottom-right" />
+      <Toaster position="top-right" />
     </TooltipProvider>
   </StrictMode>,
 );

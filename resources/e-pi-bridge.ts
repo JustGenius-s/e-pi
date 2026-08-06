@@ -4,6 +4,37 @@ import { basename, dirname, join } from "node:path";
 import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
 
+/** Thinking levels pi exposes (mirrors pi's own ThinkingLevel union). */
+type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+/** Full ordered set of thinking levels pi knows about. */
+const EXTENDED_THINKING_LEVELS: readonly ThinkingLevel[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
+/**
+ * Levels a model actually supports, mirroring pi-ai's getSupportedThinkingLevels
+ * (thinkingLevelMap null holes hide levels; xhigh/max require an explicit entry).
+ */
+function supportedThinkingLevelsOf(
+  model: { reasoning?: boolean; thinkingLevelMap?: Partial<Record<ThinkingLevel, string | null>> } | undefined,
+): ThinkingLevel[] | undefined {
+  if (!model) return undefined;
+  if (!model.reasoning) return ["off"];
+  return EXTENDED_THINKING_LEVELS.filter((level) => {
+    const mapped = model.thinkingLevelMap?.[level];
+    if (mapped === null) return false;
+    if (level === "xhigh" || level === "max") return mapped !== undefined;
+    return true;
+  });
+}
+
 const ACTIVITY_SUFFIX = ".e-pi-activity.json";
 
 /** Minimal shape of pi's per-response Usage (pi-ai) that we consume. */
@@ -38,6 +69,10 @@ interface BridgeUsage {
 interface BridgeState {
   status: "busy" | "idle";
   model?: { provider: string; id: string };
+  /** Current thinking level in this pi process (after model clamping). */
+  thinkingLevel?: ThinkingLevel;
+  /** Thinking levels the current model supports (drives the composer menu). */
+  supportedThinkingLevels?: ThinkingLevel[];
   context?: BridgeContext;
   usage?: BridgeUsage;
   /** Cache hit rate (0-100) of the latest assistant response. */
@@ -239,10 +274,13 @@ export default function ePiBridge(pi: ExtensionAPI): void {
     // Reseed usage from the session file so totals survive process restarts.
     sessionUsage = computeUsageFromEntries(ctx);
     sessionCacheHitRate = latestCacheHitRate(ctx);
-    // Seed the sidecar with the session's restored model, usage, and idle state.
+    // Seed the sidecar with the session's restored model, thinking level,
+    // supported levels, usage, and idle state.
     reportState(ctx, {
       status: "idle",
       model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined,
+      thinkingLevel: ctx.thinkingLevel,
+      supportedThinkingLevels: supportedThinkingLevelsOf(ctx.model),
       context: contextUsageOf(ctx),
       usage: sessionUsage,
       cacheHitRate: sessionCacheHitRate,
@@ -250,7 +288,16 @@ export default function ePiBridge(pi: ExtensionAPI): void {
   });
 
   pi.on("model_select", (event, ctx) => {
-    reportState(ctx, { model: { provider: event.model.provider, id: event.model.id } });
+    reportState(ctx, {
+      model: { provider: event.model.provider, id: event.model.id },
+      supportedThinkingLevels: supportedThinkingLevelsOf(event.model),
+    });
+  });
+
+  // Keep the sidecar in sync when the level changes (Shift+Tab, /thinking,
+  // or the E-Pi composer selector via /e-pi-thinking).
+  pi.on("thinking_level_select", (event, ctx) => {
+    reportState(ctx, { thinkingLevel: event.level });
   });
 
   pi.on("agent_start", (_event, ctx) => {

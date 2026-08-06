@@ -86,6 +86,10 @@ export interface PiRuntimeState {
   activity?: PiActivityStatus;
   /** Model currently selected inside this session's Pi process. */
   model?: ModelRef;
+  /** Current thinking level inside this session's Pi process (after model clamping). */
+  thinkingLevel?: Exclude<AgentThinkingLevel, "">;
+  /** Thinking levels the current model supports; drives the composer's thinking menu. */
+  supportedThinkingLevels?: Exclude<AgentThinkingLevel, "">[];
   /** Context usage of the active model; reported while the process is running. */
   context?: ContextUsageState;
   /** Cumulative token usage for this session; reported while the process is running. */

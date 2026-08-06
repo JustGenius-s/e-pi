@@ -12,6 +12,7 @@ import {
   Sun,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { toast } from "sonner";
 
 import {
   ContextMenu,
@@ -28,6 +29,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+
+import { emitAttachFiles } from "../../lib/attachmentsBus";
 import {
   Sidebar,
   SidebarContent,
@@ -316,6 +319,12 @@ export function SessionSidebar({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const { state, setOpen } = useSidebar();
   const { theme, toggleTheme } = useTheme();
+
+  /** Reference a session by attaching its JSONL file to the composer. */
+  const addToChat = (session: SessionSummary) => {
+    emitAttachFiles([session.path]);
+    toast.info(`Added to chat: ${sessionTitle(session)}`);
+  };
   /**
    * Stable project order. Sessions arrive sorted by recent activity (so
    * sessions within a project stay recency-ordered), but the project GROUP
@@ -522,6 +531,8 @@ export function SessionSidebar({
                                 <ContextMenuItem onSelect={() => onCopyText(session.path)}>
                                   Copy session
                                 </ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem onSelect={() => addToChat(session)}>Add to chat</ContextMenuItem>
                                 <ContextMenuSeparator />
                                 <ContextMenuItem variant="destructive" onSelect={() => onRemove(session)}>
                                   Archive chat

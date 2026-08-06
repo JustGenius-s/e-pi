@@ -302,6 +302,8 @@ export function App() {
               status={runtimeState?.status ?? "idle"}
               activity={runtimeState?.activity}
               model={runtimeState?.model}
+              thinkingLevel={runtimeState?.thinkingLevel}
+              supportedThinkingLevels={runtimeState?.supportedThinkingLevels}
               context={runtimeState?.context}
               usage={runtimeState?.usage}
               cacheHitRate={runtimeState?.cacheHitRate}

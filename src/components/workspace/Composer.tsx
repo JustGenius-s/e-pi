@@ -34,6 +34,7 @@ import { useComposerCommands } from "../../hooks/useComposerCommands";
 import { useImeComposition } from "../../hooks/useImeComposition";
 import { onAttachFiles } from "../../lib/attachmentsBus";
 import type {
+  AgentThinkingLevel,
   CommandRecord,
   ContextUsageState,
   ModelManagementState,
@@ -53,6 +54,10 @@ interface ComposerProps {
   status: PiProcessStatus;
   activity?: PiActivityStatus;
   model?: ModelRef;
+  /** Actual thinking level of the session's pi process, reported via the bridge. */
+  thinkingLevel?: ThinkingLevel;
+  /** Levels the current model supports; drives the menu (mirrors pi's Shift+Tab). */
+  supportedThinkingLevels?: ThinkingLevel[];
   context?: ContextUsageState;
   usage?: SessionUsageState;
   cacheHitRate?: number;
@@ -86,6 +91,8 @@ export function Composer({
   status,
   activity,
   model,
+  thinkingLevel: reportedThinkingLevel,
+  supportedThinkingLevels,
   context,
   usage,
   cacheHitRate,
@@ -100,6 +107,12 @@ export function Composer({
   const [models, setModels] = useState<ModelManagementState>();
   const [pendingModel, setPendingModel] = useState<{ sessionPath?: string; ref: string }>();
   const [thinking, setThinking] = useState<ThinkingLevel>("medium");
+  // Keep the selector in sync with the actual session level (initial launch
+  // default, Shift+Tab in pi, /thinking, model switches). Until the bridge
+  // reports a level the session keeps the composer's "medium" placeholder.
+  useEffect(() => {
+    if (reportedThinkingLevel) setThinking(reportedThinkingLevel);
+  }, [reportedThinkingLevel]);
   const [files, setFiles] = useState<string[]>([]);
   const [thumbnails, setThumbnails] = useState<Record<string, string>>({});
   const [preview, setPreview] = useState<string>();
@@ -140,6 +153,12 @@ export function Composer({
   const selectedModel = availableModels.find((candidate) => `${candidate.provider}/${candidate.id}` === modelRef);
   const selectedModelLabel = selectedModel ? displayModel(selectedModel) : (model?.id ?? "Model");
   const selectedThinking = THINKING_LEVELS.find((level) => level.value === thinking);
+  // Only offer levels the current model actually supports, so picking one never
+  // gets silently re-clamped (and then re-synced) by the running pi process.
+  const thinkingOptions =
+    supportedThinkingLevels && supportedThinkingLevels.length > 0
+      ? THINKING_LEVELS.filter((level) => supportedThinkingLevels.includes(level.value))
+      : THINKING_LEVELS;
   const {
     commandGroups,
     filteredCommands,
@@ -285,6 +304,14 @@ export function Composer({
   const changeThinking = async (value: string) => {
     setThinking(value as ThinkingLevel);
     if (sessionPath) await window.ePi.runtime.submit(sessionPath, `/e-pi-thinking ${value}`);
+    // Persist the choice as the default so future launches start at the same
+    // level (mirrors the model selector, which updates the default too).
+    try {
+      const config = await window.ePi.agent.getConfig();
+      await window.ePi.agent.saveConfig({ config: { ...config, thinkingLevel: value as AgentThinkingLevel } });
+    } catch {
+      // Non-fatal: the running session still applies the level.
+    }
   };
 
   /** Insert "/name " at the caret, replacing the typed prefix (TUI-style). */
@@ -516,7 +543,7 @@ export function Composer({
                     <MenubarSubTrigger>Thinking strength</MenubarSubTrigger>
                     <MenubarSubContent>
                       <MenubarRadioGroup value={thinking} onValueChange={(value) => void changeThinking(value)}>
-                        {THINKING_LEVELS.map((level) => (
+                        {thinkingOptions.map((level) => (
                           <MenubarRadioItem key={level.value} value={level.value}>
                             <span>{level.label}</span>
                             <small className="thinking-note">{level.note}</small>
