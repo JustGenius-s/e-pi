@@ -22,6 +22,7 @@ import {
 import { IconButton } from "@/components/ui/IconButton";
 import { FileTypeIcon } from "@/components/workspace/FileTypeIcon";
 
+import { emitAttachFiles } from "../../lib/attachmentsBus";
 import { formatBytes } from "../../lib/format";
 import type { AppDescriptor, FileEntry } from "../../types/contracts";
 
@@ -45,9 +46,11 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   const [root, setRoot] = useState<TreeNode>();
   const [rootError, setRootError] = useState<string>();
   const [apps, setApps] = useState<AppDescriptor[]>([]);
-  /** .app bundle path for "打开"; undefined = system default. */
+  /** .app bundle path for "Open"; undefined = system default. */
   const [openWithApp, setOpenWithAppState] = useState<string | undefined>(undefined);
   const [platform, setPlatform] = useState<NodeJS.Platform>("darwin");
+  /** Path of the last clicked/right-clicked row, kept highlighted. */
+  const [selectedPath, setSelectedPath] = useState<string>();
   const loadingPaths = useRef(new Set<string>());
 
   // Load the scanned apps, the persisted "open with" choice and the platform once.
@@ -76,7 +79,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   /** Open a file with the persisted app; prompts the user when none is chosen. */
   const openFile = async (path: string) => {
     if (!openWithApp) {
-      toast.info("未选择默认打开应用，请点击文件树右上角的应用选择器");
+      toast.info("No default app chosen; pick one from the app selector in the file tree");
       return;
     }
     try {
@@ -94,7 +97,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
     }
   };
 
-  /** "其他…": native app picker, then open with the chosen app. */
+  /** "Other…": native app picker, then open with the chosen app. */
   const openFileWithPicker = async (path: string) => {
     try {
       const chosen = await window.ePi.app.chooseApp();
@@ -160,14 +163,14 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   const openWithSelector = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" className="tool-file-open-with-trigger" title="默认打开应用">
+        <button type="button" className="tool-file-open-with-trigger" title="Default open-with app">
           {selectedApp ? appIcon(selectedApp) : null}
-          <span className="tool-file-open-with-name">{selectedAppName ?? "选择应用"}</span>
+          <span className="tool-file-open-with-name">{selectedAppName ?? "Choose app"}</span>
           <ChevronDown size={11} />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="tool-file-app-submenu">
-        <DropdownMenuLabel>默认打开应用</DropdownMenuLabel>
+        <DropdownMenuLabel>Default open-with app</DropdownMenuLabel>
         {apps.map((app) => (
           <DropdownMenuItem
             key={app.id}
@@ -182,7 +185,13 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
     </DropdownMenu>
   );
 
-  const fileManagerLabel = platform === "darwin" ? "Finder" : platform === "win32" ? "资源管理器" : "文件管理器";
+  const fileManagerLabel = platform === "darwin" ? "Finder" : platform === "win32" ? "File Explorer" : "File Manager";
+
+  /** Attach a file or folder to the composer via the attachments bus. */
+  const addToConversation = (path: string) => {
+    emitAttachFiles([path]);
+    toast.info(`Added to chat: ${path.split(/[\\/]/).pop()}`);
+  };
 
   const renderTree = (node: TreeNode, depth: number): React.ReactNode => {
     const isDir = node.type === "dir";
@@ -190,9 +199,10 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
     const row = (
       <button
         type="button"
-        className="tool-file-row"
+        className={`tool-file-row${selectedPath === node.path ? " selected" : ""}`}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
         onClick={() => toggle(node)}
+        onContextMenu={() => setSelectedPath(node.path)}
       >
         <span className="tool-file-chevron">
           {isDir ? <ChevronRight size={11} className={expanded ? "rotated" : ""} /> : null}
@@ -220,8 +230,10 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
         <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onSelect={() => void window.ePi.app.openPath(node.path)}>
-            在{fileManagerLabel}中打开
+            Open in {fileManagerLabel}
           </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => addToConversation(node.path)}>Add to Chat</ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
     ) : (
@@ -229,7 +241,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
         <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onSelect={() => void openFile(node.path)}>
-            打开
+            Open
             {selectedAppName ? <span className="tool-file-open-app-hint">{selectedAppName}</span> : null}
           </ContextMenuItem>
           <ContextMenuSub>
@@ -242,8 +254,10 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
           </ContextMenuSub>
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => void window.ePi.app.showInFolder(node.path)}>
-            在{fileManagerLabel}中显示
+            Show in {fileManagerLabel}
           </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => addToConversation(node.path)}>Add to Chat</ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
     );
@@ -305,9 +319,9 @@ function appIcon(app: AppDescriptor) {
 }
 
 /**
- * "打开方式" submenu. Asks the main process which apps are declared to open
+ * "Open With" submenu. Asks the main process which apps are declared to open
  * the file's extension; falls back to the dev-app list while loading or on
- * failure. "其他…" opens the native macOS app picker.
+ * failure. "Other…" opens the native macOS app picker.
  */
 function OpenWithSubMenu({
   filePath,
@@ -340,12 +354,12 @@ function OpenWithSubMenu({
 
   return (
     <>
-      <ContextMenuSubTrigger>打开方式</ContextMenuSubTrigger>
+      <ContextMenuSubTrigger>Open With</ContextMenuSubTrigger>
       <ContextMenuSubContent className="tool-file-app-submenu">
         {apps === null ? (
-          <ContextMenuItem disabled>加载中…</ContextMenuItem>
+          <ContextMenuItem disabled>Loading…</ContextMenuItem>
         ) : apps.length === 0 ? (
-          <ContextMenuItem disabled>无匹配应用</ContextMenuItem>
+          <ContextMenuItem disabled>No matching apps</ContextMenuItem>
         ) : (
           apps.map((app) => (
             <ContextMenuItem key={app.id} onSelect={() => onOpenWith(app.id)}>
@@ -355,7 +369,7 @@ function OpenWithSubMenu({
           ))
         )}
         <ContextMenuSeparator />
-        <ContextMenuItem onSelect={onOpenOther}>其他…</ContextMenuItem>
+        <ContextMenuItem onSelect={onOpenOther}>Other…</ContextMenuItem>
       </ContextMenuSubContent>
     </>
   );

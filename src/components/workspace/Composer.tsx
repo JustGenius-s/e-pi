@@ -1,5 +1,5 @@
 import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 
 import { useComposerCommands } from "../../hooks/useComposerCommands";
 import { useImeComposition } from "../../hooks/useImeComposition";
+import { onAttachFiles } from "../../lib/attachmentsBus";
 import type {
   CommandRecord,
   ContextUsageState,
@@ -209,9 +210,13 @@ export function Composer({
       .catch(() => setPreviewUrl(undefined));
   }, [preview]);
 
-  const attachFiles = (paths: string[]) => {
+  const attachFiles = useCallback((paths: string[]) => {
     setFiles((current) => [...new Set([...current, ...paths.filter(Boolean)])]);
-  };
+  }, []);
+
+  // Panels outside the composer tree (file tree context menu) can attach
+  // files/folders through the attachments bus.
+  useEffect(() => onAttachFiles(attachFiles), [attachFiles]);
 
   const chooseFiles = async () => {
     attachFiles(await window.ePi.app.chooseFiles());
