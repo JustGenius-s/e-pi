@@ -30,15 +30,15 @@ E-Pi is an Electron desktop app that brings the [Pi Coding Agent](https://github
 
 ## Tech Stack
 
-| Layer | Technology |
-| ----- | ---------- |
-| Desktop | Electron 43 + electron-vite |
-| Frontend | React 19, TypeScript, Tailwind CSS 4, Radix UI |
-| Terminal | xterm.js + WebGL renderer |
-| Core | [@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) (Pi itself), node-pty |
-| Diffs | [@pierre/diffs](https://www.npmjs.com/package/@pierre/diffs) |
-| Testing | Vitest |
-| Quality | oxlint, oxfmt, Husky + lint-staged |
+| Layer    | Technology                                                                                                             |
+| -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Desktop  | Electron 43 + electron-vite                                                                                            |
+| Frontend | React 19, TypeScript, Tailwind CSS 4, Radix UI                                                                         |
+| Terminal | xterm.js + WebGL renderer                                                                                              |
+| Core     | [@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) (Pi itself), node-pty |
+| Diffs    | [@pierre/diffs](https://www.npmjs.com/package/@pierre/diffs)                                                           |
+| Testing  | Vitest                                                                                                                 |
+| Quality  | oxlint, oxfmt, Husky + lint-staged                                                                                     |
 
 ## Installation
 
@@ -48,7 +48,7 @@ E-Pi ships prebuilt installers for both platforms from the [Releases](https://gi
 
 1. Download `E-Pi-<version>-arm64.dmg` (Apple Silicon) or `E-Pi-<version>-x64.dmg` (Intel) from Releases.
 2. Open the DMG and drag **E-Pi** into your Applications folder.
-3. If you see an error like *"E-Pi can't be opened because Apple cannot check it for malicious software"*, use one of the bypass methods below.
+3. If you see an error like _"E-Pi can't be opened because Apple cannot check it for malicious software"_, use one of the bypass methods below.
 
 > Prefer the `.zip` artifact if your org blocks DMGs; it contains the same `.app` bundle.
 
@@ -97,29 +97,29 @@ pnpm start
 
 ### Commands
 
-| Command | Description |
-| ------- | ----------- |
-| `pnpm dev` | Dev mode with hot reload |
-| `pnpm build` | Type check + tests + production build |
-| `pnpm start` | Preview the built app |
-| `pnpm test` | Run Vitest tests |
-| `pnpm lint` / `pnpm lint:fix` | Lint (oxlint) |
-| `pnpm format` / `pnpm format:check` | Format (oxfmt) |
-| `pnpm typecheck` | TypeScript type check |
-| `pnpm fetch:node` | Download the bundled Node sidecar for packaged builds |
-| `pnpm dist:mac` | Package macOS installers (dmg + zip) |
-| `pnpm dist:win` | Package Windows installers (NSIS exe + portable exe) |
+| Command                             | Description                                           |
+| ----------------------------------- | ----------------------------------------------------- |
+| `pnpm dev`                          | Dev mode with hot reload                              |
+| `pnpm build`                        | Type check + tests + production build                 |
+| `pnpm start`                        | Preview the built app                                 |
+| `pnpm test`                         | Run Vitest tests                                      |
+| `pnpm lint` / `pnpm lint:fix`       | Lint (oxlint)                                         |
+| `pnpm format` / `pnpm format:check` | Format (oxfmt)                                        |
+| `pnpm typecheck`                    | TypeScript type check                                 |
+| `pnpm fetch:node`                   | Download the bundled Node sidecar for packaged builds |
+| `pnpm dist:mac`                     | Package macOS installers (dmg + zip)                  |
+| `pnpm dist:win`                     | Package Windows installers (NSIS exe + portable exe)  |
 
 ### Keyboard Shortcuts
 
-| Shortcut | Action |
-| -------- | ------ |
-| `⌘/Ctrl + N` | New session |
-| `⌘/Ctrl + G` | Toggle the tool panel |
+| Shortcut         | Action                              |
+| ---------------- | ----------------------------------- |
+| `⌘/Ctrl + N`     | New session                         |
+| `⌘/Ctrl + G`     | Toggle the tool panel               |
 | `⌘/Ctrl + 1/2/3` | Open Review / Files / Terminal tabs |
-| `Esc` | Close a drawer or dialog |
-| `Enter` | Send the composer message |
-| `Shift + Enter` | New line in the composer |
+| `Esc`            | Close a drawer or dialog            |
+| `Enter`          | Send the composer message           |
+| `Shift + Enter`  | New line in the composer            |
 
 ## Project Structure
 
