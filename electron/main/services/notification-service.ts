@@ -51,15 +51,9 @@ export class TaskNotificationService {
     if (state.activity !== "busy" && state.activity !== "idle") return false;
     const previous = this.#lastActivity.get(state.sessionPath);
     this.#lastActivity.set(state.sessionPath, state.activity);
-    console.log(
-      `[notify] activity ${previous ?? "none"} -> ${state.activity} (${state.sessionPath}) supported=${Notification.isSupported()}`,
-    );
     if (previous !== "busy" || state.activity !== "idle") return false;
     // Task finished. Skip when the user is already looking at this session.
-    if (options.activeSessionPath === state.sessionPath && options.windowFocused) {
-      console.log("[notify] skipped: active session + window focused");
-      return false;
-    }
+    if (options.activeSessionPath === state.sessionPath && options.windowFocused) return false;
     void this.notify(state);
     return true;
   }
@@ -91,19 +85,16 @@ export class TaskNotificationService {
       };
       notification.on("close", release);
       notification.on("failed", (_event, error) => {
-        console.log(`[notify] failed: ${error}`);
         release();
         // macOS UNErrorDomain 1 = notifications not allowed. The OS only asks
         // once and never re-prompts, so point the user at the settings pane.
         if (error.includes("UNErrorDomain")) this.#onPermissionError();
       });
       this.#active.add(notification);
-      console.log(`[notify] showing banner for ${label}`);
       notification.show();
       return true;
-    } catch (error) {
+    } catch {
       // Permission denied or notifications unavailable — stay silent.
-      console.log(`[notify] error: ${String(error)}`);
       return false;
     }
   }

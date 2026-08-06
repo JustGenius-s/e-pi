@@ -46,8 +46,9 @@ import { SideTerminalService } from "./services/side-terminal-service";
 import { SkillService } from "./services/skill-service";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
-// Required for native notifications on Windows (toast activation identity).
-app.setAppUserModelId("com.justgenius.e-pi");
+// Required for native notifications on Windows (toast activation identity;
+// must match the electron-builder appId).
+app.setAppUserModelId("works.earendil.e-pi");
 const runtime = new PiRuntime();
 const sessions = new SessionService();
 const packages = new PackageService();
@@ -452,8 +453,9 @@ const notifications = new TaskNotificationService(
         type: "info",
         title: "Notifications are off",
         message: "E-Pi wants to show a notification when a task finishes.",
-        detail:
-          "Allow notifications for \"Electron\" in System Settings (the dev build shares that app identity; the packaged E-Pi app has its own entry).",
+        detail: app.isPackaged
+          ? "Allow notifications for E-Pi in System Settings, then completed tasks will show a banner."
+          : "Allow notifications for \"Electron\" in System Settings (the dev build shares that app identity; the packaged E-Pi app has its own entry).",
         buttons: ["Open Notification Settings", "Not now"],
         defaultId: 0,
         cancelId: 1,
