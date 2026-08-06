@@ -3,7 +3,9 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-import { getAgentDir, ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
+
+import { loadPiAgent } from "./pi-agent-loader";
 
 import type {
   CustomModelDefinition,
@@ -94,12 +96,13 @@ interface ModelsFile {
   providers: Record<string, Partial<CustomProviderConfig>>;
 }
 
-function modelsJsonPath(): string {
+async function modelsJsonPath(): Promise<string> {
+  const { getAgentDir } = await loadPiAgent();
   return join(getAgentDir(), "models.json");
 }
 
 async function readModelsFile(): Promise<ModelsFile> {
-  const path = modelsJsonPath();
+  const path = await modelsJsonPath();
   if (!existsSync(path)) return { providers: {} };
   const raw = await readFile(path, "utf8");
   try {
@@ -117,7 +120,7 @@ async function readModelsFile(): Promise<ModelsFile> {
 }
 
 async function writeModelsFile(file: ModelsFile): Promise<void> {
-  const path = modelsJsonPath();
+  const path = await modelsJsonPath();
   await mkdir(dirname(path), { recursive: true });
   const payload = { providers: file.providers };
   await writeFile(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -261,6 +264,7 @@ export class ModelService {
       throw new Error(`Unknown model: ${request.provider}/${request.id}`);
     }
 
+    const { SettingsManager, getAgentDir } = await loadPiAgent();
     const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted: true });
     settings.setDefaultModelAndProvider(request.provider, request.id);
     await settings.flush();
@@ -320,6 +324,7 @@ export class ModelService {
   }
 
   async #createRuntime(): Promise<ModelRuntime> {
+    const { ModelRuntime } = await loadPiAgent();
     return ModelRuntime.create({ allowModelNetwork: false });
   }
 
@@ -362,6 +367,7 @@ export class ModelService {
         return left.name.localeCompare(right.name);
       });
 
+    const { SettingsManager, getAgentDir } = await loadPiAgent();
     const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted: true });
     const defaultProvider = settings.getDefaultProvider();
     const defaultModel = settings.getDefaultModel();

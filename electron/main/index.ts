@@ -3,7 +3,6 @@ import { readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, shell } from "electron";
 
 import type {
@@ -103,9 +102,8 @@ function registerHandlers(): void {
       platform: process.platform,
       arch: process.arch,
       appVersion: app.getVersion(),
-      // Read from disk so an in-place pi update shows the new version without
-      // restarting the main process (the bundled VERSION constant is static).
-      piVersion: readInstalledPiVersion() || PI_VERSION,
+      // Always read from disk so an in-place pi update shows the new version.
+      piVersion: readInstalledPiVersion(),
       defaultCwd: await resolveDefaultCwd(),
       openWithApp: settings.openWithApp,
     };
@@ -118,7 +116,7 @@ function registerHandlers(): void {
       platform: process.platform,
       arch: process.arch,
       appVersion: app.getVersion(),
-      piVersion: PI_VERSION,
+      piVersion: readInstalledPiVersion(),
       defaultCwd: await resolveDefaultCwd(),
       openWithApp: settings.openWithApp,
     };
@@ -131,7 +129,7 @@ function registerHandlers(): void {
       platform: process.platform,
       arch: process.arch,
       appVersion: app.getVersion(),
-      piVersion: PI_VERSION,
+      piVersion: readInstalledPiVersion(),
       defaultCwd: await resolveDefaultCwd(),
       openWithApp: settings.openWithApp,
     };
@@ -248,13 +246,13 @@ function registerHandlers(): void {
   });
   ipcMain.handle("sessions:rename", async (_event, request: { path: string; name: string }) => {
     const activePath = runtime.activeSessionPath;
-    const cwd = sessions.getCwd(request.path);
+    const cwd = await sessions.getCwd(request.path);
     const wasRunning = runtime.isRunning(request.path);
     // A running pi has the session file open; stop it so rename never races
     // with pi's own appends, then restart it in the background.
     if (wasRunning) await runtime.stop(request.path);
     try {
-      sessions.rename(request.path, request.name);
+      await sessions.rename(request.path, request.name);
     } finally {
       if (wasRunning) await runtime.start(request.path, cwd);
       runtime.setActiveSession(activePath);
@@ -268,7 +266,7 @@ function registerHandlers(): void {
 
   ipcMain.handle("runtime:get-states", () => runtime.getStates());
   ipcMain.handle("runtime:start", async (_event, path: string) => {
-    const cwd = sessions.getCwd(path);
+    const cwd = await sessions.getCwd(path);
     debugLog("[ipc] runtime:start", { path, cwd });
     return runtime.start(path, cwd);
   });

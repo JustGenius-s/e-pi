@@ -2,8 +2,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, resolve } from "node:path";
 
-import { getAgentDir, loadSkills, parseFrontmatter, SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { shell } from "electron";
+
+import { loadPiAgent } from "./pi-agent-loader";
 import { stringify } from "yaml";
 
 import type {
@@ -37,8 +39,9 @@ function findGitRepoRoot(startDir: string): string | undefined {
 }
 
 export class SkillService {
-  list(cwd: string): SkillRecord[] {
-    const settings = this.#settings(cwd);
+  async list(cwd: string): Promise<SkillRecord[]> {
+    const { getAgentDir, loadSkills } = await loadPiAgent();
+    const settings = await this.#settings(cwd);
     const userSkillsDir = resolve(getAgentDir(), "skills");
     const projectSkillsDir = resolve(cwd, ".pi", "skills");
     // Mirror the CLI's discovery: user skills also live in ~/.agents/skills,
@@ -93,6 +96,7 @@ export class SkillService {
     if (!description) {
       throw new Error("Skill description is required.");
     }
+    const { getAgentDir } = await loadPiAgent();
     const dir =
       request.scope === "project"
         ? resolve(request.cwd, ".pi", "skills", name)
@@ -119,7 +123,7 @@ export class SkillService {
   async addPath(request: SkillAddPathRequest): Promise<SkillRecord[]> {
     const path = resolve(request.path);
     if (!existsSync(path)) throw new Error("Path does not exist.");
-    const settings = this.#settings(request.cwd);
+    const settings = await this.#settings(request.cwd);
     const existing =
       request.scope === "project"
         ? (settings.getProjectSettings().skills ?? [])
@@ -139,6 +143,7 @@ export class SkillService {
     const filePath = resolve(request.filePath);
     if (!existsSync(filePath)) throw new Error("Skill file does not exist.");
     const content = readFileSync(filePath, "utf8");
+    const { parseFrontmatter } = await loadPiAgent();
     const { frontmatter, body } = parseFrontmatter(content);
     if (request.enabled) {
       delete frontmatter["disable-model-invocation"];
@@ -154,7 +159,7 @@ export class SkillService {
   async remove(request: SkillMutation): Promise<SkillRecord[]> {
     const filePath = resolve(request.filePath);
     if (!existsSync(filePath)) throw new Error("Skill file does not exist.");
-    const settings = this.#settings(request.cwd);
+    const settings = await this.#settings(request.cwd);
     this.#removeMatchingSkillPaths(settings, request.cwd, filePath);
     await settings.flush();
     // Move the owning directory (or the standalone markdown file) to the Trash.
@@ -222,7 +227,8 @@ export class SkillService {
     return normalizedTarget.startsWith(prefix);
   }
 
-  #settings(cwd: string): SettingsManager {
+  async #settings(cwd: string): Promise<SettingsManager> {
+    const { SettingsManager, getAgentDir } = await loadPiAgent();
     return SettingsManager.create(cwd, getAgentDir(), { projectTrusted: true });
   }
 }

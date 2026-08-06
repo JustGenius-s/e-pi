@@ -3,8 +3,10 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { DefaultPackageManager, getAgentDir, SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { net } from "electron";
+
+import { loadPiAgent } from "./pi-agent-loader";
 
 import type {
   PackageDownloads,
@@ -70,8 +72,8 @@ export class PackageService {
     this.#progressListener = listener;
   }
 
-  list(cwd: string): PackageRecord[] {
-    return this.#listWithVersions(this.#manager(cwd));
+  async list(cwd: string): Promise<PackageRecord[]> {
+    return this.#listWithVersions(await this.#manager(cwd));
   }
 
   #listWithVersions(manager: DefaultPackageManager): PackageRecord[] {
@@ -96,7 +98,7 @@ export class PackageService {
     ) {
       return this.#updatesCache.updates;
     }
-    const available = await this.#manager(cwd).checkForAvailableUpdates();
+    const available = await (await this.#manager(cwd)).checkForAvailableUpdates();
     const updates = await Promise.all(
       available.map(async (info) => ({
         ...info,
@@ -176,7 +178,7 @@ export class PackageService {
 
   async install(request: PackageMutation): Promise<PackageRecord[]> {
     const source = normalizePackageSource(request.source);
-    const manager = this.#manager(request.cwd);
+    const manager = await this.#manager(request.cwd);
     try {
       // All installs target the user (global) scope — the drawer has no
       // project-vs-global distinction, everything is installed globally.
@@ -190,7 +192,7 @@ export class PackageService {
 
   async remove(request: PackageMutation): Promise<PackageRecord[]> {
     const source = normalizePackageSource(request.source);
-    const manager = this.#manager(request.cwd);
+    const manager = await this.#manager(request.cwd);
     // Remove from both scopes. Legacy single-scope entries are handled too:
     // npm uninstall is a no-op for packages not present, and removeGit skips
     // missing directories.
@@ -201,13 +203,14 @@ export class PackageService {
 
   async update(request: PackageUpdateRequest): Promise<PackageRecord[]> {
     const source = request.source ? normalizePackageSource(request.source) : undefined;
-    const manager = this.#manager(request.cwd);
+    const manager = await this.#manager(request.cwd);
     await manager.update(source);
     return this.#listWithVersions(manager);
   }
 
   /** Resolve the newest published version of an npm package via `npm view`. */
   async #latestNpmVersion(cwd: string, packageName: string): Promise<string | undefined> {
+    const { SettingsManager, getAgentDir } = await loadPiAgent();
     const settingsManager = SettingsManager.create(cwd, getAgentDir(), { projectTrusted: true });
     const configured = settingsManager.getNpmCommand();
     const [command, ...args] = configured && configured.length > 0 ? configured : ["npm"];
@@ -227,7 +230,8 @@ export class PackageService {
     }
   }
 
-  #manager(cwd: string): DefaultPackageManager {
+  async #manager(cwd: string): Promise<DefaultPackageManager> {
+    const { DefaultPackageManager, SettingsManager, getAgentDir } = await loadPiAgent();
     const settingsManager = SettingsManager.create(cwd, getAgentDir(), { projectTrusted: true });
     const manager = new DefaultPackageManager({
       cwd,

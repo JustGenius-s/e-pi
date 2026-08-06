@@ -14,7 +14,6 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 const BUNDLE_ID = "com.justgenius.e-pi.dev";
 const DISPLAY_NAME = "E-Pi Dev";

@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { getAgentDir, ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
+import { loadPiAgent } from "./pi-agent-loader";
 
 import type {
   GitCommitMessageResult,
@@ -431,6 +431,7 @@ export class GitService {
       context = `${context.slice(0, MAX_GENERATION_BYTES)}\n[diff truncated]\n`;
     }
 
+    const { ModelRuntime, SettingsManager, getAgentDir } = await loadPiAgent();
     const runtime = await ModelRuntime.create({ allowModelNetwork: false });
     const settings = SettingsManager.create(cwd, getAgentDir(), { projectTrusted: true });
     const providerId = settings.getDefaultProvider();

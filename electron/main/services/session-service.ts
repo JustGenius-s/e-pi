@@ -1,8 +1,9 @@
 import { writeFile } from "node:fs/promises";
 
-import { SessionManager, type SessionInfo } from "@earendil-works/pi-coding-agent";
+import type { SessionInfo } from "@earendil-works/pi-coding-agent";
 
 import type { SessionSummary } from "../../../src/types/contracts";
+import { loadPiAgent } from "./pi-agent-loader";
 
 function normalizeText(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -27,11 +28,13 @@ export function toSessionSummary(session: SessionInfo): SessionSummary {
 
 export class SessionService {
   async list(): Promise<SessionSummary[]> {
+    const { SessionManager } = await loadPiAgent();
     const sessions = await SessionManager.listAll();
     return sessions.map(toSessionSummary);
   }
 
   async create(cwd: string): Promise<SessionSummary> {
+    const { SessionManager } = await loadPiAgent();
     const manager = SessionManager.create(cwd);
     const path = manager.getSessionFile();
     if (!path) throw new Error("Pi did not create a persistent session file.");
@@ -46,16 +49,18 @@ export class SessionService {
     return toSessionSummary(session);
   }
 
-  rename(path: string, name: string): void {
+  async rename(path: string, name: string): Promise<void> {
     const normalized = normalizeText(name);
     if (!normalized) throw new Error("Session name cannot be empty.");
     if (normalized.length > 120) throw new Error("Session name must be 120 characters or fewer.");
 
+    const { SessionManager } = await loadPiAgent();
     const manager = SessionManager.open(path);
     manager.appendSessionInfo(normalized);
   }
 
-  getCwd(path: string): string {
+  async getCwd(path: string): Promise<string> {
+    const { SessionManager } = await loadPiAgent();
     return SessionManager.open(path).getCwd();
   }
 }

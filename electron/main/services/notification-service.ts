@@ -1,7 +1,8 @@
 import { basename } from "node:path";
 
-import { SessionManager } from "@earendil-works/pi-coding-agent";
 import { Notification } from "electron";
+
+import { loadPiAgent } from "./pi-agent-loader";
 
 import type { PiRuntimeState } from "../../../src/types/contracts";
 
@@ -66,6 +67,7 @@ export class TaskNotificationService {
       // fall back to the cwd folder name.
       let label = state.cwd ? basename(state.cwd) : "Pi";
       try {
+        const { SessionManager } = await loadPiAgent();
         const sessions = await SessionManager.listAll();
         const session = sessions.find((candidate) => candidate.path === state.sessionPath);
         if (session) {

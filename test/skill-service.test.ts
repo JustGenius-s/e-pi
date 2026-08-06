@@ -109,7 +109,7 @@ describe("SkillService", () => {
 
   it("reads SKILL.md content", async () => {
     await service.create({ cwd, scope: "project", name: "readable", description: "Read me." });
-    const list = service.list(cwd);
+    const list = await service.list(cwd);
     const skill = list.find((item) => item.name === "readable")!;
     const content = service.read(cwd, skill.filePath);
     expect(content).toContain("# readable");
@@ -179,8 +179,8 @@ describe("SkillService", () => {
       settings.flush();
     });
 
-    it("discovers skills from all locations with correct sources", () => {
-      const records = service.list(projectDir);
+    it("discovers skills from all locations with correct sources", async () => {
+      const records = await service.list(projectDir);
       const byName = new Map(records.map((record) => [record.name, record]));
 
       expect(records.map((record) => record.name).sort()).toEqual([
@@ -198,17 +198,17 @@ describe("SkillService", () => {
       expect(byName.get("path-skill")).toMatchObject({ source: "path", managed: false });
     });
 
-    it("ignores root-level .md files in ~/.agents/skills", () => {
-      const names = service.list(projectDir).map((record) => record.name);
+    it("ignores root-level .md files in ~/.agents/skills", async () => {
+      const names = (await service.list(projectDir)).map((record) => record.name);
       expect(names).not.toContain("README");
     });
 
-    it("keeps enabled/disabled from frontmatter", () => {
+    it("keeps enabled/disabled from frontmatter", async () => {
       writeSkill(join(testAgentDir, "skills", "disabled-skill"), "disabled-skill", "turned off");
       const filePath = join(testAgentDir, "skills", "disabled-skill", "SKILL.md");
       const content = readFileSync(filePath, "utf8");
       writeFileSync(filePath, content.replace("---\nname:", "---\ndisable-model-invocation: true\nname:"), "utf8");
-      const record = service.list(projectDir).find((item) => item.name === "disabled-skill");
+      const record = (await service.list(projectDir)).find((item) => item.name === "disabled-skill");
       expect(record?.enabled).toBe(false);
     });
   });

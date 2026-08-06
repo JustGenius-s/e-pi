@@ -2,13 +2,13 @@ import { existsSync, rmSync, watch } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { app } from "electron";
 import type { IPty } from "node-pty";
 import { spawn } from "node-pty";
 
 import type {
+  AgentThinkingLevel,
   ContextUsageState,
   ModelRef,
   PiActivityStatus,
@@ -18,6 +18,7 @@ import type {
 } from "../../../src/types/contracts";
 import { agentConfigToArgs, getAgentConfig } from "./agent-config-service";
 import { debugLog } from "./debug-log";
+import { piCliEntry } from "./pi-agent-loader";
 
 type StateListener = (state: PiRuntimeState) => void;
 type GlobalDataListener = (sessionPath: string, data: string) => void;
@@ -26,23 +27,24 @@ type GlobalDataListener = (sessionPath: string, data: string) => void;
 const ACTIVITY_SUFFIX = ".e-pi-activity.json";
 const READY_TIMEOUT_MS = 30_000;
 
+/** Thinking levels the bridge may report; excludes the "" (not set) config value. */
+const THINKING_LEVELS: readonly Exclude<AgentThinkingLevel, "">[] = [
+  "off",
+  "minimal",
+  "low",
+  "medium",
+  "high",
+  "xhigh",
+  "max",
+];
+
+/**
+ * The pi CLI entry each session process runs. Resolved through the shared
+ * loader so it always matches the files an in-place update swapped in — the
+ * sidecar Node is plain Node and cannot read the asar archive.
+ */
 function resolvePiEntry(): string {
-  if (app.isPackaged) {
-    // The sidecar Node is plain Node — it cannot read the asar archive, so
-    // the pi CLI must be launched from the real files electron-builder
-    // unpacked to app.asar.unpacked (see build.asarUnpack in package.json).
-    return join(
-      process.resourcesPath,
-      "app.asar.unpacked",
-      "node_modules",
-      "@earendil-works",
-      "pi-coding-agent",
-      "dist",
-      "cli.js",
-    );
-  }
-  const indexPath = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent"));
-  return join(dirname(indexPath), "cli.js");
+  return piCliEntry();
 }
 
 function resolveBridgePath(): string {
@@ -452,6 +454,8 @@ export class PiRuntime {
           const parsed = JSON.parse(raw) as {
             status?: unknown;
             model?: { provider?: unknown; id?: unknown };
+            thinkingLevel?: unknown;
+            supportedThinkingLevels?: unknown;
             context?: { tokens?: unknown; contextWindow?: unknown; percent?: unknown };
             usage?: {
               input?: unknown;
@@ -469,6 +473,19 @@ export class PiRuntime {
             typeof parsed.model?.provider === "string" && typeof parsed.model.id === "string"
               ? { provider: parsed.model.provider, id: parsed.model.id }
               : undefined;
+          const thinkingLevel: Exclude<AgentThinkingLevel, ""> | undefined =
+            typeof parsed.thinkingLevel === "string" &&
+            (THINKING_LEVELS as readonly string[]).includes(parsed.thinkingLevel)
+              ? (parsed.thinkingLevel as Exclude<AgentThinkingLevel, "">)
+              : undefined;
+          const supportedThinkingLevels: Exclude<AgentThinkingLevel, "">[] | undefined = Array.isArray(
+            parsed.supportedThinkingLevels,
+          )
+            ? parsed.supportedThinkingLevels.filter(
+                (level): level is Exclude<AgentThinkingLevel, ""> =>
+                  typeof level === "string" && (THINKING_LEVELS as readonly string[]).includes(level),
+              )
+            : undefined;
           const context: ContextUsageState | undefined =
             typeof parsed.context?.contextWindow === "number"
               ? {
@@ -495,10 +512,21 @@ export class PiRuntime {
               : undefined;
           const cacheHitRate = typeof parsed.cacheHitRate === "number" ? parsed.cacheHitRate : undefined;
           const speed = typeof parsed.speed === "number" && Number.isFinite(parsed.speed) ? parsed.speed : undefined;
-          const signature = JSON.stringify({ activity, model, context, usage, cacheHitRate, speed });
+          const signature = JSON.stringify({
+            activity,
+            model,
+            thinkingLevel,
+            supportedThinkingLevels,
+            context,
+            usage,
+            cacheHitRate,
+            speed,
+          });
           const previous = JSON.stringify({
             activity: instance.state.activity,
             model: instance.state.model,
+            thinkingLevel: instance.state.thinkingLevel,
+            supportedThinkingLevels: instance.state.supportedThinkingLevels,
             context: instance.state.context,
             usage: instance.state.usage,
             cacheHitRate: instance.state.cacheHitRate,
@@ -511,6 +539,8 @@ export class PiRuntime {
               ...instance.state,
               activity,
               model: model ?? instance.state.model,
+              thinkingLevel: thinkingLevel ?? instance.state.thinkingLevel,
+              supportedThinkingLevels: supportedThinkingLevels ?? instance.state.supportedThinkingLevels,
               context: context ?? instance.state.context,
               usage: usage ?? instance.state.usage,
               cacheHitRate: cacheHitRate ?? instance.state.cacheHitRate,

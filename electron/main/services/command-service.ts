@@ -1,16 +1,10 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 
-import {
-  CONFIG_DIR_NAME,
-  DefaultPackageManager,
-  discoverAndLoadExtensions,
-  getAgentDir,
-  parseFrontmatter,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
-
 import type { CommandRecord } from "../../../src/types/contracts";
+import { loadPiAgent, type PiAgent } from "./pi-agent-loader";
+
+type ParseFrontmatter = PiAgent["parseFrontmatter"];
 
 /** How long resolved plugin commands are kept before re-discovering. */
 const PLUGIN_CACHE_TTL_MS = 30_000;
@@ -45,7 +39,10 @@ const BUILTIN_COMMANDS: Array<{ name: string; description: string; argumentHint?
 ];
 
 /** Parse a prompt template file, mirroring pi's loadTemplateFromFile(). */
-function loadTemplateFromFile(filePath: string): { name: string; description: string; argumentHint?: string } | null {
+function loadTemplateFromFile(
+  filePath: string,
+  parseFrontmatter: ParseFrontmatter,
+): { name: string; description: string; argumentHint?: string } | null {
   try {
     const rawContent = readFileSync(filePath, "utf8");
     const { frontmatter, body } = parseFrontmatter(rawContent);
@@ -71,7 +68,10 @@ function loadTemplateFromFile(filePath: string): { name: string; description: st
 }
 
 /** Scan a directory for prompt templates (non-recursive), mirroring pi's loadTemplatesFromDir(). */
-function loadTemplatesFromDir(dir: string): Array<{ name: string; description: string; argumentHint?: string }> {
+function loadTemplatesFromDir(
+  dir: string,
+  parseFrontmatter: ParseFrontmatter,
+): Array<{ name: string; description: string; argumentHint?: string }> {
   const templates: Array<{ name: string; description: string; argumentHint?: string }> = [];
   if (!existsSync(dir)) return templates;
   try {
@@ -88,7 +88,7 @@ function loadTemplatesFromDir(dir: string): Array<{ name: string; description: s
         }
       }
       if (!isFile) continue;
-      const template = loadTemplateFromFile(fullPath);
+      const template = loadTemplateFromFile(fullPath, parseFrontmatter);
       if (template) templates.push(template);
     }
   } catch {
@@ -113,7 +113,7 @@ export class CommandService {
     for (const command of BUILTIN_COMMANDS) {
       records.push({ ...command, source: "builtin" });
     }
-    for (const template of this.#loadTemplates(cwd)) {
+    for (const template of await this.#loadTemplates(cwd)) {
       records.push({ ...template, source: "template" });
     }
     records.push(...(await this.#loadPluginCommands(cwd)));
@@ -132,6 +132,7 @@ export class CommandService {
 
     const records: CommandRecord[] = [];
     try {
+      const { DefaultPackageManager, SettingsManager, discoverAndLoadExtensions, getAgentDir } = await loadPiAgent();
       const agentDir = getAgentDir();
       const settingsManager = SettingsManager.create(cwd, agentDir, { projectTrusted: true });
       const manager = new DefaultPackageManager({ cwd, agentDir, settingsManager });
@@ -159,7 +160,8 @@ export class CommandService {
     return records;
   }
 
-  #loadTemplates(cwd: string): Array<{ name: string; description: string; argumentHint?: string }> {
+  async #loadTemplates(cwd: string): Promise<Array<{ name: string; description: string; argumentHint?: string }>> {
+    const { CONFIG_DIR_NAME, SettingsManager, getAgentDir, parseFrontmatter } = await loadPiAgent();
     const agentDir = getAgentDir();
     const globalPromptsDir = join(agentDir, "prompts");
     const projectPromptsDir = resolve(cwd, CONFIG_DIR_NAME, "prompts");
@@ -167,8 +169,8 @@ export class CommandService {
     const promptPaths = settings.getPromptTemplatePaths() ?? [];
 
     const templates: Array<{ name: string; description: string; argumentHint?: string }> = [];
-    templates.push(...loadTemplatesFromDir(globalPromptsDir));
-    templates.push(...loadTemplatesFromDir(projectPromptsDir));
+    templates.push(...loadTemplatesFromDir(globalPromptsDir, parseFrontmatter));
+    templates.push(...loadTemplatesFromDir(projectPromptsDir, parseFrontmatter));
 
     // Explicit prompt paths (settings `prompts` array): files or directories.
     const seen = new Set(templates.map((template) => template.name));
@@ -178,14 +180,14 @@ export class CommandService {
       try {
         const stats = statSync(resolvedPath);
         if (stats.isDirectory()) {
-          for (const template of loadTemplatesFromDir(resolvedPath)) {
+          for (const template of loadTemplatesFromDir(resolvedPath, parseFrontmatter)) {
             if (!seen.has(template.name)) {
               seen.add(template.name);
               templates.push(template);
             }
           }
         } else if (stats.isFile() && extname(resolvedPath).toLowerCase() === ".md") {
-          const template = loadTemplateFromFile(resolvedPath);
+          const template = loadTemplateFromFile(resolvedPath, parseFrontmatter);
           if (template && !seen.has(template.name)) {
             seen.add(template.name);
             templates.push(template);

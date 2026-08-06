@@ -1,15 +1,16 @@
 import { execFile } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, renameSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { basename, dirname, join, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 
-import { getAgentDir, SettingsManager, VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
 import { net } from "electron";
 
 import type { PiUpdateInfo, PiUpdateResult } from "../../../src/types/contracts";
 import { debugLog } from "./debug-log";
+import { loadPiAgent, piPackageDir, piUpdateTargetDir } from "./pi-agent-loader";
+
+/** Static fallback only; the real version is always read from disk. */
+const PI_VERSION = "0.0.0";
 
 const REGISTRY_URL = "https://registry.npmjs.org/@earendil-works%2fpi-coding-agent/latest";
 const TARBALL_URL = "https://registry.npmjs.org/@earendil-works/pi-coding-agent/-/pi-coding-agent-";
@@ -63,47 +64,18 @@ export async function checkPiUpdate(): Promise<PiUpdateInfo> {
 }
 
 /**
- * The directory the bundled pi-coding-agent package lives in. In dev that is
- * the pnpm store (where `import.meta.resolve` points); packaged builds unpack
- * `node_modules` to `app.asar.unpacked`. The package's own files (dist, docs,
- * examples) sit here; `package.json` is the only file the app bundles inside
- * the asar itself. Resolving it at runtime keeps updates working after a swap.
- * `PI_PACKAGE_DIR` overrides the location (used by tests to sandbox swaps).
+ * The directory the bundled pi-coding-agent package lives in. Delegates to
+ * the shared loader so session spawning and main-process imports read the
+ * exact same files. `PI_PACKAGE_DIR` overrides the location (tests).
  */
 export function resolvePiPackageDir(): string {
-  const custom = process.env.PI_PACKAGE_DIR?.trim();
-  if (custom) return custom;
-  // import.meta.resolve returns the package *entry file* (e.g. dist/index.js),
-  // so walk up until we find the package.json that names this package.
-  let dir = dirname(fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent")));
-  for (;;) {
-    const pkgPath = join(dir, "package.json");
-    if (existsSync(pkgPath)) {
-      try {
-        const name = (JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: unknown }).name;
-        if (name === "@earendil-works/pi-coding-agent") {
-          // In packaged builds the resolver returns an app.asar path. The asar
-          // is read-only; the real writable files live in app.asar.unpacked
-          // (electron-builder unpacks node_modules there). Map the path over
-          // so the in-place update can actually write files.
-          const unpacked = dir.replace(`${sep}app.asar${sep}`, `${sep}app.asar.unpacked${sep}`);
-          if (unpacked !== dir && existsSync(join(unpacked, "package.json"))) return unpacked;
-          return dir;
-        }
-      } catch {
-        // Malformed package.json — keep walking up.
-      }
-    }
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
-  }
-  throw new Error("Could not locate the @earendil-works/pi-coding-agent package directory.");
+  return piPackageDir();
 }
 
 /** npm argv used for pi installs, honoring the user's `npmCommand` setting. */
-function npmCommand(): string[] {
+async function npmCommand(): Promise<string[]> {
   try {
+    const { SettingsManager, getAgentDir } = await loadPiAgent();
     const settingsManager = SettingsManager.create(process.cwd(), getAgentDir(), { projectTrusted: true });
     const configured = settingsManager.getNpmCommand();
     if (configured && configured.length > 0) return configured;
@@ -157,15 +129,19 @@ export function readInstalledPiVersion(): string {
  * Throws on any failure and leaves the existing installation untouched.
  */
 export async function applyPiUpdate(): Promise<PiUpdateResult> {
-  const installedDir = resolvePiPackageDir();
-  const current = readVersion(installedDir) || PI_VERSION;
+  // Read the *current* version from the live dir, but swap into the update
+  // target — in dev these differ (target is userData, not the pnpm store).
+  const installedDir = piUpdateTargetDir();
+  const current = readInstalledPiVersion() || PI_VERSION;
   const info = await checkPiUpdate();
   const latest = info.latest;
   if (!latest) {
     throw new Error("No pi update available.");
   }
 
-  const workDir = mkdtempSync(join(tmpdir(), "e-pi-update-"));
+  // Stage next to the target so the final renameSync stays on one filesystem
+  // (renameSync is atomic only within a single volume; tmpdir may differ).
+  const workDir = mkdtempSync(join(dirname(installedDir), ".e-pi-update-"));
   try {
     const tarballPath = join(workDir, `pi-coding-agent-${latest}.tgz`);
     const tarballUrl = `${TARBALL_URL}${encodeURIComponent(latest)}.tgz`;
@@ -196,7 +172,7 @@ export async function applyPiUpdate(): Promise<PiUpdateResult> {
     writeFileSync(pkgPath, JSON.stringify(pkg, null, 2));
 
     debugLog("[pi-update] installing dependencies", { latest });
-    const [command, ...args] = npmCommand();
+    const [command, ...args] = await npmCommand();
     await execFileAsync(
       command,
       [...args, "install", "--no-save", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"],
@@ -204,6 +180,11 @@ export async function applyPiUpdate(): Promise<PiUpdateResult> {
     );
     if (!existsSync(join(staged, "node_modules"))) {
       throw new Error("Dependency install produced no node_modules.");
+    }
+    // The runtime spawns dist/cli.js directly; refuse to swap in a package
+    // the session launcher could not start.
+    if (!existsSync(join(staged, "dist", "cli.js"))) {
+      throw new Error("Downloaded pi package is missing dist/cli.js.");
     }
 
     // Atomic swap within one filesystem.
@@ -213,15 +194,18 @@ export async function applyPiUpdate(): Promise<PiUpdateResult> {
     if (!installedVersion) throw new Error("Installed package has no version.");
     debugLog("[pi-update] swapping", { installedDir, staged, installedVersion });
     if (existsSync(backup)) removeRecursive(backup);
-    renameSync(installedDir, backup);
+    // In dev the target (userData/pi-agent) may not exist yet on the first
+    // update — there is no prior install to back up, so just move in.
+    const hadPrevious = existsSync(installedDir);
+    if (hadPrevious) renameSync(installedDir, backup);
     try {
       renameSync(staged, installedDir);
     } catch (error) {
       // Restore the previous install before rethrowing.
-      renameSync(backup, installedDir);
+      if (hadPrevious) renameSync(backup, installedDir);
       throw error;
     }
-    removeRecursive(backup);
+    if (hadPrevious) removeRecursive(backup);
 
     // Keep the version cache in sync so the next check reports up to date.
     cached = { at: Date.now(), latest: undefined };
