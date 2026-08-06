@@ -304,10 +304,25 @@ export interface CustomProviderRequest {
   provider: CustomProviderConfig;
 }
 
+export interface CatalogMetaRequest {
+  baseUrl: string;
+  modelIds: string[];
+}
+
 /** Fetch the model list from an OpenAI-compatible /models endpoint. */
 export interface FetchModelsRequest {
   baseUrl: string;
   apiKey?: string;
+}
+
+/** Curated model metadata from the models.dev community catalog. */
+export interface ModelCatalogMeta {
+  name?: string;
+  reasoning?: boolean;
+  /** True when the model accepts image input. */
+  vision?: boolean;
+  contextWindow?: number;
+  maxTokens?: number;
 }
 
 export interface CustomProviderRemoveRequest {
@@ -507,6 +522,8 @@ export interface EPiApi {
     customRemove(request: CustomProviderRemoveRequest): Promise<CustomProviderConfig[]>;
     /** Fetch the model list from an OpenAI-compatible /models endpoint. */
     fetchModels(request: FetchModelsRequest): Promise<CustomModelDefinition[]>;
+    /** Look up models.dev metadata for a set of model ids (best-effort, empty on failure). */
+    catalogMeta(request: CatalogMetaRequest): Promise<Record<string, ModelCatalogMeta>>;
     onLoginEvent(listener: (event: ModelLoginEvent) => void): () => void;
   };
   notifications: {

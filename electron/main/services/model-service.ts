@@ -8,11 +8,13 @@ import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 import { loadPiAgent } from "./pi-agent-loader";
 
 import type {
+  CatalogMetaRequest,
   CustomModelDefinition,
   CustomProviderConfig,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
   FetchModelsRequest,
+  ModelCatalogMeta,
   ModelAuthType,
   ModelLoginEvent,
   ModelLoginRequest,
@@ -351,21 +353,26 @@ export class ModelService {
     if (authHeader) normalized.authHeader = true;
     else delete normalized.authHeader;
     if (models.length > 0) {
+      const thinkingMap = defaultThinkingLevelMap(api.trim());
       normalized.models = models.map((model) => {
         const modelId = model.id.trim();
         const extras = existingModels.find((entry) => entry && entry.id === modelId) ?? {};
+        const reasoning = Boolean(model.reasoning);
         return {
           // Extras first so the dialog-managed keys below always win.
           ...extras,
           id: modelId,
           name: model.name?.trim() || modelId,
-          reasoning: Boolean(model.reasoning),
+          reasoning,
           // Persist explicit input modalities so pi's vision gate
           // (model.input.includes("image")) never misclassifies the model.
           input: model.vision ? ["text", "image"] : ["text"],
           contextWindow: model.contextWindow || 128_000,
           maxTokens: model.maxTokens || 8_192,
           ...(extras.cost ? {} : { cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }),
+          // OpenAI-style APIs need an explicit effort map; anthropic-messages
+          // uses budget_tokens and needs none. Existing maps always win.
+          ...(reasoning && thinkingMap && !extras.thinkingLevelMap ? { thinkingLevelMap: thinkingMap } : {}),
         };
       });
     } else {
@@ -497,4 +504,122 @@ export class ModelService {
     }
     throw lastError instanceof Error ? lastError : new Error("Failed to fetch models");
   }
+
+  /**
+   * Look up curated metadata for the given model ids from the models.dev
+   * community catalog (https://models.dev/api.json). Best-effort: network or
+   * shape failures resolve to an empty map, and unmatched ids are simply
+   * absent from the result.
+   *
+   * Matching: providers whose api.json `api` URL shares a host with the
+   * configured base URL are consulted first (exact provider match); a unique
+   * model-id match anywhere else in the catalog is used as fallback. Only
+   * exact matches contribute cost data — the same model id can be priced
+   * differently by another serving provider.
+   */
+  /** Catalog cache: the JSON is ~MBs and changes slowly; reuse for 10 min. */
+  #modelsDevCache: { at: number; catalog: ModelsDevCatalog } | undefined;
+
+  async catalogMeta(request: CatalogMetaRequest): Promise<Record<string, ModelCatalogMeta>> {
+    const wanted = [...new Set(request.modelIds.map((id) => id.trim()).filter(Boolean))];
+    const result: Record<string, ModelCatalogMeta> = {};
+    if (wanted.length === 0) return result;
+    let host = "";
+    try {
+      host = new URL(request.baseUrl.trim()).hostname.replace(/^www\./, "");
+    } catch {
+      // Keep matching by model id only.
+    }
+    if (!this.#modelsDevCache || Date.now() - this.#modelsDevCache.at >= MODELS_DEV_CACHE_MS) {
+      const catalog = await fetchModelsDevCatalog();
+      if (catalog) this.#modelsDevCache = { at: Date.now(), catalog };
+    }
+    const catalog = this.#modelsDevCache?.catalog;
+    if (!catalog) return result;
+    for (const modelId of wanted) {
+      const match = findCatalogModel(catalog, modelId, host);
+      if (!match) continue;
+      const meta: ModelCatalogMeta = {};
+      if (typeof match.name === "string" && match.name) meta.name = match.name;
+      if (match.reasoning === true) meta.reasoning = true;
+      const input = match.modalities?.input;
+      if (Array.isArray(input) && input.includes("image")) meta.vision = true;
+      if (typeof match.limit?.context === "number") meta.contextWindow = match.limit.context;
+      if (typeof match.limit?.output === "number") meta.maxTokens = match.limit.output;
+      result[modelId] = meta;
+    }
+    return result;
+  }
+}
+
+/**
+ * Thinking-level map template for APIs that take a literal `reasoning_effort`
+ * string. Anthropic-messages models drive thinking via budget_tokens and need
+ * no map; unknown APIs stay unmapped (pi falls back to its defaults).
+ */
+function defaultThinkingLevelMap(api: string): Record<string, string | null> | undefined {
+  if (/^openai-/.test(api) || api === "azure-openai-responses") {
+    return { off: null, minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: null, max: null };
+  }
+  return undefined;
+}
+
+/* --- models.dev catalog --- */
+
+const MODELS_DEV_URL = "https://models.dev/api.json";
+const MODELS_DEV_CACHE_MS = 10 * 60 * 1000;
+
+interface ModelsDevModel {
+  name?: unknown;
+  reasoning?: unknown;
+  modalities?: { input?: unknown };
+  limit?: { context?: unknown; output?: unknown };
+}
+
+interface ModelsDevProvider {
+  api?: unknown;
+  models?: Record<string, ModelsDevModel>;
+}
+
+type ModelsDevCatalog = Record<string, ModelsDevProvider>;
+
+async function fetchModelsDevCatalog(): Promise<ModelsDevCatalog | undefined> {
+  try {
+    const response = await fetch(MODELS_DEV_URL, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!response.ok) return undefined;
+    const body: unknown = await response.json();
+    if (!body || typeof body !== "object" || Array.isArray(body)) return undefined;
+    return body as ModelsDevCatalog;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Host-exact provider match first; fall back to a unique model-id match. */
+function findCatalogModel(catalog: ModelsDevCatalog, modelId: string, host: string): ModelsDevModel | undefined {
+  if (host) {
+    for (const provider of Object.values(catalog)) {
+      if (typeof provider?.api !== "string" || !provider.models) continue;
+      try {
+        if (new URL(provider.api).hostname.replace(/^www\./, "") !== host) continue;
+      } catch {
+        continue;
+      }
+      const model = provider.models[modelId];
+      if (model) return model;
+    }
+  }
+  // Fallback: only trust a model-id match that is unique across the catalog;
+  // capabilities can genuinely differ per serving provider.
+  let found: ModelsDevModel | undefined;
+  for (const provider of Object.values(catalog)) {
+    const model = provider?.models?.[modelId];
+    if (!model) continue;
+    if (found) return undefined;
+    found = model;
+  }
+  return found;
 }

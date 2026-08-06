@@ -848,6 +848,28 @@
   color: var(--muted-foreground);
 }
 
+/* Capability hints from the models.dev catalog (vision / reasoning / ctx). */
+.model-fetch-badges {
+  display: flex;
+  margin-left: auto;
+  flex: 0 0 auto;
+  gap: 5px;
+}
+
+.model-fetch-badges small {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted-foreground);
+  font-size: var(--fs-mini);
+  white-space: nowrap;
+}
+
+/* When both badges and the "added" label are present, badges stay put. */
+.model-fetch-badges + .model-fetch-added {
+  margin-left: 0;
+}
+
 .model-fetch-empty {
   padding: 14px 8px;
   color: var(--muted-foreground);

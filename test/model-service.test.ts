@@ -140,12 +140,68 @@ describe("ModelService custom providers", () => {
       contextWindow: 128000,
       maxTokens: 8192,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+      // openai-* reasoning models get the effort-string thinking map.
+      thinkingLevelMap: {
+        off: null,
+        minimal: "minimal",
+        low: "low",
+        medium: "medium",
+        high: "high",
+        xhigh: null,
+        max: null,
+      },
     });
 
     // Reading back surfaces the pi fields as dialog state.
     const list = await service.listCustomProviders();
     expect(list[0].authHeader).toBe(true);
     expect(list[0].models[0]).toMatchObject({ id: "m1", name: "m1", reasoning: true, vision: true });
+  });
+
+  it("omits the thinking map for anthropic-messages and non-reasoning models", async () => {
+    await service.saveCustomProvider({
+      provider: {
+        id: "",
+        name: "claude-gw",
+        baseUrl: "https://x.example.com/v1",
+        api: "anthropic-messages",
+        models: [{ id: "c1", reasoning: true }, { id: "c2" }],
+      },
+    });
+
+    const raw = JSON.parse(readFileSync(join(testAgentDir, "models.json"), "utf8"));
+    const models = raw.providers["claude-gw"].models;
+    expect(models[0].thinkingLevelMap).toBeUndefined();
+    expect(models[1].thinkingLevelMap).toBeUndefined();
+  });
+
+  it("preserves an existing thinkingLevelMap on re-save", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    const custom = { off: null, minimal: null, low: "low", medium: "medium", high: "high", xhigh: "xhigh", max: null };
+    await writeFile(
+      join(testAgentDir, "models.json"),
+      JSON.stringify({
+        providers: {
+          gw: {
+            baseUrl: "https://x.example.com/v1",
+            api: "openai-completions",
+            models: [{ id: "m1", reasoning: true, thinkingLevelMap: custom }],
+          },
+        },
+      }),
+    );
+
+    await service.saveCustomProvider({
+      provider: {
+        id: "gw",
+        baseUrl: "https://x.example.com/v1",
+        api: "openai-completions",
+        models: [{ id: "m1", reasoning: true }],
+      },
+    });
+
+    const raw = JSON.parse(readFileSync(join(testAgentDir, "models.json"), "utf8"));
+    expect(raw.providers.gw.models[0].thinkingLevelMap).toEqual(custom);
   });
 
   it("preserves unmanaged pi fields (headers, compat, cost) on save", async () => {
@@ -220,6 +276,81 @@ describe("ModelService custom providers", () => {
     ).rejects.toThrow(/Base URL/);
 
     await expect(service.removeCustomProvider({ providerId: "missing" })).rejects.toThrow(/Unknown/);
+  });
+
+  describe("catalogMeta (models.dev)", () => {
+    const catalog = {
+      openai: {
+        api: "https://api.openai.com/v1",
+        models: {
+          "gpt-5": {
+            name: "GPT-5",
+            reasoning: true,
+            modalities: { input: ["text", "image"], output: ["text"] },
+            limit: { context: 400000, output: 128000 },
+          },
+        },
+      },
+      "other-host": {
+        api: "https://other.example.com/v1",
+        models: {
+          "dup-model": { name: "Dup A" },
+          "text-only": { name: "Text Only", modalities: { input: ["text"] }, limit: { context: 32000 } },
+        },
+      },
+      "third-host": {
+        models: { "dup-model": { name: "Dup B" } },
+      },
+    };
+
+    beforeEach(() => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify(catalog), { status: 200 })),
+      );
+    });
+
+    afterAll(() => vi.unstubAllGlobals());
+
+    it("matches models by base URL host and maps capabilities", async () => {
+      const fresh = new ModelService();
+      const meta = await fresh.catalogMeta({
+        baseUrl: "https://api.openai.com/v1",
+        modelIds: ["gpt-5", "unknown-model"],
+      });
+      expect(meta["gpt-5"]).toEqual({
+        name: "GPT-5",
+        reasoning: true,
+        vision: true,
+        contextWindow: 400000,
+        maxTokens: 128000,
+      });
+      expect(meta["unknown-model"]).toBeUndefined();
+    });
+
+    it("falls back to a unique cross-provider id match, rejects ambiguous ids", async () => {
+      const fresh = new ModelService();
+      const meta = await fresh.catalogMeta({
+        baseUrl: "https://self-hosted.internal/v1",
+        modelIds: ["text-only", "dup-model"],
+      });
+      expect(meta["text-only"]).toMatchObject({ name: "Text Only", contextWindow: 32000 });
+      expect(meta["text-only"].vision).toBeUndefined();
+      expect(meta["dup-model"]).toBeUndefined();
+    });
+
+    it("resolves empty on catalog fetch failure", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => {
+          throw new Error("offline");
+        }),
+      );
+      const fresh = new ModelService();
+      await expect(fresh.catalogMeta({ baseUrl: "https://x.example.com/v1", modelIds: ["gpt-5"] })).resolves.toEqual(
+        {},
+      );
+    });
   });
 
   it("derives the provider id from the name and dedupes collisions", async () => {

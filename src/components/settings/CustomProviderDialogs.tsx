@@ -26,9 +26,16 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import type { CustomModelDefinition, CustomProviderConfig } from "../../types/contracts";
+import type { CustomModelDefinition, CustomProviderConfig, ModelCatalogMeta } from "../../types/contracts";
 
 const API_TYPES = ["openai-completions", "anthropic-messages", "openai-responses", "google-generative-ai"] as const;
+
+/** 262144 → "256K", 1000000 → "1M". */
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  return String(tokens);
+}
 
 export interface CustomProviderDraft {
   id: string;
@@ -73,6 +80,9 @@ export function CustomProviderDialogs({
   // them to add (popover with a scrollable, selectable list).
   const [fetchedModels, setFetchedModels] = useState<CustomModelDefinition[] | undefined>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Curated metadata from models.dev, keyed by model id. Best-effort: ids
+  // without a catalog match just stay at defaults.
+  const [catalogMeta, setCatalogMeta] = useState<Record<string, ModelCatalogMeta>>({});
   const fetchModels = async () => {
     if (!draft || fetching) return;
     setFetching(true);
@@ -84,6 +94,11 @@ export function CustomProviderDialogs({
       // already in the list are shown disabled so they cannot be duplicated.
       setFetchedModels(fetched);
       setSelectedIds(new Set(fetched.filter((model) => !existingIds.has(model.id)).map((model) => model.id)));
+      // Enrich in the background; the popover is already usable meanwhile.
+      void window.ePi.models
+        .catalogMeta({ baseUrl: draft.baseUrl, modelIds: fetched.map((model) => model.id) })
+        .then((meta) => setCatalogMeta((current) => ({ ...current, ...meta })))
+        .catch(() => undefined);
     } catch (reason) {
       setFetchError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -116,7 +131,23 @@ export function CustomProviderDialogs({
   const addSelected = () => {
     if (!draft) return;
     const existingIds = new Set(draft.models.map((model) => model.id));
-    const toAdd = (fetchedModels ?? []).filter((model) => selectedIds.has(model.id) && !existingIds.has(model.id));
+    const toAdd = (fetchedModels ?? [])
+      .filter((model) => selectedIds.has(model.id) && !existingIds.has(model.id))
+      .map((model) => {
+        const meta = catalogMeta[model.id];
+        // Pre-fill curated capabilities; the user can still edit every field
+        // before saving, and unmatched ids fall back to the bare id.
+        return meta
+          ? {
+              ...model,
+              name: model.name || meta.name,
+              reasoning: meta.reasoning,
+              vision: meta.vision,
+              contextWindow: meta.contextWindow,
+              maxTokens: meta.maxTokens,
+            }
+          : model;
+      });
     if (toAdd.length > 0) updateDraft({ models: [...draft.models, ...toAdd] });
     setFetchedModels(undefined);
   };
@@ -224,6 +255,7 @@ export function CustomProviderDialogs({
                         <div className="model-fetch-list" onWheel={onListWheel}>
                           {(fetchedModels ?? []).map((model) => {
                             const alreadyAdded = draft?.models.some((current) => current.id === model.id);
+                            const meta = catalogMeta[model.id];
                             return (
                               <label className="model-fetch-row" data-disabled={alreadyAdded || undefined} key={model.id}>
                                 <Checkbox
@@ -234,6 +266,15 @@ export function CustomProviderDialogs({
                                 <span className="model-fetch-id" title={model.id}>
                                   {model.id}
                                 </span>
+                                {meta ? (
+                                  <span className="model-fetch-badges">
+                                    {meta.vision ? <small title="Accepts image input">vision</small> : null}
+                                    {meta.reasoning ? <small title="Supports extended thinking">reasoning</small> : null}
+                                    {meta.contextWindow ? (
+                                      <small title="Context window">{formatTokens(meta.contextWindow)}</small>
+                                    ) : null}
+                                  </span>
+                                ) : null}
                                 {alreadyAdded ? <small className="model-fetch-added">added</small> : null}
                               </label>
                             );
