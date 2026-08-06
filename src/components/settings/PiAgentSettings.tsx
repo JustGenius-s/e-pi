@@ -118,9 +118,6 @@ export function PiAgentSettings({ active, piVersion, onUpdated }: PiAgentSetting
     }
   };
 
-  const updateLabel =
-    update === undefined ? null : update.latest ? `Update available: ${update.latest}` : "Up to date";
-
   return (
     <section className="agent-section">
       <div className="agent-group-title">Pi Agent</div>
@@ -137,10 +134,9 @@ export function PiAgentSettings({ active, piVersion, onUpdated }: PiAgentSetting
                 <span className="agent-version-status">
                   <LoaderCircle className="spin" size={12} /> Checking…
                 </span>
-              ) : updateLabel ? (
-                <span className={`agent-version-status${update?.latest ? " outdated" : ""}`}>
-                  {update?.latest ? <Download size={12} /> : <Check size={12} />}
-                  {updateLabel}
+              ) : update && !update.latest ? (
+                <span className="agent-version-status">
+                  <Check size={12} /> Up to date
                 </span>
               ) : null}
               {checking || !update?.latest ? (

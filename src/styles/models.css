@@ -574,10 +574,6 @@
   white-space: nowrap;
 }
 
-.agent-version-status.outdated {
-  color: var(--chart-2);
-}
-
 .agent-update-btn {
   height: 26px;
   padding: 0 8px;
