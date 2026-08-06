@@ -1,14 +1,6 @@
 import { ArrowBigUpDash, CloudSync, Package, PackageCheck, PackagePlus, PackageX, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
-import type {
-  PackageDownloads,
-  PackageProgress,
-  PackageRecord,
-  PackageUpdateInfo,
-  RemotePackageInfo,
-} from "../types/contracts";
-import { IconButton } from "./IconButton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -19,9 +11,18 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "./ui/alert-dialog";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
-import { Input } from "./ui/input";
+} from "@/components/ui/alert-dialog";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import { IconButton } from "@/components/ui/IconButton";
+import { Input } from "@/components/ui/input";
+
+import type {
+  PackageDownloads,
+  PackageProgress,
+  PackageRecord,
+  PackageUpdateInfo,
+  RemotePackageInfo,
+} from "../../types/contracts";
 
 const downloadsCache = new Map<string, PackageDownloads>();
 

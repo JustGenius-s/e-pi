@@ -1,6 +1,6 @@
 import { File, Sparkles, X } from "lucide-react";
 
-import type { SkillRecord } from "../types/contracts";
+import type { SkillRecord } from "../../types/contracts";
 
 interface ComposerAttachmentsProps {
   files: string[];

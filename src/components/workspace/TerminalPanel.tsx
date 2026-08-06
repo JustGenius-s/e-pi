@@ -4,9 +4,9 @@ import { Terminal } from "@xterm/xterm";
 import { ArrowDown } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { useTerminalTheme } from "../hooks/useTerminalTheme";
-import { getAppearance, subscribeAppearance } from "../lib/appearance";
-import { createXterm, getTerminalBackground } from "../lib/xterm";
+import { useTerminalTheme } from "../../hooks/useTerminalTheme";
+import { getAppearance, subscribeAppearance } from "../../lib/appearance";
+import { createXterm, getTerminalBackground } from "../../lib/xterm";
 
 interface TerminalPanelProps {
   sessionKey: string;

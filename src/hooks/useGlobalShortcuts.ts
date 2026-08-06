@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { PANEL_VIEWS, type PanelView } from "../components/ToolPanel";
+import { PANEL_VIEWS, type PanelView } from "@/components/workspace/ToolPanel";
 
 interface GlobalShortcutOptions {
   defaultCwd?: string;

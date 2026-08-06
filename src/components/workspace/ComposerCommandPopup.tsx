@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 
-import type { CommandRecord, CommandSource } from "../types/contracts";
+import type { CommandRecord, CommandSource } from "../../types/contracts";
 
 interface ComposerCommandPopupProps {
   commands: CommandRecord[];

@@ -1,9 +1,10 @@
 import { ChevronRight, FileText, Folder, FolderOpen, RefreshCw } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
-import { formatBytes } from "../lib/format";
-import type { FileEntry } from "../types/contracts";
-import { IconButton } from "./IconButton";
+import { IconButton } from "@/components/ui/IconButton";
+
+import { formatBytes } from "../../lib/format";
+import type { FileEntry } from "../../types/contracts";
 
 interface FileTreeViewProps {
   cwd: string;

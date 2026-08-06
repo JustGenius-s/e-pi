@@ -1,9 +1,3 @@
-import { useImeComposition } from "../hooks/useImeComposition";
-import { sessionTitle } from "../lib/format";
-import type { AppInfo, SessionSummary } from "../types/contracts";
-import { FontSettings } from "./FontSettings";
-import { ModelSettings } from "./ModelSettings";
-import { PiAgentSettings } from "./PiAgentSettings";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,11 +7,25 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from "./ui/alert-dialog";
-import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "./ui/dialog";
-import { Input } from "./ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs";
+} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import { useImeComposition } from "../../hooks/useImeComposition";
+import { sessionTitle } from "../../lib/format";
+import type { AppInfo, SessionSummary } from "../../types/contracts";
+import { FontSettings } from "./FontSettings";
+import { ModelSettings } from "./ModelSettings";
+import { PiAgentSettings } from "./PiAgentSettings";
 
 interface RenameInputProps {
   value: string;

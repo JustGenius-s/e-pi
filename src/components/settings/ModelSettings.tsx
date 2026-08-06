@@ -1,17 +1,18 @@
 import { Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
 import type {
   CustomProviderConfig,
   ModelAuthType,
   ModelManagementState,
   ModelProviderRecord,
-} from "../types/contracts";
+} from "../../types/contracts";
 import { CustomProviderDialogs, type CustomProviderDraft } from "./CustomProviderDialogs";
 import { ModelProviderDetail, type ModelLoginFlow } from "./ModelProviderDetail";
 import { ModelProviderList } from "./ModelProviderList";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
 
 interface ModelSettingsProps {
   active: boolean;

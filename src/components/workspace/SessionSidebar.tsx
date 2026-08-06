@@ -13,24 +13,21 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 
-import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../lib/format";
-import { useTheme } from "../lib/theme";
-import type { PiRuntimeState, SessionSummary } from "../types/contracts";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuTrigger,
-} from "./ui/context-menu";
+} from "@/components/ui/context-menu";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
+} from "@/components/ui/dropdown-menu";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
   Sidebar,
   SidebarContent,
@@ -44,7 +41,11 @@ import {
   SidebarMenuItem,
   SidebarRail,
   useSidebar,
-} from "./ui/sidebar";
+} from "@/components/ui/sidebar";
+
+import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../../lib/format";
+import { useTheme } from "../../lib/theme";
+import type { PiRuntimeState, SessionSummary } from "../../types/contracts";
 
 interface SessionSidebarProps {
   sessions: SessionSummary[];

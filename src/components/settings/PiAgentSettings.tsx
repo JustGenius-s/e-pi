@@ -1,11 +1,12 @@
 import { Check, LoaderCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import type { AgentThinkingLevel, PiAgentConfig } from "../types/contracts";
-import { Button } from "./ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Switch } from "./ui/switch";
-import { Textarea } from "./ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+
+import type { AgentThinkingLevel, PiAgentConfig } from "../../types/contracts";
 
 const THINKING_OPTIONS: Array<{ value: AgentThinkingLevel; label: string }> = [
   { value: "", label: "Not set" },

@@ -1,6 +1,6 @@
 import { CircleCheck, LoaderCircle } from "lucide-react";
 
-import type { ModelProviderRecord } from "../types/contracts";
+import type { ModelProviderRecord } from "../../types/contracts";
 
 interface ModelProviderListProps {
   providers: ModelProviderRecord[];

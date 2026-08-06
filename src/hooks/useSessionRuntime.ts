@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { clearTerminalBuffer } from "../components/TerminalPanel";
+import { clearTerminalBuffer } from "@/components/workspace/TerminalPanel";
+
 import type { AppInfo, PiRuntimeState, SessionSummary } from "../types/contracts";
 
 export function useSessionRuntime() {

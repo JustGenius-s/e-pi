@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { APPEARANCE_MAX, APPEARANCE_MIN, type AppearanceKey, useAppearance } from "../lib/appearance";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+import { APPEARANCE_MAX, APPEARANCE_MIN, type AppearanceKey, useAppearance } from "../../lib/appearance";
 
 /** One module row: label + px input. Edits apply live; the field normalizes on blur. */
 function SizeRow({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {

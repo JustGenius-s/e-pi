@@ -1,9 +1,10 @@
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
 
-import { sessionTitle } from "../lib/format";
-import type { SessionSummary } from "../types/contracts";
-import { IconButton } from "./IconButton";
-import { SidebarTrigger, useSidebar } from "./ui/sidebar";
+import { IconButton } from "@/components/ui/IconButton";
+import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
+
+import { sessionTitle } from "../../lib/format";
+import type { SessionSummary } from "../../types/contracts";
 
 interface AppHeaderProps {
   activeSession?: SessionSummary;

@@ -2,11 +2,12 @@ import { RefreshCw } from "lucide-react";
 import { memo, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
-import type { PackageProgress, PackageRecord, PackageUpdateInfo, RemotePackageInfo } from "../types/contracts";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetDescription } from "@/components/ui/sheet";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+
+import type { PackageProgress, PackageRecord, PackageUpdateInfo, RemotePackageInfo } from "../../types/contracts";
 import { ExplorePackagesPane, InstalledPackagesPane } from "./PackagePanes";
-import { Button } from "./ui/button";
-import { Sheet, SheetContent, SheetDescription } from "./ui/sheet";
-import { Tabs, TabsList, TabsTrigger } from "./ui/tabs";
 
 interface PackagePanelProps {
   open: boolean;

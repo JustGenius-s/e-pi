@@ -1,24 +1,8 @@
 import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-import { useComposerCommands } from "../hooks/useComposerCommands";
-import { useImeComposition } from "../hooks/useImeComposition";
-import type {
-  CommandRecord,
-  ContextUsageState,
-  ModelManagementState,
-  ModelRecord,
-  ModelRef,
-  PiActivityStatus,
-  PiProcessStatus,
-  SessionUsageState,
-  SkillRecord,
-} from "../types/contracts";
-import { ComposerAttachments } from "./ComposerAttachments";
-import { ComposerCommandPopup } from "./ComposerCommandPopup";
-import { SessionStats } from "./SessionStats";
-import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +13,7 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
+} from "@/components/ui/dropdown-menu";
 import {
   Menubar,
   MenubarContent,
@@ -43,8 +27,25 @@ import {
   MenubarSubContent,
   MenubarSubTrigger,
   MenubarTrigger,
-} from "./ui/menubar";
-import { Textarea } from "./ui/textarea";
+} from "@/components/ui/menubar";
+import { Textarea } from "@/components/ui/textarea";
+
+import { useComposerCommands } from "../../hooks/useComposerCommands";
+import { useImeComposition } from "../../hooks/useImeComposition";
+import type {
+  CommandRecord,
+  ContextUsageState,
+  ModelManagementState,
+  ModelRecord,
+  ModelRef,
+  PiActivityStatus,
+  PiProcessStatus,
+  SessionUsageState,
+  SkillRecord,
+} from "../../types/contracts";
+import { ComposerAttachments } from "./ComposerAttachments";
+import { ComposerCommandPopup } from "./ComposerCommandPopup";
+import { SessionStats } from "./SessionStats";
 
 interface ComposerProps {
   sessionPath?: string;

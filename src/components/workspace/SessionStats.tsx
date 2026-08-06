@@ -1,6 +1,7 @@
-import { formatTokens } from "../lib/format";
-import type { ContextUsageState, SessionUsageState } from "../types/contracts";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "./ui/hover-card";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+
+import { formatTokens } from "../../lib/format";
+import type { ContextUsageState, SessionUsageState } from "../../types/contracts";
 
 interface SessionStatsProps {
   context?: ContextUsageState;

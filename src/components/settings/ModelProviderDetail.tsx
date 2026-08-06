@@ -1,8 +1,9 @@
 import { Check, KeyRound, LoaderCircle, LogIn, LogOut, Pencil, Trash2 } from "lucide-react";
 
-import type { CustomProviderConfig, ModelAuthType, ModelLoginEvent, ModelProviderRecord } from "../types/contracts";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+
+import type { CustomProviderConfig, ModelAuthType, ModelLoginEvent, ModelProviderRecord } from "../../types/contracts";
 
 export interface ModelLoginFlow {
   providerId: string;

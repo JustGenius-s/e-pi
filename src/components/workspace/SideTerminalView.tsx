@@ -2,9 +2,9 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { memo, useEffect, useRef, useState } from "react";
 
-import { useTerminalTheme } from "../hooks/useTerminalTheme";
-import { getAppearance, subscribeAppearance } from "../lib/appearance";
-import { createXterm, getTerminalBackground } from "../lib/xterm";
+import { useTerminalTheme } from "../../hooks/useTerminalTheme";
+import { getAppearance, subscribeAppearance } from "../../lib/appearance";
+import { createXterm, getTerminalBackground } from "../../lib/xterm";
 
 interface SideTerminalViewProps {
   cwd: string;

@@ -16,16 +16,22 @@ import {
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 
-import { useGitReview } from "../hooks/useGitReview";
-import { pathBaseName } from "../lib/format";
-import type { GitDiffResult, GitFileEntry, GitNumstat } from "../types/contracts";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { IconButton } from "@/components/ui/IconButton";
+import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+
+import { useGitReview } from "../../hooks/useGitReview";
+import { pathBaseName } from "../../lib/format";
+import type { GitDiffResult, GitFileEntry, GitNumstat } from "../../types/contracts";
 import { DiffView, type DiffStyle } from "./DiffView";
-import { IconButton } from "./IconButton";
-import { Button } from "./ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./ui/dialog";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import { Textarea } from "./ui/textarea";
-import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 interface ReviewViewProps {
   cwd: string;

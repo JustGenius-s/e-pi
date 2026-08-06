@@ -2,11 +2,17 @@ import { FolderOpen, GitPullRequest, Plus, SquareTerminal, X } from "lucide-reac
 import type { LucideIcon } from "lucide-react";
 import { memo } from "react";
 
+import { ReviewView } from "@/components/panels/ReviewView";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Kbd, KbdGroup } from "@/components/ui/kbd";
+
 import { FileTreeView } from "./FileTreeView";
-import { ReviewView } from "./ReviewView";
 import { SideTerminalView } from "./SideTerminalView";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "./ui/dropdown-menu";
-import { Kbd, KbdGroup } from "./ui/kbd";
 
 export const PANEL_VIEWS = ["review", "files", "terminal"] as const;
 export type PanelView = (typeof PANEL_VIEWS)[number];
