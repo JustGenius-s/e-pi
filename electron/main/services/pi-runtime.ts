@@ -16,6 +16,7 @@ import type {
   ResizeTerminalRequest,
   SessionUsageState,
 } from "../../../src/types/contracts";
+import { agentConfigToArgs, getAgentConfig } from "./agent-config-service";
 import { debugLog } from "./debug-log";
 
 type StateListener = (state: PiRuntimeState) => void;
@@ -299,6 +300,10 @@ export class PiRuntime {
     try {
       const nodeBinary = resolveNodeBinary();
       const args = [resolvePiEntry(), "--session", sessionPath, "--extension", resolveBridgePath()];
+      // E-Pi-managed Pi Agent settings (system prompt, thinking level, context
+      // files). Re-read on every launch so `reloadAll` picks up saved changes.
+      const agentArgs = agentConfigToArgs(await getAgentConfig());
+      args.push(...agentArgs);
       debugLog("[runtime] spawning pi", { nodeBinary, args, cwd, sessionPath });
 
       const child = spawn(nodeBinary, args, {

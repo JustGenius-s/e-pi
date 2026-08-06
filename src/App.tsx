@@ -1,5 +1,5 @@
 import { Terminal, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { AppDialogs } from "./components/AppDialogs";
@@ -10,21 +10,28 @@ import { PackagePanel } from "./components/PackagePanel";
 import { SessionSidebar } from "./components/SessionSidebar";
 import { SkillPanel } from "./components/SkillPanel";
 import { clearTerminalBuffer, TerminalPanel } from "./components/TerminalPanel";
-import { PANEL_VIEWS, ToolPanel } from "./components/ToolPanel";
+import { ToolPanel } from "./components/ToolPanel";
 import type { PanelState, PanelTab, PanelView } from "./components/ToolPanel";
 import { SidebarInset, SidebarProvider, SidebarRail, Sidebar } from "./components/ui/sidebar";
-import type { AppInfo, PiRuntimeState, SessionSummary } from "./types/contracts";
+import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
+import { useSessionRuntime } from "./hooks/useSessionRuntime";
+import type { SessionSummary } from "./types/contracts";
 
 export function App() {
-  const [appInfo, setAppInfo] = useState<AppInfo>();
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
-  const [activePath, setActivePath] = useState<string>();
-  /** Per-session process states; sessions run concurrently and never stop each other. */
-  const [runtimeStates, setRuntimeStates] = useState<Record<string, PiRuntimeState>>({});
+  const {
+    appInfo,
+    sessions,
+    activePath,
+    runtimeStates,
+    loading,
+    error,
+    setError,
+    setActivePath,
+    refreshSessions,
+    activate,
+  } = useSessionRuntime();
   const [packageOpen, setPackageOpen] = useState(false);
   const [skillOpen, setSkillOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>();
   const [renameTarget, setRenameTarget] = useState<SessionSummary>();
   const [renameName, setRenameName] = useState("");
   const [removeTarget, setRemoveTarget] = useState<SessionSummary>();
@@ -41,88 +48,6 @@ export function App() {
   const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;
   const activeCwd = activeSession?.cwd || appInfo?.defaultCwd || "";
-
-  /** Bring a session to the front and ensure its pi process is running. */
-  const activate = async (path: string): Promise<void> => {
-    setError(undefined);
-    const target = runtimeStates[path];
-    const needsFreshStart =
-      !target || target.status === "idle" || target.status === "exited" || target.status === "error";
-    if (needsFreshStart) clearTerminalBuffer(path);
-    await window.ePi.runtime.start(path);
-  };
-
-  const refreshSessions = async () => {
-    try {
-      const next = await window.ePi.sessions.list();
-      setSessions(next);
-      setActivePath((current) =>
-        current && next.some((session) => session.path === current) ? current : next[0]?.path,
-      );
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-    }
-  };
-
-  useEffect(() => {
-    let active = true;
-    Promise.all([window.ePi.app.getInfo(), window.ePi.sessions.list(), window.ePi.runtime.getStates()])
-      .then(([info, nextSessions, states]) => {
-        if (!active) return;
-        setAppInfo(info);
-        setSessions(nextSessions);
-        setRuntimeStates(states);
-        const initial = nextSessions[0]?.path;
-        setActivePath(initial);
-        setLoading(false);
-        window.ePi.app.log(`[app] init sessions=${nextSessions.length} states=${Object.keys(states).length}`);
-        if (initial) {
-          void window.ePi.runtime.start(initial).catch((reason: unknown) => {
-            setError(reason instanceof Error ? reason.message : String(reason));
-          });
-        }
-      })
-      .catch((reason: unknown) => {
-        if (!active) return;
-        setError(reason instanceof Error ? reason.message : String(reason));
-        setLoading(false);
-      });
-    const stopState = window.ePi.runtime.onState((state) => {
-      window.ePi.app.log(`[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
-      setRuntimeStates((current) => ({ ...current, [state.sessionPath]: state }));
-    });
-    return () => {
-      active = false;
-      stopState();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const listener = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
-        event.preventDefault();
-        void createSession(appInfo?.defaultCwd);
-      }
-      if (event.key === "Escape" && packageOpen) setPackageOpen(false);
-      if (event.key === "Escape" && skillOpen) setSkillOpen(false);
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g") {
-        event.preventDefault();
-        setPanelOpen((current) => !current);
-      }
-      if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) {
-        const index = Number(event.key) - 1;
-        const target = PANEL_VIEWS[index];
-        if (target) {
-          event.preventDefault();
-          setPanelOpen(true);
-          openPanelTab(target);
-        }
-      }
-    };
-    window.addEventListener("keydown", listener);
-    return () => window.removeEventListener("keydown", listener);
-  });
 
   const createSession = async (cwd?: string): Promise<SessionSummary | undefined> => {
     setError(undefined);
@@ -250,6 +175,20 @@ export function App() {
   const selectPanelTab = useCallback((id: string) => {
     setPanel((current) => (current.tabs.some((tab) => tab.id === id) ? { ...current, activeId: id } : current));
   }, []);
+
+  useGlobalShortcuts({
+    defaultCwd: appInfo?.defaultCwd,
+    packageOpen,
+    skillOpen,
+    onNewSession: (cwd) => void createSession(cwd),
+    onClosePackages: () => setPackageOpen(false),
+    onCloseSkills: () => setSkillOpen(false),
+    onTogglePanel: () => setPanelOpen((current) => !current),
+    onOpenPanelTab: (view) => {
+      setPanelOpen(true);
+      openPanelTab(view);
+    },
+  });
 
   const openPackages = () => {
     if (!activeCwd) return;

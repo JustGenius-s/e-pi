@@ -1,10 +1,10 @@
-import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square, X } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { ArrowRight, File, FolderOpen, Plus, Sparkles, Square } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
+import { useComposerCommands } from "../hooks/useComposerCommands";
+import { useImeComposition } from "../hooks/useImeComposition";
 import type {
   CommandRecord,
-  CommandSource,
   ContextUsageState,
   ModelManagementState,
   ModelRecord,
@@ -14,6 +14,8 @@ import type {
   SessionUsageState,
   SkillRecord,
 } from "../types/contracts";
+import { ComposerAttachments } from "./ComposerAttachments";
+import { ComposerCommandPopup } from "./ComposerCommandPopup";
 import { SessionStats } from "./SessionStats";
 import { Button } from "./ui/button";
 import { Dialog, DialogContent, DialogTitle } from "./ui/dialog";
@@ -73,13 +75,6 @@ const THINKING_LEVELS: Array<{ value: ThinkingLevel; label: string; note: string
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp)$/i;
 const isImage = (path: string) => IMAGE_EXT.test(path);
 
-/** Group labels for the command list, in display order. */
-const COMMAND_GROUPS: Array<{ label: string; sources: CommandSource[] }> = [
-  { label: "系统", sources: ["builtin"] },
-  { label: "插件", sources: ["template", "plugin"] },
-  { label: "技能", sources: ["skill"] },
-];
-
 function displayModel(model: ModelRecord): string {
   return model.name || model.id;
 }
@@ -99,13 +94,7 @@ export function Composer({
   onInterrupt,
 }: ComposerProps) {
   const [text, setText] = useState("");
-  const [commands, setCommands] = useState<CommandRecord[]>([]);
-  const [caret, setCaret] = useState(0);
-  const [selectedIndex, setSelectedIndex] = useState(0);
-  const [popupDismissed, setPopupDismissed] = useState(false);
-  const [inputFocused, setInputFocused] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const popupListRef = useRef<HTMLDivElement>(null);
   const [models, setModels] = useState<ModelManagementState>();
   const [pendingModel, setPendingModel] = useState<{ sessionPath?: string; ref: string }>();
   const [thinking, setThinking] = useState<ThinkingLevel>("medium");
@@ -117,13 +106,7 @@ export function Composer({
   const [selectedSkill, setSelectedSkill] = useState<SkillRecord>();
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  // Tracks the IME composition session ourselves: on macOS the Enter keydown
-  // that commits a composition can arrive *after* compositionend with
-  // isComposing already false (WebKit bug 165004, also observable in
-  // Electron). The ref is reset one tick after compositionend (see the
-  // textarea handler) so the commit-Enter is still swallowed, but a later
-  // send-Enter is not.
-  const composingRef = useRef(false);
+  const { onCompositionStart, onCompositionEnd, isComposing } = useImeComposition();
   const busy = status === "starting" || status === "stopping" || submitting;
   const hasContent = Boolean(text.trim() || files.length > 0 || selectedSkill);
   const showStop = status === "running" && activity === "busy";
@@ -144,21 +127,26 @@ export function Composer({
   const selectedModel = availableModels.find((candidate) => `${candidate.provider}/${candidate.id}` === modelRef);
   const selectedModelLabel = selectedModel ? displayModel(selectedModel) : (model?.id ?? "Model");
   const selectedThinking = THINKING_LEVELS.find((level) => level.value === thinking);
+  const {
+    commandGroups,
+    filteredCommands,
+    popupOpen,
+    clampedIndex,
+    popupAnchor,
+    popupListRef,
+    caret,
+    setCaret,
+    setInputFocused,
+    setPopupDismissed,
+    setSelectedIndex,
+    syncCaret,
+  } = useComposerCommands({ cwd, text, skills, textareaRef });
 
   useEffect(() => {
     window.ePi.models
       .list()
       .then(setModels)
       .catch(() => undefined);
-  }, [cwd]);
-
-  useEffect(() => {
-    setCommands([]);
-    if (!cwd) return;
-    window.ePi.commands
-      .list(cwd)
-      .then(setCommands)
-      .catch(() => setCommands([]));
   }, [cwd]);
 
   useEffect(() => {
@@ -278,118 +266,6 @@ export function Composer({
     if (sessionPath) await window.ePi.runtime.submit(sessionPath, `/e-pi-thinking ${value}`);
   };
 
-  /**
-   * Slash commands shown by the command-list popup: pi built-ins + prompt
-   * templates (via commands IPC) + skills (already loaded for the "+" menu),
-   * mirroring the autocomplete data pi's TUI feeds its editor. Deduped by
-   * name — the first entry wins, matching the TUI's builtin-over-extension
-   * precedence.
-   */
-  const allCommands = useMemo(() => {
-    const seen = new Set<string>();
-    const result: CommandRecord[] = [];
-    for (const command of commands) {
-      if (seen.has(command.name)) continue;
-      seen.add(command.name);
-      result.push(command);
-    }
-    for (const skill of skills) {
-      const name = `skill:${skill.name}`;
-      if (seen.has(name)) continue;
-      seen.add(name);
-      result.push({ name, description: skill.description, source: "skill" });
-    }
-    return result;
-  }, [commands, skills]);
-
-  /**
-   * Command completion context, mirroring the TUI: the current line (from the
-   * last newline to the caret) must start with "/" and contain no space yet.
-   * The text after "/" up to the caret is the filter query.
-   */
-  const lineStart = text.lastIndexOf("\n", caret - 1) + 1;
-  const linePrefix = text.slice(lineStart, caret);
-  const commandQuery = linePrefix.startsWith("/") && !linePrefix.includes(" ") ? linePrefix.slice(1) : null;
-
-  const filteredCommands = useMemo(() => {
-    if (commandQuery === null) return [];
-    const query = commandQuery.toLowerCase();
-    if (!query) return allCommands;
-    const scored: Array<{ command: CommandRecord; score: number }> = [];
-    for (const command of allCommands) {
-      const name = command.name.toLowerCase();
-      if (name.startsWith(query)) scored.push({ command, score: 0 });
-      else if (name.includes(query)) scored.push({ command, score: 1 });
-      else if ((command.description ?? "").toLowerCase().includes(query)) scored.push({ command, score: 2 });
-    }
-    scored.sort((a, b) => a.score - b.score);
-    return scored.map((entry) => entry.command);
-  }, [allCommands, commandQuery]);
-
-  const popupOpen = inputFocused && commandQuery !== null && !popupDismissed && filteredCommands.length > 0;
-  const clampedIndex = filteredCommands.length === 0 ? 0 : Math.min(selectedIndex, filteredCommands.length - 1);
-
-  // Group the filtered list by label (系统/插件/技能), keeping the global
-  // flattened index per group so keyboard navigation still walks all rows.
-  const commandGroups = useMemo(() => {
-    let offset = 0;
-    const groups: Array<{ source: CommandSource; label: string; items: CommandRecord[]; start: number }> = [];
-    for (const { label, sources } of COMMAND_GROUPS) {
-      const items = filteredCommands.filter((command) => sources.includes(command.source));
-      if (items.length === 0) continue;
-      groups.push({ source: sources[0]!, label, items, start: offset });
-      offset += items.length;
-    }
-    return groups;
-  }, [filteredCommands]);
-
-  // Anchor the popup just above the textarea. It lives in a portal (the shell
-  // clips overflow), positioned with `bottom` so it grows upward like the
-  // TUI's dropdown instead of covering the input.
-  const [popupAnchor, setPopupAnchor] = useState<{ left: number; bottom: number; width: number }>();
-  useEffect(() => {
-    if (!popupOpen) {
-      setPopupAnchor(undefined);
-      return;
-    }
-    const measure = () => {
-      const element = textareaRef.current;
-      if (!element) return;
-      const rect = element.getBoundingClientRect();
-      setPopupAnchor({
-        // Bottom flush against the textarea, sides inset so the panel reads
-        // narrower than the input.
-        left: rect.left + 8,
-        bottom: window.innerHeight - rect.top,
-        width: rect.width - 16,
-      });
-    };
-    measure();
-    window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, true);
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure, true);
-    };
-  }, [popupOpen, text]);
-
-  // Re-point the selection at the top whenever the filter text changes.
-  useEffect(() => {
-    setSelectedIndex(0);
-  }, [commandQuery]);
-
-  // Keep the highlighted row in view while navigating.
-  useEffect(() => {
-    if (!popupOpen) return;
-    const selected = popupListRef.current?.querySelector<HTMLElement>('[data-selected="true"]');
-    selected?.scrollIntoView({ block: "nearest" });
-  }, [clampedIndex, popupOpen]);
-
-  const syncCaret = (element: HTMLTextAreaElement): void => {
-    const next = element.selectionStart;
-    if (next !== caret) setCaret(next);
-  };
-
   /** Insert "/name " at the caret, replacing the typed prefix (TUI-style). */
   const acceptCommand = (command: CommandRecord): void => {
     const ta = textareaRef.current;
@@ -421,60 +297,14 @@ export function Composer({
         attachFiles(Array.from(event.dataTransfer.files).map((file) => window.ePi.app.getPathForFile(file)));
       }}
     >
-      {files.length > 0 || selectedSkill ? (
-        <div className="composer-attachments" aria-label="Attached context">
-          {selectedSkill ? (
-            <span className="composer-attachment composer-skill" title={selectedSkill.description}>
-              <Sparkles size={12} />
-              <span>{selectedSkill.name}</span>
-              <button
-                type="button"
-                onClick={() => setSelectedSkill(undefined)}
-                aria-label={`Remove ${selectedSkill.name} skill`}
-              >
-                <X size={12} />
-              </button>
-            </span>
-          ) : null}
-          {files.map((path) => {
-            const image = isImage(path);
-            const thumb = image ? thumbnails[path] : undefined;
-            return (
-              <span className="composer-attachment" data-image={image ? "true" : undefined} key={path} title={path}>
-                {image ? (
-                  <button
-                    type="button"
-                    className="composer-attachment-thumb"
-                    onClick={() => setPreview(path)}
-                    aria-label={`Preview ${path}`}
-                  >
-                    {thumb ? <img src={thumb} alt="" /> : <File size={14} />}
-                  </button>
-                ) : (
-                  <File size={12} />
-                )}
-                {!image ? (
-                  <button
-                    type="button"
-                    className="composer-attachment-name"
-                    onClick={() => image && setPreview(path)}
-                    aria-label={image ? `Preview ${path}` : path}
-                  >
-                    <span>{path.split(/[\\/]/).pop()}</span>
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setFiles((current) => current.filter((item) => item !== path))}
-                  aria-label={`Remove ${path}`}
-                >
-                  <X size={12} />
-                </button>
-              </span>
-            );
-          })}
-        </div>
-      ) : null}
+      <ComposerAttachments
+        files={files}
+        thumbnails={thumbnails}
+        selectedSkill={selectedSkill}
+        onPreview={setPreview}
+        onRemoveFile={(path) => setFiles((current) => current.filter((item) => item !== path))}
+        onRemoveSkill={() => setSelectedSkill(undefined)}
+      />
       <Dialog
         open={preview !== undefined}
         onOpenChange={(open) => {
@@ -515,22 +345,14 @@ export function Composer({
             })
             .catch(() => undefined);
         }}
-        onCompositionStart={() => {
-          composingRef.current = true;
-        }}
-        onCompositionEnd={() => {
-          // Defer the reset one tick: the committing Enter keydown can arrive
-          // right after this with isComposing already false.
-          window.setTimeout(() => {
-            composingRef.current = false;
-          }, 0);
-        }}
+        onCompositionStart={onCompositionStart}
+        onCompositionEnd={onCompositionEnd}
         onKeyDown={(event) => {
           // Enter during IME composition (e.g. Chinese pinyin) confirms the
           // candidate instead of sending. composingRef is the primary signal
           // (covers macOS, where the commit-Enter arrives after compositionend
           // with isComposing false); isComposing/keyCode 229 are fallbacks.
-          const composing = composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229;
+          const composing = isComposing(event);
           // With the command list open, arrows move the selection and Enter/
           // Tab insert the highlighted command (TUI autocomplete behavior).
           if (popupOpen) {
@@ -569,52 +391,16 @@ export function Composer({
         disabled={disabled || busy}
         rows={1}
       />
-      {popupOpen && popupAnchor
-        ? createPortal(
-            <div
-              className="composer-command-popup"
-              style={{ left: popupAnchor.left, bottom: popupAnchor.bottom, width: popupAnchor.width }}
-              role="listbox"
-              aria-label="Commands"
-            >
-              <div className="composer-command-list" ref={popupListRef}>
-                {commandGroups.map((group) => (
-                  <div className="composer-command-group" role="group" aria-label={group.label} key={group.source}>
-                    <div className="composer-command-group-header">{group.label}</div>
-                    {group.items.map((command, localIndex) => {
-                      const index = group.start + localIndex;
-                      const selected = index === clampedIndex;
-                      return (
-                        <button
-                          key={`${command.source}:${command.name}`}
-                          type="button"
-                          role="option"
-                          aria-selected={selected}
-                          data-selected={selected ? "true" : undefined}
-                          className="composer-command-row"
-                          onMouseDown={(event) => {
-                            // Keep focus on the textarea so the popup context survives.
-                            event.preventDefault();
-                            acceptCommand(command);
-                          }}
-                        >
-                          <span className="composer-command-name">/{command.name}</span>
-                          {command.argumentHint ? (
-                            <span className="composer-command-hint">{command.argumentHint}</span>
-                          ) : null}
-                          {command.description ? (
-                            <span className="composer-command-desc">{command.description}</span>
-                          ) : null}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ))}
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
+      {popupOpen ? (
+        <ComposerCommandPopup
+          commands={filteredCommands}
+          groups={commandGroups}
+          selectedIndex={clampedIndex}
+          anchor={popupAnchor}
+          listRef={popupListRef}
+          onAccept={acceptCommand}
+        />
+      ) : null}
       <div className="composer-toolbar">
         <div className="composer-tools">
           <DropdownMenu

@@ -157,6 +157,22 @@ function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
   return null;
 }
 
+interface SessionItemContentProps {
+  session: SessionSummary;
+  runtime?: PiRuntimeState;
+  labelClassName: string;
+}
+
+function SessionItemContent({ session, runtime, labelClassName }: SessionItemContentProps) {
+  return (
+    <>
+      <ActivityIndicator runtime={runtime} />
+      <span className={labelClassName}>{sessionTitle(session)}</span>
+      <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+    </>
+  );
+}
+
 interface CollapsedProjectFlyoutProps {
   project: ProjectGroup;
   label: string;
@@ -264,9 +280,11 @@ function CollapsedProjectFlyout({
                     onSelect(session);
                   }}
                 >
-                  <ActivityIndicator runtime={runtimeStates?.[session.path]} />
-                  <span className="project-flyout-session-label">{sessionTitle(session)}</span>
-                  <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+                  <SessionItemContent
+                    session={session}
+                    runtime={runtimeStates?.[session.path]}
+                    labelClassName="project-flyout-session-label"
+                  />
                 </button>
               </li>
             );
@@ -482,9 +500,11 @@ export function SessionSidebar({
                                   title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
                                   onClick={() => onSelect(session)}
                                 >
-                                  <ActivityIndicator runtime={runtime} />
-                                  <span className="session-label">{title}</span>
-                                  <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+                                  <SessionItemContent
+                                    session={session}
+                                    runtime={runtime}
+                                    labelClassName="session-label"
+                                  />
                                 </SidebarMenuButton>
                               </ContextMenuTrigger>
                               <ContextMenuContent>

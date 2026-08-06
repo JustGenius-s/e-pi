@@ -2,7 +2,7 @@ import type { FileDiffOptions } from "@pierre/diffs";
 import { PatchDiff } from "@pierre/diffs/react";
 import { memo, useMemo, useState, type CSSProperties } from "react";
 
-import { useIsDark } from "../lib/useIsDark";
+import { useIsDark } from "../hooks/useIsDark";
 
 /** Review diff layout: side-by-side columns or a single unified column. */
 export type DiffStyle = "split" | "unified";

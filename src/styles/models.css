@@ -451,6 +451,108 @@
   margin-top: 16px;
 }
 
+/* --- Pi Agent (general tab) --- */
+
+.agent-section {
+  margin-top: 18px;
+}
+
+.agent-group-title {
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  font-weight: 550;
+  letter-spacing: 0.04em;
+}
+
+.agent-description {
+  margin-top: 6px;
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+.agent-field {
+  margin-top: 14px;
+}
+
+.agent-field-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.agent-field-head label {
+  font-size: var(--fs-body);
+  font-weight: 500;
+}
+
+.agent-field-note {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-textarea {
+  min-height: 76px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+.agent-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  margin-top: 6px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-body);
+}
+
+.agent-row-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.agent-row-label small {
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+}
+
+.agent-select {
+  width: 132px;
+}
+
+.agent-save {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.agent-save .spin {
+  margin-right: 6px;
+}
+
+.agent-error {
+  margin-top: 12px;
+  color: var(--destructive);
+  font-size: var(--fs-small);
+}
+
+.agent-loading {
+  display: flex;
+  justify-content: center;
+  padding: 18px 0;
+}
+
 /* --- custom provider management --- */
 
 .model-custom-row {

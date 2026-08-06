@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import type {
+  AgentConfigSaveRequest,
   AppInfo,
   CommandRecord,
   CreateSessionRequest,
@@ -24,6 +25,7 @@ import type {
   PackageRecord,
   PackageUpdateInfo,
   PackageUpdateRequest,
+  PiAgentConfig,
   PiRuntimeState,
   RemotePackageInfo,
   RenameSessionRequest,
@@ -108,6 +110,11 @@ const api: EPiApi = {
     customRemove: (request: CustomProviderRemoveRequest) =>
       ipcRenderer.invoke("models:custom-remove", request) as Promise<CustomProviderConfig[]>,
     onLoginEvent: (listener: (event: ModelLoginEvent) => void) => subscribe("models:login-event", listener),
+  },
+  agent: {
+    getConfig: () => ipcRenderer.invoke("agent:get-config") as Promise<PiAgentConfig>,
+    saveConfig: (request: AgentConfigSaveRequest) =>
+      ipcRenderer.invoke("agent:save-config", request) as Promise<PiAgentConfig>,
   },
   commands: {
     list: (cwd: string) => ipcRenderer.invoke("commands:list", cwd) as Promise<CommandRecord[]>,

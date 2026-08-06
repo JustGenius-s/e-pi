@@ -357,6 +357,32 @@ export type ModelLoginEvent =
   | { type: "cancelled" }
   | { type: "error"; message: string };
 
+/** Thinking levels pi accepts via `--thinking`. Empty string means "not set". */
+export type AgentThinkingLevel = "" | "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
+
+/**
+ * Pi Agent settings applied to sessions launched by E-Pi. The two prompt
+ * fields map to `--system-prompt` (replace the default prompt) and
+ * `--append-system-prompt` (append to it). Both are optional and can be set
+ * at the same time: the replacement becomes the base prompt, then the append
+ * text is added after it. These only affect E-Pi-launched sessions, never
+ * global `~/.pi` files.
+ */
+export interface PiAgentConfig {
+  /** Replaces pi's default system prompt when non-empty (--system-prompt). */
+  systemPrompt: string;
+  /** Appended after the system prompt when non-empty (--append-system-prompt). */
+  appendSystemPrompt: string;
+  /** Default thinking level for new sessions; empty = let pi decide. */
+  thinkingLevel: AgentThinkingLevel;
+  /** Load AGENTS.md / CLAUDE.md context files (false => --no-context-files). */
+  contextFiles: boolean;
+}
+
+export interface AgentConfigSaveRequest {
+  config: PiAgentConfig;
+}
+
 export interface EPiApi {
   app: {
     getInfo(): Promise<AppInfo>;
@@ -415,6 +441,11 @@ export interface EPiApi {
     customSave(request: CustomProviderRequest): Promise<CustomProviderConfig[]>;
     customRemove(request: CustomProviderRemoveRequest): Promise<CustomProviderConfig[]>;
     onLoginEvent(listener: (event: ModelLoginEvent) => void): () => void;
+  };
+  agent: {
+    getConfig(): Promise<PiAgentConfig>;
+    /** Persist the config and restart every live session so it takes effect. */
+    saveConfig(request: AgentConfigSaveRequest): Promise<PiAgentConfig>;
   };
   commands: {
     /** Slash commands available in the composer: pi built-ins + prompt templates. */

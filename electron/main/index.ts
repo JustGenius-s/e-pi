@@ -7,6 +7,7 @@ import { VERSION as PI_VERSION } from "@earendil-works/pi-coding-agent";
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, shell } from "electron";
 
 import type {
+  AgentConfigSaveRequest,
   CreateSessionRequest,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
@@ -22,6 +23,7 @@ import type {
   SkillSetEnabledRequest,
 } from "../../src/types/contracts";
 import { ensureNpmOnPath } from "./npm-path";
+import { getAgentConfig, saveAgentConfig } from "./services/agent-config-service";
 import { CommandService } from "./services/command-service";
 import { debugLog, resetDebugLog } from "./services/debug-log";
 import { FileService } from "./services/file-service";
@@ -295,6 +297,13 @@ function registerHandlers(): void {
   ipcMain.handle("models:custom-remove", (_event, request: CustomProviderRemoveRequest) =>
     models.removeCustomProvider(request),
   );
+
+  ipcMain.handle("agent:get-config", () => getAgentConfig());
+  ipcMain.handle("agent:save-config", async (_event, request: AgentConfigSaveRequest) => {
+    const next = await saveAgentConfig(request.config);
+    await reloadActiveRuntime();
+    return next;
+  });
 }
 
 function createWindow(): void {

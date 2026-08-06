@@ -1,9 +1,9 @@
-import { useRef } from "react";
-
+import { useImeComposition } from "../hooks/useImeComposition";
 import { sessionTitle } from "../lib/format";
 import type { AppInfo, SessionSummary } from "../types/contracts";
 import { FontSettings } from "./FontSettings";
 import { ModelSettings } from "./ModelSettings";
+import { PiAgentSettings } from "./PiAgentSettings";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,24 +34,17 @@ interface RenameInputProps {
  * 165004, also observable in Electron).
  */
 function RenameInput({ value, onChange, onCommit }: RenameInputProps) {
-  const composingRef = useRef(false);
+  const { onCompositionStart, onCompositionEnd, isComposing } = useImeComposition();
   return (
     <Input
       autoFocus
       value={value}
       aria-label="Session name"
       onChange={(event) => onChange(event.target.value)}
-      onCompositionStart={() => {
-        composingRef.current = true;
-      }}
-      onCompositionEnd={() => {
-        window.setTimeout(() => {
-          composingRef.current = false;
-        }, 0);
-      }}
+      onCompositionStart={onCompositionStart}
+      onCompositionEnd={onCompositionEnd}
       onKeyDown={(event) => {
-        if (event.key !== "Enter") return;
-        if (composingRef.current || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+        if (event.key !== "Enter" || isComposing(event)) return;
         event.preventDefault();
         onCommit();
       }}
@@ -156,6 +149,7 @@ export function AppDialogs({
                   <strong title={appInfo?.defaultCwd}>{appInfo?.defaultCwd || "-"}</strong>
                 </div>
               </div>
+              <PiAgentSettings active={settingsOpen} />
             </TabsContent>
           </Tabs>
         </DialogContent>

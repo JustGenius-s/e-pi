@@ -2,9 +2,9 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import { memo, useEffect, useRef, useState } from "react";
 
+import { useTerminalTheme } from "../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../lib/appearance";
-import { terminalTheme } from "../lib/terminalTheme";
-import { useIsDark } from "../lib/useIsDark";
+import { createXterm, getTerminalBackground } from "../lib/xterm";
 
 interface SideTerminalViewProps {
   cwd: string;
@@ -20,12 +20,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
   const terminalRef = useRef<Terminal | null>(null);
   const [state, setState] = useState<"starting" | "ready" | "error">("starting");
   const [error, setError] = useState<string>();
-  const isDark = useIsDark();
-  // Latest-value ref so the mount effect can read the theme without re-running
-  // (recreating the terminal) when the theme flips — the update effect below
-  // handles live repaints instead.
-  const isDarkRef = useRef(isDark);
-  isDarkRef.current = isDark;
+  const isDarkRef = useTerminalTheme(hostRef, terminalRef);
 
   useEffect(() => {
     let disposed = false;
@@ -33,7 +28,6 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
     let id: string | undefined;
     let stopData: (() => void) | undefined;
     let inputDisposable: { dispose(): void } | undefined;
-    let scrollDisposable: { dispose(): void } | undefined;
     let resizeObserver: ResizeObserver | undefined;
     let unsubscribeAppearance: (() => void) | undefined;
 
@@ -53,18 +47,12 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
         return;
       }
 
-      const surface = hostRef.current.parentElement ?? hostRef.current;
-      const surfaceBackground = getComputedStyle(surface).backgroundColor || "#000000";
-      terminal = new Terminal({
-        allowProposedApi: false,
-        convertEol: true,
-        cursorBlink: false,
-        cursorStyle: "bar",
-        fontFamily: '"SFMono-Regular", "Cascadia Code", "JetBrains Mono", monospace',
+      terminal = createXterm({
+        isDark: isDarkRef.current,
+        background: getTerminalBackground(hostRef.current),
         fontSize: getAppearance().termSide,
         lineHeight: 1.35,
         scrollback: 8_000,
-        theme: terminalTheme(isDarkRef.current, surfaceBackground),
       });
       const fit = new FitAddon();
       terminal.loadAddon(fit);
@@ -95,9 +83,6 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       inputDisposable = terminal.onData((data) => {
         if (id) window.ePi.sideTerminal.write(id, data);
       });
-      scrollDisposable = terminal.onScroll(() => {
-        // No-op; kept for parity with TerminalPanel if needed later.
-      });
       setState("ready");
     };
 
@@ -108,22 +93,12 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       if (id) window.ePi.sideTerminal.kill(id);
       stopData?.();
       inputDisposable?.dispose();
-      scrollDisposable?.dispose();
       resizeObserver?.disconnect();
       terminal?.dispose();
       terminalRef.current = null;
       unsubscribeAppearance?.();
     };
-  }, [cwd]);
-
-  // Repaint the terminal when the app theme flips.
-  useEffect(() => {
-    const terminal = terminalRef.current;
-    if (!terminal) return;
-    const surface = hostRef.current?.parentElement ?? hostRef.current;
-    const surfaceBackground = surface ? getComputedStyle(surface).backgroundColor || "#000000" : "#000000";
-    terminal.options.theme = terminalTheme(isDark, surfaceBackground);
-  }, [isDark]);
+  }, [cwd, isDarkRef]);
 
   return (
     <div className="git-panel-body">

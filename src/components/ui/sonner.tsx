@@ -1,7 +1,7 @@
 import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon } from "lucide-react";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
-import { useIsDark } from "@/lib/useIsDark";
+import { useIsDark } from "@/hooks/useIsDark";
 
 function Toaster({ ...props }: ToasterProps) {
   const isDark = useIsDark();
