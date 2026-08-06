@@ -23,10 +23,6 @@
   .composer-tools {
     flex-wrap: wrap;
   }
-  .composer-divider {
-    display: none;
-  }
-
   .model-settings-body {
     grid-template-columns: 180px minmax(0, 1fr);
   }

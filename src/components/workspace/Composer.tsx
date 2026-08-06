@@ -508,7 +508,6 @@ export function Composer({
               </DropdownMenuSub>
             </DropdownMenuContent>
           </DropdownMenu>
-          <span className="composer-divider" />
           <Menubar className="composer-config-menubar">
             <MenubarMenu>
               <MenubarTrigger className="composer-config-trigger">

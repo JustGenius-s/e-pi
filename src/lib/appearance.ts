@@ -32,14 +32,14 @@ export interface AppearanceSettings {
 }
 
 export const APPEARANCE_DEFAULTS: AppearanceSettings = {
-  sidebar: 11,
-  workspace: 11,
-  models: 11,
-  packages: 11,
-  git: 11,
-  skills: 11,
+  sidebar: 13,
+  workspace: 14,
+  models: 13,
+  packages: 13,
+  git: 13,
+  skills: 13,
   termMain: 13,
-  termSide: 11,
+  termSide: 12,
 };
 
 /** Input bounds — keeps any single module from breaking the layout. */

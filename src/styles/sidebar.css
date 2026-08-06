@@ -348,7 +348,7 @@
 .pinned-sessions-label {
   padding: 2px 8px 3px;
   color: var(--muted-foreground);
-  font-size: 10px;
+  font-size: var(--fs-mini);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;

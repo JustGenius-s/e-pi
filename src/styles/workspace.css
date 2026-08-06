@@ -250,7 +250,7 @@
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  font-size: var(--fs-xl);
+  font-size: var(--fs-medium);
   line-height: 1.6;
 }
 
@@ -640,13 +640,6 @@
   font-size: var(--fs-medium);
 }
 
-.composer-divider {
-  width: 1px;
-  height: 18px;
-  margin: 0 2px;
-  background: var(--border);
-}
-
 .composer-config-menubar {
   height: 38px;
   padding: 0;
@@ -654,7 +647,6 @@
   background: transparent;
 }
 .composer-config-trigger {
-  min-width: 220px;
   height: 38px;
   justify-content: flex-start;
   gap: 8px;
@@ -682,14 +674,12 @@
 }
 .composer-config-values strong {
   color: var(--foreground);
-  font-size: var(--fs-medium);
+  font-size: var(--fs-body);
   font-weight: 600;
 }
 .composer-config-values span {
   flex: 0 0 auto;
-  padding-left: 8px;
   color: var(--muted-foreground);
-  border-left: 1px solid var(--border);
   font-size: var(--fs-body);
   font-weight: 550;
 }
