@@ -342,6 +342,17 @@
   margin-left: 18px;
 }
 
+/* Empty state shown when there are no sessions yet. */
+.sidebar-empty {
+  display: grid;
+  gap: 5px;
+  padding: 22px 10px;
+  text-align: center;
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  line-height: 1.4;
+}
+
 .sidebar-empty-hint {
   display: block;
   font-size: var(--fs-mini);
@@ -638,15 +649,4 @@
   padding: 0;
 }
 
-.sidebar-root[data-state="collapsed"] .sidebar-empty {
-  /* --- legacy live styles (previously inline in app.css) --- */
 
-  .sidebar-empty {
-    display: grid;
-    gap: 5px;
-    padding: 22px 10px;
-    text-align: center;
-    color: var(--muted-foreground);
-    font-size: var(--fs-small);
-  }
-}
