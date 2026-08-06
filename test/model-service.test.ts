@@ -148,6 +148,52 @@ describe("ModelService custom providers", () => {
     expect(list[0].models[0]).toMatchObject({ id: "m1", name: "m1", reasoning: true, vision: true });
   });
 
+  it("fills imported models from pi's official catalog on save", async () => {
+    await service.saveCustomProvider({
+      provider: {
+        id: "",
+        name: "Official relay",
+        baseUrl: "https://relay.example.com/v1",
+        api: "openai-completions",
+        models: [{ id: "gpt-5.6-sol" }],
+      },
+    });
+
+    const raw = JSON.parse(readFileSync(join(testAgentDir, "models.json"), "utf8"));
+    const model = raw.providers["official-relay"].models[0];
+    expect(model).toMatchObject({
+      id: "gpt-5.6-sol",
+      name: "GPT-5.6 Sol",
+      reasoning: true,
+      input: ["text", "image"],
+      contextWindow: 272000,
+      maxTokens: 128000,
+    });
+    expect(model.cost.tiers[0].inputTokensAbove).toBe(272000);
+    expect(model.compat.supportsStrictMode).toBe(true);
+    expect(model.thinkingLevelMap).toMatchObject({ low: "low", high: "high", max: "max" });
+  });
+
+  it("preserves explicit model overrides over official metadata", async () => {
+    await service.saveCustomProvider({
+      provider: {
+        id: "",
+        name: "Override relay",
+        baseUrl: "https://relay.example.com/v1",
+        api: "openai-completions",
+        models: [{ id: "gpt-5.6-sol", reasoning: false, vision: false, contextWindow: 1_050_000 }],
+      },
+    });
+
+    const raw = JSON.parse(readFileSync(join(testAgentDir, "models.json"), "utf8"));
+    expect(raw.providers["override-relay"].models[0]).toMatchObject({
+      reasoning: false,
+      input: ["text"],
+      contextWindow: 1_050_000,
+      maxTokens: 128000,
+    });
+  });
+
   it("persists selected thinking levels as a thinkingLevelMap", async () => {
     await service.saveCustomProvider({
       provider: {
@@ -283,6 +329,31 @@ describe("ModelService custom providers", () => {
     ).rejects.toThrow(/Base URL/);
 
     await expect(service.removeCustomProvider({ providerId: "missing" })).rejects.toThrow(/Unknown/);
+  });
+
+  describe("fetchModels", () => {
+    afterAll(() => vi.unstubAllGlobals());
+
+    it("enriches endpoint ids from pi's official catalog", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "gpt-5.6-sol" }] }), { status: 200 })),
+      );
+
+      await expect(
+        service.fetchModels({ baseUrl: "https://relay.example.com/v1", apiKey: "secret" }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          id: "gpt-5.6-sol",
+          name: "GPT-5.6 Sol",
+          reasoning: true,
+          vision: true,
+          contextWindow: 272000,
+          maxTokens: 128000,
+          thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+        }),
+      ]);
+    });
   });
 
   describe("catalogMeta (models.dev)", () => {

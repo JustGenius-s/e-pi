@@ -151,11 +151,12 @@ export function CustomProviderDialogs({
         return meta
           ? {
               ...model,
-              name: model.name || meta.name,
-              reasoning: meta.reasoning,
-              vision: meta.vision,
-              contextWindow: meta.contextWindow,
-              maxTokens: meta.maxTokens,
+              name: model.name || meta.name || model.id,
+              reasoning: meta.reasoning ?? model.reasoning,
+              vision: meta.vision ?? model.vision,
+              contextWindow: meta.contextWindow ?? model.contextWindow,
+              maxTokens: meta.maxTokens ?? model.maxTokens,
+              thinkingLevels: model.thinkingLevels,
             }
           : model;
       });

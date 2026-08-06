@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { existsSync, realpathSync } from "node:fs";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
-import { loadPiAgent } from "./pi-agent-loader";
+import { loadPiAgent, piPackageDir } from "./pi-agent-loader";
 
 import type {
   CatalogMetaRequest,
@@ -129,6 +129,75 @@ interface RawModelEntry {
   reasoning?: unknown;
   input?: unknown;
   thinkingLevelMap?: unknown;
+  cost?: unknown;
+  compat?: unknown;
+}
+
+interface OfficialModelMetadata {
+  id: string;
+  name?: string;
+  reasoning?: boolean;
+  input?: string[];
+  contextWindow?: number;
+  maxTokens?: number;
+  thinkingLevelMap?: Record<string, string | null>;
+  cost?: Record<string, unknown>;
+  compat?: Record<string, unknown>;
+}
+
+let officialModelsPromise: Promise<Map<string, OfficialModelMetadata>> | undefined;
+
+async function officialModels(): Promise<Map<string, OfficialModelMetadata>> {
+  if (!officialModelsPromise) {
+    officialModelsPromise = (async () => {
+      try {
+        const packageDir = piPackageDir();
+        const resolvedPackageDir = realpathSync(packageDir);
+        const candidates = [
+          join(dirname(resolvedPackageDir), "pi-ai/dist/providers/data"),
+          join(resolvedPackageDir, "node_modules/@earendil-works/pi-ai/dist/providers/data"),
+          join(dirname(packageDir), "pi-ai/dist/providers/data"),
+          join(packageDir, "node_modules/@earendil-works/pi-ai/dist/providers/data"),
+        ];
+        const dataDir = candidates.find((candidate) => existsSync(candidate));
+        if (!dataDir) throw new Error(`pi-ai model catalog not found near ${packageDir}`);
+        const files = (await readdir(dataDir)).filter((file) => file.endsWith(".json"));
+        const preferred = ["openai", "anthropic", "google", "deepseek", "moonshotai", "minimax", "mistral"];
+        files.sort((left, right) => {
+          const rank = (file: string) => {
+            const index = preferred.indexOf(file.slice(0, -5));
+            return index < 0 ? preferred.length : index;
+          };
+          return rank(left) - rank(right);
+        });
+        const result = new Map<string, OfficialModelMetadata>();
+        const catalogs = await Promise.all(
+          files.map(async (file) =>
+            JSON.parse(await readFile(join(dataDir, file), "utf8")) as Record<
+              string,
+              Record<string, OfficialModelMetadata>
+            >,
+          ),
+        );
+        for (const groups of catalogs) {
+          for (const models of Object.values(groups)) {
+            for (const model of Object.values(models)) {
+              if (!result.has(model.id)) result.set(model.id, model);
+            }
+          }
+        }
+        return result;
+      } catch (error) {
+        console.warn("Could not load pi official model catalog", error);
+        return new Map<string, OfficialModelMetadata>();
+      }
+    })();
+  }
+  return officialModelsPromise;
+}
+
+function officialFor(id: string, catalog: Map<string, OfficialModelMetadata>): OfficialModelMetadata | undefined {
+  return catalog.get(id) ?? catalog.get(id.replace(/-ioa$/, ""));
 }
 
 function toCustomModel(model: RawModelEntry): CustomModelDefinition {
@@ -137,10 +206,11 @@ function toCustomModel(model: RawModelEntry): CustomModelDefinition {
     name: typeof model.name === "string" ? model.name : undefined,
     contextWindow: typeof model.contextWindow === "number" ? model.contextWindow : undefined,
     maxTokens: typeof model.maxTokens === "number" ? model.maxTokens : undefined,
-    reasoning: model.reasoning === true ? true : undefined,
+    reasoning: typeof model.reasoning === "boolean" ? model.reasoning : undefined,
     thinkingLevels: thinkingLevelsFromMap(model.thinkingLevelMap),
-    // Vision = the persisted model entry declares image input support.
-    vision: Array.isArray(model.input) && model.input.includes("image") ? true : undefined,
+    // Preserve an explicit text-only declaration so a later save does not
+    // re-enable vision from catalog metadata.
+    vision: Array.isArray(model.input) ? model.input.includes("image") : undefined,
   };
 }
 
@@ -338,6 +408,7 @@ export class ModelService {
     }
 
     const file = await readModelsFile();
+    const officialCatalog = await officialModels();
     // The dialog no longer exposes a Provider ID field: an explicit (valid) id
     // means "edit that entry"; anything else derives a fresh unique slug.
     const requested = request.provider.id.trim();
@@ -365,26 +436,29 @@ export class ModelService {
       normalized.models = models.map((model) => {
         const modelId = model.id.trim();
         const extras = existingModels.find((entry) => entry && entry.id === modelId) ?? {};
-        const reasoning = Boolean(model.reasoning);
+        const official = officialFor(modelId, officialCatalog);
+        const reasoning = model.reasoning ?? official?.reasoning ?? false;
+        const vision = model.vision ?? official?.input?.includes("image") ?? false;
         const thinkingMap = reasoning ? buildThinkingLevelMap(model.thinkingLevels) : undefined;
         const entry: Record<string, unknown> = {
           // Extras first so the dialog-managed keys below always win.
           ...extras,
           id: modelId,
-          name: model.name?.trim() || modelId,
+          name: model.name?.trim() || official?.name || modelId,
           reasoning,
           // Persist explicit input modalities so pi's vision gate
           // (model.input.includes("image")) never misclassifies the model.
-          input: model.vision ? ["text", "image"] : ["text"],
-          contextWindow: model.contextWindow || 128_000,
-          maxTokens: model.maxTokens || 8_192,
-          ...(extras.cost ? {} : { cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }),
+          input: vision ? ["text", "image"] : ["text"],
+          contextWindow: model.contextWindow || official?.contextWindow || 128_000,
+          maxTokens: model.maxTokens || official?.maxTokens || 8_192,
+          cost: extras.cost ?? official?.cost ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
         };
-        // An explicit level selection wins; otherwise keep any map already in
-        // models.json (e.g. hand-tuned provider values). No selection and no
-        // existing map = pi's provider defaults apply.
+        if (!extras.compat && official?.compat) entry.compat = official.compat;
+        // An explicit level selection wins; otherwise retain hand-tuned data,
+        // then fall back to pi's official model metadata.
         if (thinkingMap) entry.thinkingLevelMap = thinkingMap;
         else if (extras.thinkingLevelMap) entry.thinkingLevelMap = extras.thinkingLevelMap;
+        else if (official?.thinkingLevelMap) entry.thinkingLevelMap = official.thinkingLevelMap;
         return entry;
       });
     } else {
@@ -507,9 +581,21 @@ export class ModelService {
         if (!Array.isArray(payload.data)) {
           throw new Error(`Unexpected response shape from ${url}`);
         }
+        const catalog = await officialModels();
         return payload.data
           .filter((item): item is { id: string } => typeof item.id === "string" && item.id.length > 0)
-          .map((item) => ({ id: item.id }));
+          .map((item) => {
+            const official = officialFor(item.id, catalog);
+            return {
+              id: item.id,
+              name: official?.name,
+              reasoning: official?.reasoning,
+              vision: official?.input?.includes("image") || undefined,
+              contextWindow: official?.contextWindow,
+              maxTokens: official?.maxTokens,
+              thinkingLevels: thinkingLevelsFromMap(official?.thinkingLevelMap),
+            };
+          });
       } catch (error) {
         lastError = error;
       }
