@@ -51,6 +51,28 @@ function authSourceLabel(source?: string, label?: string): string | undefined {
 
 const CUSTOM_PROVIDER_ID_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+/**
+ * Derive a provider slug from the display name, falling back to the base
+ * URL's host when the name yields nothing usable (e.g. CJK-only names).
+ * Always matches CUSTOM_PROVIDER_ID_PATTERN.
+ */
+function slugifyProviderId(name: string, baseUrl: string): string {
+  const slug = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-{2,}/g, "-");
+  if (slug) return slug;
+  try {
+    const host = new URL(baseUrl.trim()).hostname.replace(/^www\./, "");
+    const fromHost = host.split(".")[0]?.replace(/[^a-z0-9]+/g, "-") ?? "";
+    if (fromHost && CUSTOM_PROVIDER_ID_PATTERN.test(fromHost)) return fromHost;
+  } catch {
+    // fall through to the generic id
+  }
+  return "custom";
+}
+
 /** Remove line and block comments from JSON text, preserving string contents. */
 function stripJsonComments(source: string): string {
   let result = "";
@@ -97,17 +119,24 @@ interface ModelsFile {
 }
 
 /** models.json model entries may declare input modalities directly. */
-type PersistedModelEntry = CustomModelDefinition & { input?: string[] };
+interface RawModelEntry {
+  id?: unknown;
+  name?: unknown;
+  contextWindow?: unknown;
+  maxTokens?: unknown;
+  reasoning?: unknown;
+  input?: unknown;
+}
 
-function toCustomModel(model: PersistedModelEntry): CustomModelDefinition {
+function toCustomModel(model: RawModelEntry): CustomModelDefinition {
   return {
-    id: model.id,
-    name: model.name,
-    contextWindow: model.contextWindow,
-    maxTokens: model.maxTokens,
-    reasoning: model.reasoning,
+    id: typeof model.id === "string" ? model.id : "",
+    name: typeof model.name === "string" ? model.name : undefined,
+    contextWindow: typeof model.contextWindow === "number" ? model.contextWindow : undefined,
+    maxTokens: typeof model.maxTokens === "number" ? model.maxTokens : undefined,
+    reasoning: model.reasoning === true ? true : undefined,
     // Vision = the persisted model entry declares image input support.
-    vision: Array.isArray(model.input) ? model.input.includes("image") : undefined,
+    vision: Array.isArray(model.input) && model.input.includes("image") ? true : undefined,
   };
 }
 
@@ -148,7 +177,8 @@ function toCustomProvider(id: string, config: Partial<CustomProviderConfig>): Cu
     baseUrl: config.baseUrl ?? "",
     api: config.api ?? "",
     apiKey: config.apiKey,
-    models: (config.models ?? []).map((model) => toCustomModel(model as PersistedModelEntry)),
+    authHeader: (config as { authHeader?: boolean }).authHeader === true ? true : undefined,
+    models: ((config.models ?? []) as RawModelEntry[]).map((model) => toCustomModel(model)),
   };
 }
 
@@ -289,40 +319,79 @@ export class ModelService {
   }
 
   async saveCustomProvider(request: CustomProviderRequest): Promise<CustomProviderConfig[]> {
-    const { id, name, baseUrl, api, apiKey, models } = request.provider;
-    if (!CUSTOM_PROVIDER_ID_PATTERN.test(id)) {
-      throw new Error("Provider ID must be lowercase letters, numbers, and hyphens only.");
-    }
+    const { name, baseUrl, api, apiKey, authHeader, models } = request.provider;
     if (!baseUrl.trim()) throw new Error("Base URL is required.");
     if (!api.trim()) throw new Error("API type is required.");
-    const normalized = {
-      ...(name?.trim() ? { name: name.trim() } : {}),
-      baseUrl: baseUrl.trim(),
-      api: api.trim(),
-      ...(apiKey?.trim() ? { apiKey: apiKey.trim() } : {}),
-      ...(models.length > 0
-        ? {
-            models: models.map((model) => ({
-              id: model.id.trim(),
-              ...(model.name?.trim() ? { name: model.name.trim() } : {}),
-              ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
-              ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
-              ...(model.reasoning ? { reasoning: true } : {}),
-              // Persist explicit input modalities so pi's vision gate
-              // (model.input.includes("image")) never misclassifies the model.
-              input: model.vision ? ["text", "image"] : ["text"],
-            })),
-          }
-        : {}),
-    };
-    if (normalized.models?.some((model) => !model.id)) {
+    if (models.some((model) => !model.id.trim())) {
       throw new Error("Every model needs an ID.");
     }
 
     const file = await readModelsFile();
-    file.providers[id] = normalized;
+    // The dialog no longer exposes a Provider ID field: an explicit (valid) id
+    // means "edit that entry"; anything else derives a fresh unique slug.
+    const requested = request.provider.id.trim();
+    const id =
+      CUSTOM_PROVIDER_ID_PATTERN.test(requested) && requested in file.providers
+        ? requested
+        : await this.#uniqueProviderId(slugifyProviderId(name ?? "", baseUrl), file);
+    // Start from the existing entry so fields pi supports but the dialog does
+    // not edit (headers, compat, thinkingLevelMap, per-model cost, ...) survive
+    // a save. Only the keys the dialog manages are overwritten below.
+    const existing = file.providers[id] ?? {};
+    const existingModels = Array.isArray(existing.models) ? (existing.models as unknown as Record<string, unknown>[]) : [];
+    const normalized: Record<string, unknown> = {
+      ...existing,
+      baseUrl: baseUrl.trim(),
+      api: api.trim(),
+    };
+    if (name?.trim()) normalized.name = name.trim();
+    else delete normalized.name;
+    if (apiKey?.trim()) normalized.apiKey = apiKey.trim();
+    else delete normalized.apiKey;
+    if (authHeader) normalized.authHeader = true;
+    else delete normalized.authHeader;
+    if (models.length > 0) {
+      normalized.models = models.map((model) => {
+        const modelId = model.id.trim();
+        const extras = existingModels.find((entry) => entry && entry.id === modelId) ?? {};
+        return {
+          // Extras first so the dialog-managed keys below always win.
+          ...extras,
+          id: modelId,
+          name: model.name?.trim() || modelId,
+          reasoning: Boolean(model.reasoning),
+          // Persist explicit input modalities so pi's vision gate
+          // (model.input.includes("image")) never misclassifies the model.
+          input: model.vision ? ["text", "image"] : ["text"],
+          contextWindow: model.contextWindow || 128_000,
+          maxTokens: model.maxTokens || 8_192,
+          ...(extras.cost ? {} : { cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }),
+        };
+      });
+    } else {
+      delete normalized.models;
+    }
+
+    file.providers[id] = normalized as Partial<CustomProviderConfig>;
     await writeModelsFile(file);
     return this.listCustomProviders();
+  }
+
+  /** Pick a slug not used by models.json or any built-in provider. */
+  async #uniqueProviderId(base: string, file: ModelsFile): Promise<string> {
+    let taken: Set<string>;
+    try {
+      const runtime = await this.#createRuntime();
+      taken = new Set(runtime.getProviders().map((provider) => provider.id));
+    } catch {
+      taken = new Set();
+    }
+    for (const key of Object.keys(file.providers)) taken.add(key);
+    if (!taken.has(base)) return base;
+    for (let suffix = 2; ; suffix++) {
+      const candidate = `${base}-${suffix}`;
+      if (!taken.has(candidate)) return candidate;
+    }
   }
 
   async removeCustomProvider(request: CustomProviderRemoveRequest): Promise<CustomProviderConfig[]> {

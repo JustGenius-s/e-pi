@@ -30,9 +30,10 @@ function draftFromProvider(existing?: CustomProviderConfig): CustomProviderDraft
         baseUrl: existing.baseUrl ?? "",
         api: existing.api || "openai-completions",
         apiKey: existing.apiKey ?? "",
+        authHeader: Boolean(existing.authHeader),
         models: existing.models?.length ? existing.models : [{ id: "" }],
       }
-    : { id: "", name: "", baseUrl: "", api: "openai-completions", apiKey: "", models: [{ id: "" }] };
+    : { id: "", name: "", baseUrl: "", api: "openai-completions", apiKey: "", authHeader: false, models: [{ id: "" }] };
 }
 
 export function ModelSettings({ active }: ModelSettingsProps) {

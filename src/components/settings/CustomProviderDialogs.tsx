@@ -36,6 +36,7 @@ export interface CustomProviderDraft {
   baseUrl: string;
   api: string;
   apiKey: string;
+  authHeader: boolean;
   models: CustomModelDefinition[];
 }
 
@@ -131,62 +132,72 @@ export function CustomProviderDialogs({
           </DialogHeader>
           {draft ? (
             <div className="custom-provider-form">
-              <label className="custom-field">
-                <span>Provider ID</span>
-                <Input
-                  value={draft.id}
-                  disabled={existing}
-                  placeholder="my-gateway"
-                  onChange={(event) => updateDraft({ id: event.target.value })}
-                />
-              </label>
-              <label className="custom-field">
-                <span>Name</span>
-                <Input
-                  value={draft.name}
-                  placeholder="My Gateway (optional)"
-                  onChange={(event) => updateDraft({ name: event.target.value })}
-                />
-              </label>
-              <div className="custom-field-row">
+              <section className="custom-section">
+                {/* The provider ID is derived from the name (or host) on save;
+                    users never see or manage it. */}
                 <label className="custom-field">
-                  <span>API type</span>
-                  <Select value={draft.api} onValueChange={(api) => updateDraft({ api })}>
-                    <SelectTrigger aria-label="API type">
-                      <SelectValue placeholder="API type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {API_TYPES.map((api) => (
-                        <SelectItem key={api} value={api}>
-                          {api}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-                <label className="custom-field">
-                  <span>Base URL</span>
+                  <span>
+                    Name <small>optional</small>
+                  </span>
                   <Input
-                    value={draft.baseUrl}
-                    placeholder="https://api.example.com/v1"
-                    onChange={(event) => updateDraft({ baseUrl: event.target.value })}
+                    value={draft.name}
+                    placeholder="My Gateway"
+                    onChange={(event) => updateDraft({ name: event.target.value })}
                   />
                 </label>
-              </div>
-              <label className="custom-field">
-                <span>
-                  API key <small>optional — literal or $ENV_VAR, stored in ~/.pi/models.json</small>
-                </span>
-                <Input
-                  type="password"
-                  value={draft.apiKey}
-                  placeholder="$MY_API_KEY or sk-…"
-                  onChange={(event) => updateDraft({ apiKey: event.target.value })}
-                />
-              </label>
-              <div className="custom-models">
+                <div className="custom-field-row">
+                  <label className="custom-field">
+                    <span>API type</span>
+                    <Select value={draft.api} onValueChange={(api) => updateDraft({ api })}>
+                      <SelectTrigger aria-label="API type">
+                        <SelectValue placeholder="API type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {API_TYPES.map((api) => (
+                          <SelectItem key={api} value={api}>
+                            {api}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <label className="custom-field">
+                    <span>Base URL</span>
+                    <Input
+                      value={draft.baseUrl}
+                      placeholder="https://api.example.com/v1"
+                      onChange={(event) => updateDraft({ baseUrl: event.target.value })}
+                    />
+                  </label>
+                </div>
+              </section>
+              <section className="custom-section">
+                <label className="custom-field">
+                  <span>
+                    API key <small>optional — literal, $ENV_VAR, or !command</small>
+                  </span>
+                  <Input
+                    type="password"
+                    value={draft.apiKey}
+                    placeholder="$MY_API_KEY or sk-…"
+                    onChange={(event) => updateDraft({ apiKey: event.target.value })}
+                  />
+                </label>
+                <label className="custom-check">
+                  <Checkbox
+                    checked={draft.authHeader}
+                    onCheckedChange={(checked) => updateDraft({ authHeader: Boolean(checked) })}
+                  />
+                  <span>
+                    Send Authorization: Bearer header <small>for providers that expect it explicitly</small>
+                  </span>
+                </label>
+              </section>
+              <section className="custom-section custom-models">
                 <div className="custom-models-heading">
-                  <span>Models</span>
+                  <span>
+                    Models <small>{draft.models.length}</small>
+                  </span>
                   <div className="custom-models-actions">
                     <Popover
                       open={fetchedModels !== undefined}
@@ -256,71 +267,84 @@ export function CustomProviderDialogs({
                   <div className="custom-models-empty">No models — the provider will only expose overrides.</div>
                 ) : (
                   draft.models.map((model, index) => (
-                    <div className="custom-model-row" key={model.id || index}>
-                      <Input
-                        value={model.id}
-                        placeholder="model-id"
-                        aria-label={`Model ${index + 1} ID`}
-                        onChange={(event) => updateModel(index, { id: event.target.value })}
-                      />
-                      <Input
-                        value={model.name ?? ""}
-                        placeholder="Name"
-                        aria-label={`Model ${index + 1} name`}
-                        onChange={(event) => updateModel(index, { name: event.target.value })}
-                      />
-                      <Input
-                        type="number"
-                        value={model.contextWindow ?? ""}
-                        placeholder="Context"
-                        aria-label={`Model ${index + 1} context window`}
-                        onChange={(event) =>
-                          updateModel(index, {
-                            contextWindow: event.target.value ? Number(event.target.value) : undefined,
-                          })
-                        }
-                      />
-                      <Input
-                        type="number"
-                        value={model.maxTokens ?? ""}
-                        placeholder="Max tokens"
-                        aria-label={`Model ${index + 1} max tokens`}
-                        onChange={(event) =>
-                          updateModel(index, { maxTokens: event.target.value ? Number(event.target.value) : undefined })
-                        }
-                      />
-                      <label className="custom-model-reasoning">
-                        <Checkbox
-                          checked={Boolean(model.reasoning)}
-                          onCheckedChange={(checked) => updateModel(index, { reasoning: Boolean(checked) })}
+                    <div className="custom-model-card" key={model.id || index}>
+                      <div className="custom-model-main">
+                        <Input
+                          className="custom-model-id"
+                          value={model.id}
+                          placeholder="model-id"
+                          aria-label={`Model ${index + 1} ID`}
+                          onChange={(event) => updateModel(index, { id: event.target.value })}
                         />
-                        <span>reasoning</span>
-                      </label>
-                      <label className="custom-model-reasoning">
-                        <Checkbox
-                          checked={Boolean(model.vision)}
-                          onCheckedChange={(checked) => updateModel(index, { vision: Boolean(checked) })}
+                        <Input
+                          value={model.name ?? ""}
+                          placeholder="Display name (optional)"
+                          aria-label={`Model ${index + 1} name`}
+                          onChange={(event) => updateModel(index, { name: event.target.value })}
                         />
-                        <span title="Image input support">vision</span>
-                      </label>
-                      <IconButton
-                        label={`Remove model ${index + 1}`}
-                        onClick={() => updateDraft({ models: draft.models.filter((_, current) => current !== index) })}
-                        disabled={draft.models.length === 1 || busy}
-                      >
-                        <X size={13} />
-                      </IconButton>
+                        <IconButton
+                          label={`Remove model ${index + 1}`}
+                          onClick={() => updateDraft({ models: draft.models.filter((_, current) => current !== index) })}
+                          disabled={busy}
+                        >
+                          <X size={13} />
+                        </IconButton>
+                      </div>
+                      <div className="custom-model-meta">
+                        <label className="custom-model-num">
+                          <span>Context</span>
+                          <Input
+                            type="number"
+                            value={model.contextWindow ?? ""}
+                            placeholder="128000"
+                            aria-label={`Model ${index + 1} context window`}
+                            onChange={(event) =>
+                              updateModel(index, {
+                                contextWindow: event.target.value ? Number(event.target.value) : undefined,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="custom-model-num">
+                          <span>Max out</span>
+                          <Input
+                            type="number"
+                            value={model.maxTokens ?? ""}
+                            placeholder="8192"
+                            aria-label={`Model ${index + 1} max tokens`}
+                            onChange={(event) =>
+                              updateModel(index, {
+                                maxTokens: event.target.value ? Number(event.target.value) : undefined,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="custom-check">
+                          <Checkbox
+                            checked={Boolean(model.reasoning)}
+                            onCheckedChange={(checked) => updateModel(index, { reasoning: Boolean(checked) })}
+                          />
+                          <span>reasoning</span>
+                        </label>
+                        <label className="custom-check">
+                          <Checkbox
+                            checked={Boolean(model.vision)}
+                            onCheckedChange={(checked) => updateModel(index, { vision: Boolean(checked) })}
+                          />
+                          <span title="Image input support">vision</span>
+                        </label>
+                      </div>
                     </div>
                   ))
                 )}
-              </div>
+              </section>
             </div>
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => onDraftChange(undefined)}>
               Cancel
             </Button>
-            <Button onClick={onSave} disabled={!draft?.id.trim() || !draft?.baseUrl.trim() || !draft?.api || busy}>
+            <Button onClick={onSave} disabled={!draft?.baseUrl.trim() || !draft?.api || busy}>
               {busy ? <LoaderCircle className="spin" /> : null} Save provider
             </Button>
           </DialogFooter>

@@ -689,9 +689,21 @@
 .custom-provider-form {
   display: flex;
   flex-direction: column;
-  gap: 11px;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Form sections: grouped with hairline separators instead of floating gaps. */
+.custom-section {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  padding: 2px 0 14px;
+}
+
+.custom-section + .custom-section {
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
 }
 
 .custom-field {
@@ -722,6 +734,22 @@
   gap: 10px;
 }
 
+/* Checkbox rows (auth header, model flags): label-style, compact. */
+.custom-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  font-weight: 450;
+  cursor: pointer;
+}
+
+.custom-check small {
+  font-size: var(--fs-mini);
+  opacity: 0.75;
+}
+
 .custom-models {
   display: flex;
   flex-direction: column;
@@ -737,6 +765,13 @@
   font-weight: 540;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.custom-models-heading small {
+  margin-left: 5px;
+  font-size: var(--fs-mini);
+  font-weight: 450;
+  opacity: 0.7;
 }
 
 .custom-models-actions {
@@ -836,24 +871,59 @@
   font-size: var(--fs-small);
 }
 
-.custom-model-row {
+/* Model entries: card with a main row (id + name + remove) and a meta row
+   (numeric limits + capability checkboxes) so nothing is squeezed. */
+.custom-model-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 8px 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+}
+
+.custom-model-main {
   display: grid;
-  /* id | name | context | maxTokens | reasoning | vision | remove */
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 70px 70px auto auto auto;
+  /* id | name | remove */
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
 }
 
-.custom-model-row input {
+.custom-model-main .custom-model-id {
+  font-family: var(--font-mono);
+}
+
+.custom-model-main input {
   height: 30px;
   font-size: var(--fs-small);
 }
 
-.custom-model-reasoning {
+.custom-model-meta {
   display: flex;
-  align-items: center;
-  gap: 5px;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.custom-model-num {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 92px;
+}
+
+.custom-model-num > span {
   color: var(--muted-foreground);
+  font-size: var(--fs-mini);
+}
+
+.custom-model-num input {
+  height: 26px;
+  font-size: var(--fs-mini);
+}
+
+.custom-model-meta .custom-check {
+  padding-bottom: 4px;
   font-size: var(--fs-mini);
   white-space: nowrap;
 }

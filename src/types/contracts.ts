@@ -295,6 +295,8 @@ export interface CustomProviderConfig {
   baseUrl: string;
   api: string;
   apiKey?: string;
+  /** Send `Authorization: Bearer <apiKey>` for non-standard APIs. */
+  authHeader?: boolean;
   models: CustomModelDefinition[];
 }
 

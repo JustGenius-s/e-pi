@@ -67,7 +67,8 @@ describe("ModelService custom providers", () => {
   it("upserts an existing provider id", async () => {
     await service.saveCustomProvider({
       provider: {
-        id: "gw",
+        id: "",
+        name: "gw",
         baseUrl: "https://one.example.com/v1",
         api: "openai-completions",
         models: [],
@@ -91,7 +92,8 @@ describe("ModelService custom providers", () => {
   it("preserves other providers when removing one", async () => {
     await service.saveCustomProvider({
       provider: {
-        id: "a",
+        id: "",
+        name: "a",
         baseUrl: "https://a.example.com/v1",
         api: "openai-completions",
         models: [],
@@ -99,7 +101,8 @@ describe("ModelService custom providers", () => {
     });
     await service.saveCustomProvider({
       provider: {
-        id: "b",
+        id: "",
+        name: "b",
         baseUrl: "https://b.example.com/v1",
         api: "openai-completions",
         models: [],
@@ -112,6 +115,82 @@ describe("ModelService custom providers", () => {
     const raw = JSON.parse(readFileSync(join(testAgentDir, "models.json"), "utf8"));
     expect(raw.providers.a).toBeUndefined();
     expect(raw.providers.b).toBeDefined();
+  });
+
+  it("writes pi-compatible model entries with defaults", async () => {
+    await service.saveCustomProvider({
+      provider: {
+        id: "",
+        name: "gw",
+        baseUrl: "https://x.example.com/v1",
+        api: "openai-completions",
+        authHeader: true,
+        models: [{ id: "m1", reasoning: true, vision: true }],
+      },
+    });
+
+    const raw = JSON.parse(readFileSync(join(testAgentDir, "models.json"), "utf8"));
+    const provider = raw.providers.gw;
+    expect(provider.authHeader).toBe(true);
+    expect(provider.models[0]).toEqual({
+      id: "m1",
+      name: "m1",
+      reasoning: true,
+      input: ["text", "image"],
+      contextWindow: 128000,
+      maxTokens: 8192,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    });
+
+    // Reading back surfaces the pi fields as dialog state.
+    const list = await service.listCustomProviders();
+    expect(list[0].authHeader).toBe(true);
+    expect(list[0].models[0]).toMatchObject({ id: "m1", name: "m1", reasoning: true, vision: true });
+  });
+
+  it("preserves unmanaged pi fields (headers, compat, cost) on save", async () => {
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(
+      join(testAgentDir, "models.json"),
+      JSON.stringify({
+        providers: {
+          gw: {
+            baseUrl: "https://old.example.com/v1",
+            api: "openai-completions",
+            headers: { "X-Corp": "yes" },
+            models: [
+              {
+                id: "m1",
+                name: "M1",
+                reasoning: false,
+                input: ["text"],
+                contextWindow: 64000,
+                maxTokens: 4096,
+                cost: { input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2 },
+                compat: { supportsDeveloperRole: false },
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    await service.saveCustomProvider({
+      provider: {
+        id: "gw",
+        baseUrl: "https://new.example.com/v1",
+        api: "openai-completions",
+        models: [{ id: "m1", contextWindow: 200000 }],
+      },
+    });
+
+    const raw = JSON.parse(readFileSync(join(testAgentDir, "models.json"), "utf8"));
+    const provider = raw.providers.gw;
+    expect(provider.baseUrl).toBe("https://new.example.com/v1");
+    expect(provider.headers).toEqual({ "X-Corp": "yes" });
+    expect(provider.models[0].contextWindow).toBe(200000);
+    expect(provider.models[0].cost).toEqual({ input: 1, output: 2, cacheRead: 0.1, cacheWrite: 0.2 });
+    expect(provider.models[0].compat).toEqual({ supportsDeveloperRole: false });
   });
 
   it("reads a models.json with comments", async () => {
@@ -133,24 +212,67 @@ describe("ModelService custom providers", () => {
     expect(list.map((item) => item.id)).toEqual(["commented"]);
   });
 
-  it("rejects invalid provider ids and missing base URLs", async () => {
+  it("rejects missing base URLs and unknown removals", async () => {
     await expect(
       service.saveCustomProvider({
-        provider: {
-          id: "Bad ID!",
-          baseUrl: "https://x.example.com/v1",
-          api: "openai-completions",
-          models: [],
-        },
-      }),
-    ).rejects.toThrow(/lowercase/);
-
-    await expect(
-      service.saveCustomProvider({
-        provider: { id: "ok", baseUrl: "  ", api: "openai-completions", models: [] },
+        provider: { id: "", baseUrl: "  ", api: "openai-completions", models: [] },
       }),
     ).rejects.toThrow(/Base URL/);
 
     await expect(service.removeCustomProvider({ providerId: "missing" })).rejects.toThrow(/Unknown/);
+  });
+
+  it("derives the provider id from the name and dedupes collisions", async () => {
+    const first = await service.saveCustomProvider({
+      provider: {
+        id: "",
+        name: "My Gateway",
+        baseUrl: "https://a.example.com/v1",
+        api: "openai-completions",
+        models: [],
+      },
+    });
+    expect(first[0].id).toBe("my-gateway");
+
+    // Same name again, empty id → a fresh entry with a numeric suffix.
+    const second = await service.saveCustomProvider({
+      provider: {
+        id: "",
+        name: "My Gateway",
+        baseUrl: "https://b.example.com/v1",
+        api: "openai-completions",
+        models: [],
+      },
+    });
+    expect(second.map((item) => item.id).sort()).toEqual(["my-gateway", "my-gateway-2"]);
+
+    // CJK-only name: fall back to the base URL host.
+    const third = await service.saveCustomProvider({
+      provider: {
+        id: "",
+        name: "我的网关",
+        baseUrl: "https://relay.example.com/v1",
+        api: "openai-completions",
+        models: [],
+      },
+    });
+    expect(third.map((item) => item.id)).toContain("relay");
+  });
+
+  it("edits in place when the draft carries an existing provider id", async () => {
+    await service.saveCustomProvider({
+      provider: { id: "", name: "GW", baseUrl: "https://one.example.com/v1", api: "openai-completions", models: [] },
+    });
+    const list = await service.saveCustomProvider({
+      provider: {
+        id: "gw", // edit flow: draft was created from the existing entry
+        name: "Renamed",
+        baseUrl: "https://two.example.com/v1",
+        api: "openai-completions",
+        models: [],
+      },
+    });
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ id: "gw", name: "Renamed", baseUrl: "https://two.example.com/v1" });
   });
 });
