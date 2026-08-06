@@ -60,6 +60,8 @@ const api: EPiApi = {
     imageData: (filePath: string, maxSize?: number) =>
       ipcRenderer.invoke("app:image-data", filePath, maxSize) as Promise<string | null>,
     openPath: (path: string) => ipcRenderer.invoke("app:open-path", path) as Promise<void>,
+    /** Reveal the item in Finder (macOS) / Explorer (Windows) / file manager (Linux). */
+    showInFolder: (path: string) => ipcRenderer.invoke("app:show-in-folder", path) as Promise<void>,
     openWith: (appPath: string, filePath: string) =>
       ipcRenderer.invoke("app:open-with", appPath, filePath) as Promise<void>,
     /** Native macOS "choose an application" dialog; undefined when cancelled. */

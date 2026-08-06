@@ -414,6 +414,8 @@ export interface EPiApi {
     pasteImage(): Promise<string | null>;
     imageData(filePath: string, maxSize?: number): Promise<string | null>;
     openPath(path: string): Promise<void>;
+    /** Reveal the item in Finder (macOS) / Explorer (Windows) / file manager (Linux). */
+    showInFolder(path: string): Promise<void>;
     /** Open a file with a specific app bundle (macOS). */
     openWith(appPath: string, filePath: string): Promise<void>;
     /** Native macOS "choose an application" dialog; undefined when cancelled. */

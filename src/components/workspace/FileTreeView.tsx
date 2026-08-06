@@ -47,14 +47,16 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   const [apps, setApps] = useState<AppDescriptor[]>([]);
   /** .app bundle path for "打开"; undefined = system default. */
   const [openWithApp, setOpenWithAppState] = useState<string | undefined>(undefined);
+  const [platform, setPlatform] = useState<NodeJS.Platform>("darwin");
   const loadingPaths = useRef(new Set<string>());
 
-  // Load the scanned apps and the persisted "open with" choice once.
+  // Load the scanned apps, the persisted "open with" choice and the platform once.
   useEffect(() => {
     void Promise.all([window.ePi.app.listApps(), window.ePi.app.getInfo()])
       .then(([scanned, info]) => {
         setApps(scanned);
         setOpenWithAppState(info.openWithApp);
+        setPlatform(info.platform);
       })
       .catch((reason: unknown) => {
         toast.error(reason instanceof Error ? reason.message : String(reason));
@@ -180,6 +182,8 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
     </DropdownMenu>
   );
 
+  const fileManagerLabel = platform === "darwin" ? "Finder" : platform === "win32" ? "资源管理器" : "文件管理器";
+
   const renderTree = (node: TreeNode, depth: number): React.ReactNode => {
     const isDir = node.type === "dir";
     const expanded = isDir && node.expanded === true;
@@ -210,7 +214,14 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
     );
 
     const content = isDir ? (
-      row
+      <ContextMenu>
+        <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onSelect={() => void window.ePi.app.openPath(node.path)}>
+            在{fileManagerLabel}中打开
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
     ) : (
       <ContextMenu>
         <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
@@ -227,6 +238,10 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
               onOpenOther={() => void openFileWithPicker(node.path)}
             />
           </ContextMenuSub>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => void window.ePi.app.showInFolder(node.path)}>
+            在{fileManagerLabel}中显示
+          </ContextMenuItem>
         </ContextMenuContent>
       </ContextMenu>
     );

@@ -176,6 +176,11 @@ function registerHandlers(): void {
     if (error) throw new Error(error);
   });
 
+  // Reveal the item in Finder (macOS) / Explorer (Windows) / the file manager (Linux).
+  ipcMain.handle("app:show-in-folder", (_event, path: string) => {
+    shell.showItemInFolder(path);
+  });
+
   ipcMain.handle("app:copy-text", (_event, text: string) => {
     clipboard.writeText(text);
   });
