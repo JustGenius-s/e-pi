@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import type {
   AgentConfigSaveRequest,
+  AppDescriptor,
   AppInfo,
   CommandRecord,
   CreateSessionRequest,
@@ -59,6 +60,15 @@ const api: EPiApi = {
     imageData: (filePath: string, maxSize?: number) =>
       ipcRenderer.invoke("app:image-data", filePath, maxSize) as Promise<string | null>,
     openPath: (path: string) => ipcRenderer.invoke("app:open-path", path) as Promise<void>,
+    openWith: (appPath: string, filePath: string) =>
+      ipcRenderer.invoke("app:open-with", appPath, filePath) as Promise<void>,
+    /** Native macOS "choose an application" dialog; undefined when cancelled. */
+    chooseApp: () => ipcRenderer.invoke("app:choose-app") as Promise<string | undefined>,
+    listApps: () => ipcRenderer.invoke("apps:list") as Promise<AppDescriptor[]>,
+    appsForExtension: (extension: string) =>
+      ipcRenderer.invoke("apps:for-extension", extension) as Promise<AppDescriptor[]>,
+    setOpenWithApp: (appPath: string | undefined) =>
+      ipcRenderer.invoke("app:set-open-with-app", appPath) as Promise<AppInfo>,
     copyText: (text: string) => ipcRenderer.invoke("app:copy-text", text) as Promise<void>,
     setTheme: (theme: "light" | "dark") => ipcRenderer.invoke("app:set-theme", theme) as Promise<void>,
     log: (message: string) => ipcRenderer.send("app:log", message),

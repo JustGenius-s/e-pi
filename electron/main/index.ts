@@ -24,7 +24,13 @@ import type {
 } from "../../src/types/contracts";
 import { ensureNpmOnPath } from "./npm-path";
 import { getAgentConfig, saveAgentConfig } from "./services/agent-config-service";
-import { resolveDefaultCwd, setDefaultCwd } from "./services/app-settings-service";
+import { appsForExtension, chooseAppFromSystem, listDevApps, openWithApp } from "./services/app-launch-service";
+import {
+  getAppSettings,
+  resolveDefaultCwd,
+  setDefaultCwd,
+  setOpenWithApp,
+} from "./services/app-settings-service";
 import { CommandService } from "./services/command-service";
 import { debugLog, resetDebugLog } from "./services/debug-log";
 import { FileService } from "./services/file-service";
@@ -86,24 +92,59 @@ const IMAGE_MIME: Record<string, string> = {
 };
 
 function registerHandlers(): void {
-  ipcMain.handle("app:get-info", async () => ({
-    platform: process.platform,
-    arch: process.arch,
-    appVersion: app.getVersion(),
-    piVersion: PI_VERSION,
-    defaultCwd: await resolveDefaultCwd(),
-  }));
-
-  ipcMain.handle("app:set-default-cwd", async (_event, cwd: string) => {
-    await setDefaultCwd(cwd);
+  ipcMain.handle("app:get-info", async () => {
+    const settings = await getAppSettings();
     return {
       platform: process.platform,
       arch: process.arch,
       appVersion: app.getVersion(),
       piVersion: PI_VERSION,
       defaultCwd: await resolveDefaultCwd(),
+      openWithApp: settings.openWithApp,
     };
   });
+
+  ipcMain.handle("app:set-default-cwd", async (_event, cwd: string) => {
+    await setDefaultCwd(cwd);
+    const settings = await getAppSettings();
+    return {
+      platform: process.platform,
+      arch: process.arch,
+      appVersion: app.getVersion(),
+      piVersion: PI_VERSION,
+      defaultCwd: await resolveDefaultCwd(),
+      openWithApp: settings.openWithApp,
+    };
+  });
+
+  ipcMain.handle("app:set-open-with-app", async (_event, appPath: string | undefined) => {
+    await setOpenWithApp(appPath || undefined);
+    const settings = await getAppSettings();
+    return {
+      platform: process.platform,
+      arch: process.arch,
+      appVersion: app.getVersion(),
+      piVersion: PI_VERSION,
+      defaultCwd: await resolveDefaultCwd(),
+      openWithApp: settings.openWithApp,
+    };
+  });
+
+  // Development-oriented macOS apps for the file tree's "open with" menus.
+  ipcMain.handle("apps:list", async () => (process.platform === "darwin" ? listDevApps() : []));
+
+  // Apps declared to open the given file extension (fallback: dev apps).
+  ipcMain.handle("apps:for-extension", async (_event, extension: string) =>
+    process.platform === "darwin" ? appsForExtension(extension) : [],
+  );
+
+  // Open a file with a specific .app bundle (macOS).
+  ipcMain.handle("app:open-with", async (_event, appPath: string, filePath: string) => {
+    await openWithApp(appPath, filePath);
+  });
+
+  // Native macOS "choose an application" dialog; undefined when cancelled.
+  ipcMain.handle("app:choose-app", async () => chooseAppFromSystem());
 
   ipcMain.handle("app:check-pi-update", () => checkPiUpdate());
 

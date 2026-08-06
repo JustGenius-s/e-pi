@@ -6,6 +6,8 @@ import { app } from "electron";
 /** E-Pi-level settings, stored separately from the pi agent config. */
 interface AppSettings {
   defaultCwd?: string;
+  /** .app bundle path used by the file tree's "open with" (undefined = system default). */
+  openWithApp?: string;
 }
 
 function settingsPath(): string {
@@ -19,7 +21,10 @@ export async function getAppSettings(): Promise<AppSettings> {
   try {
     const raw = await readFile(settingsPath(), "utf8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    cached = { defaultCwd: typeof parsed.defaultCwd === "string" ? parsed.defaultCwd : undefined };
+    cached = {
+      defaultCwd: typeof parsed.defaultCwd === "string" ? parsed.defaultCwd : undefined,
+      openWithApp: typeof parsed.openWithApp === "string" ? parsed.openWithApp : undefined,
+    };
   } catch {
     // Missing or malformed file — fall back to defaults.
     cached = {};
@@ -30,6 +35,15 @@ export async function getAppSettings(): Promise<AppSettings> {
 export async function setDefaultCwd(cwd: string): Promise<void> {
   const current = await getAppSettings();
   const next = { ...current, defaultCwd: cwd };
+  const path = settingsPath();
+  await mkdir(dirname(path), { recursive: true });
+  await writeFile(path, JSON.stringify(next, null, 2), "utf8");
+  cached = next;
+}
+
+export async function setOpenWithApp(appPath: string | undefined): Promise<void> {
+  const current = await getAppSettings();
+  const next = { ...current, openWithApp: appPath };
   const path = settingsPath();
   await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(next, null, 2), "utf8");

@@ -32,6 +32,17 @@ export interface AppInfo {
   appVersion: string;
   piVersion: string;
   defaultCwd: string;
+  /** .app bundle path for the file tree's "open with"; undefined = system default. */
+  openWithApp?: string;
+}
+
+export interface AppDescriptor {
+  /** Stable identifier — the .app bundle path on macOS. */
+  id: string;
+  name: string;
+  path: string;
+  /** 32×32 PNG data URL of the app icon; undefined when extraction failed. */
+  icon?: string;
 }
 
 export interface PiUpdateInfo {
@@ -403,6 +414,16 @@ export interface EPiApi {
     pasteImage(): Promise<string | null>;
     imageData(filePath: string, maxSize?: number): Promise<string | null>;
     openPath(path: string): Promise<void>;
+    /** Open a file with a specific app bundle (macOS). */
+    openWith(appPath: string, filePath: string): Promise<void>;
+    /** Native macOS "choose an application" dialog; undefined when cancelled. */
+    chooseApp(): Promise<string | undefined>;
+    /** Apps scanned from the system that can be used to open files ([] on non-macOS). */
+    listApps(): Promise<AppDescriptor[]>;
+    /** Apps declared to open the given file extension (fallback: dev apps). */
+    appsForExtension(extension: string): Promise<AppDescriptor[]>;
+    /** Persist the default "open with" app; undefined restores the system default. */
+    setOpenWithApp(appPath: string | undefined): Promise<AppInfo>;
     copyText(text: string): Promise<void>;
     /** Keep native chrome (titlebar, scrollbars) in step with the app theme. */
     setTheme(theme: "light" | "dark"): Promise<void>;
