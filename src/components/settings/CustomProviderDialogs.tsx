@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 import type { CustomModelDefinition, CustomProviderConfig } from "../../types/contracts";
@@ -67,21 +68,56 @@ export function CustomProviderDialogs({
   const existing = Boolean(draft && providers.some((provider) => provider.id === draft.id));
   const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string>();
+  // Models fetched from the endpoint, held until the user confirms which of
+  // them to add (popover with a scrollable, selectable list).
+  const [fetchedModels, setFetchedModels] = useState<CustomModelDefinition[] | undefined>();
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const fetchModels = async () => {
     if (!draft || fetching) return;
     setFetching(true);
     setFetchError(undefined);
     try {
       const fetched = await window.ePi.models.fetchModels({ baseUrl: draft.baseUrl, apiKey: draft.apiKey });
-      // Merge by id so manually configured fields (name, context window, …)
-      // on existing rows are preserved.
-      const seen = new Set(draft.models.map((model) => model.id));
-      updateDraft({ models: [...draft.models, ...fetched.filter((model) => !seen.has(model.id))] });
+      const existingIds = new Set(draft.models.map((model) => model.id));
+      // Everything not already configured is pre-selected; rows that are
+      // already in the list are shown disabled so they cannot be duplicated.
+      setFetchedModels(fetched);
+      setSelectedIds(new Set(fetched.filter((model) => !existingIds.has(model.id)).map((model) => model.id)));
     } catch (reason) {
       setFetchError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setFetching(false);
     }
+  };
+  const toggleSelected = (id: string) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+  // The dialog's scroll lock (react-remove-scroll) intercepts wheel events in
+  // capture phase and prevents them when the hovered location cannot scroll
+  // natively (e.g. the list has not overflowed yet), which would make the
+  // list feel dead. It only preventDefaults, so scroll manually here to keep
+  // the list responsive in all cases.
+  const onListWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    const list = event.currentTarget;
+    if (event.deltaY !== 0) {
+      list.scrollTop += event.deltaY;
+      event.preventDefault();
+    }
+  };
+  const addSelected = () => {
+    if (!draft) return;
+    const existingIds = new Set(draft.models.map((model) => model.id));
+    const toAdd = (fetchedModels ?? []).filter((model) => selectedIds.has(model.id) && !existingIds.has(model.id));
+    if (toAdd.length > 0) updateDraft({ models: [...draft.models, ...toAdd] });
+    setFetchedModels(undefined);
   };
   return (
     <>
@@ -152,15 +188,59 @@ export function CustomProviderDialogs({
                 <div className="custom-models-heading">
                   <span>Models</span>
                   <div className="custom-models-actions">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => void fetchModels()}
-                      disabled={busy || fetching || !draft.baseUrl.trim()}
-                      title="Fetch the model list from {baseUrl}/models"
+                    <Popover
+                      open={fetchedModels !== undefined}
+                      onOpenChange={(open) => {
+                        if (!open) setFetchedModels(undefined);
+                      }}
                     >
-                      {fetching ? <LoaderCircle className="spin" size={13} /> : <RefreshCw size={13} />} Fetch
-                    </Button>
+                      <PopoverTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void fetchModels()}
+                          disabled={busy || fetching || !draft.baseUrl.trim()}
+                          title="Fetch the model list from {baseUrl}/models"
+                        >
+                          {fetching ? <LoaderCircle className="spin" size={13} /> : <RefreshCw size={13} />} Fetch
+                        </Button>
+                      </PopoverTrigger>
+                      <PopoverContent align="end" className="model-fetch-popover">
+                        <div className="model-fetch-heading">
+                          <span>Select models to add</span>
+                          <small>{fetchedModels?.length ?? 0} found</small>
+                        </div>
+                        <div className="model-fetch-list" onWheel={onListWheel}>
+                          {(fetchedModels ?? []).map((model) => {
+                            const alreadyAdded = draft?.models.some((current) => current.id === model.id);
+                            return (
+                              <label className="model-fetch-row" data-disabled={alreadyAdded || undefined} key={model.id}>
+                                <Checkbox
+                                  checked={alreadyAdded || selectedIds.has(model.id)}
+                                  disabled={alreadyAdded}
+                                  onCheckedChange={() => toggleSelected(model.id)}
+                                />
+                                <span className="model-fetch-id" title={model.id}>
+                                  {model.id}
+                                </span>
+                                {alreadyAdded ? <small className="model-fetch-added">added</small> : null}
+                              </label>
+                            );
+                          })}
+                          {(fetchedModels ?? []).length === 0 ? (
+                            <div className="model-fetch-empty">No models returned.</div>
+                          ) : null}
+                        </div>
+                        <div className="model-fetch-footer">
+                          <Button size="sm" variant="outline" onClick={() => setFetchedModels(undefined)}>
+                            Cancel
+                          </Button>
+                          <Button size="sm" onClick={addSelected} disabled={selectedIds.size === 0}>
+                            Add selected ({selectedIds.size})
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                     <Button
                       size="sm"
                       variant="outline"

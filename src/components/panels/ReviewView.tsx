@@ -10,6 +10,7 @@ import {
   GitCommitHorizontal,
   ListChevronsDownUp,
   ListChevronsUpDown,
+  Minimize2,
   Rows2,
   Square,
 } from "lucide-react";
@@ -106,7 +107,11 @@ const FileSection = memo(function FileSection({
         <span className="git-file-name" title={entry.path}>
           {pathBaseName(entry.path)}
         </span>
-        {dir ? <span className="git-file-dir">{dir}</span> : null}
+        {dir ? (
+          <span className="git-file-dir" title={dir}>
+            {dir}
+          </span>
+        ) : null}
         {stats ? (
           <span className="git-file-stats">
             <em className="git-file-stats-add">+{stats.additions}</em>
@@ -143,6 +148,20 @@ const FileSection = memo(function FileSection({
           ) : diff ? (
             <DiffView patch={diff.diff} style={diffStyle} />
           ) : null}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="git-diff-minimize"
+                aria-label="Minimize diff"
+                title="Minimize"
+                onClick={onToggle}
+              >
+                <Minimize2 size={12} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>Minimize</TooltipContent>
+          </Tooltip>
         </div>
       ) : null}
     </div>
@@ -208,19 +227,29 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
   return (
     <div className="git-panel-body">
       <div className="git-review-meta">
-        {review.status?.branch ? <GitBranch size={12} /> : null}
-        {review.status?.branch ? <strong>{review.status.branch}</strong> : null}
-        {review.status?.branch && review.status.upstream ? (
-          <span>
-            {review.status.upstream}
-            {review.status.ahead > 0 || review.status.behind > 0 ? (
-              <em>
-                {review.status.ahead > 0 ? ` ↑${review.status.ahead}` : ""}
-                {review.status.behind > 0 ? ` ↓${review.status.behind}` : ""}
-              </em>
-            ) : null}
-          </span>
-        ) : null}
+        <div className="git-review-branches">
+          <div className="git-review-branch">
+            {review.status?.branch ? <GitBranch size={12} /> : null}
+            {review.status?.branch ? <strong title={review.status.branch}>{review.status.branch}</strong> : null}
+          </div>
+          {review.status?.branch && review.status.upstream ? (
+            <div className="git-review-upstream">
+              <span
+                title={`${review.status.upstream}${review.status.ahead > 0 ? ` ↑${review.status.ahead}` : ""}${
+                  review.status.behind > 0 ? ` ↓${review.status.behind}` : ""
+                }`}
+              >
+                {review.status.upstream}
+                {review.status.ahead > 0 || review.status.behind > 0 ? (
+                  <em>
+                    {review.status.ahead > 0 ? ` ↑${review.status.ahead}` : ""}
+                    {review.status.behind > 0 ? ` ↓${review.status.behind}` : ""}
+                  </em>
+                ) : null}
+              </span>
+            </div>
+          ) : null}
+        </div>
         <div className="git-review-actions">
           <IconButton
             label={allExpanded ? "Collapse all" : "Expand all"}
@@ -240,7 +269,7 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
             <Folders size={14} />
           </IconButton>
           <div className="git-combo">
-            <button type="button" className="git-combo-primary" onClick={() => setDialogOpen(true)}>
+            <button type="button" className="git-combo-primary" title="Commit" onClick={() => setDialogOpen(true)}>
               <GitCommitHorizontal size={13} />
               Commit
             </button>

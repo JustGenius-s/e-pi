@@ -206,7 +206,9 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
         ) : (
           <FileTypeIcon name={node.name} />
         )}
-        <span className="tool-file-name">{node.name}</span>
+        <span className="tool-file-name" title={node.name}>
+          {node.name}
+        </span>
         {node.type === "file" && node.size !== undefined ? (
           <span className="tool-file-size">{formatBytes(node.size)}</span>
         ) : null}

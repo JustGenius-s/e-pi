@@ -1,10 +1,40 @@
-.settings-dialog {
-  width: min(80vw, calc(100vw - 32px));
-  max-width: 80vw;
-  height: min(80vh, calc(100vh - 48px));
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
   grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
-  padding: 20px;
+  /* Top padding clears the macOS traffic lights and leaves a window drag
+     strip; the header (back arrow + title) sits below it. */
+  padding: 44px 20px 20px;
+  overflow: hidden;
+  background: var(--background);
+  -webkit-app-region: drag;
+}
+
+.settings-overlay-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  -webkit-app-region: no-drag;
+}
+
+.settings-overlay-header button {
+  -webkit-app-region: no-drag;
+}
+
+.settings-overlay-title h2 {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 680;
+  line-height: 1.2;
+}
+
+.settings-overlay-title p {
+  margin: 1px 0 0;
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
 }
 
 .settings-tabs {
@@ -707,6 +737,90 @@
 .custom-models-actions {
   display: flex;
   gap: 6px;
+}
+
+/* Fetch-result popover: bounded height, scrollable model list. */
+.model-fetch-popover {
+  width: 300px;
+  padding: 0;
+  /* clip instead of hidden: hidden makes react-remove-scroll treat the
+     container as non-scrollable and swallow wheel events aimed at it. */
+  overflow: clip;
+}
+
+.model-fetch-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px 7px;
+  border-bottom: 1px solid var(--border);
+  font-size: var(--fs-small);
+  font-weight: 600;
+}
+
+.model-fetch-heading small {
+  color: var(--muted-foreground);
+  font-weight: 450;
+}
+
+.model-fetch-list {
+  max-height: 280px;
+  overflow-y: auto;
+  /* Keep the wheel inside the list once it reaches the end. */
+  overscroll-behavior: contain;
+  padding: 5px;
+}
+
+.model-fetch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.model-fetch-row:hover {
+  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+}
+
+.model-fetch-row[data-disabled] {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.model-fetch-row[data-disabled]:hover {
+  background: transparent;
+}
+
+.model-fetch-id {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-fetch-added {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+
+.model-fetch-empty {
+  padding: 14px 8px;
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  text-align: center;
+}
+
+.model-fetch-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 7px 9px 9px;
+  border-top: 1px solid var(--border);
 }
 
 .custom-models-empty {

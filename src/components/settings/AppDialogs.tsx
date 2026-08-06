@@ -1,3 +1,6 @@
+import { useEffect } from "react";
+import { ArrowLeft } from "lucide-react";
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -91,6 +94,19 @@ export function AppDialogs({
   appInfo,
   onAppInfoChange,
 }: AppDialogsProps) {
+  // The settings overlay replaced the settings dialog: provide the Escape
+  // key behavior the dialog used to have for free.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        window.ePi.models.cancelLogin();
+        onSettingsOpenChange(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [settingsOpen, onSettingsOpenChange]);
   return (
     <>
       <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && onCloseRename()}>
@@ -126,18 +142,26 @@ export function AppDialogs({
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog
-        open={settingsOpen}
-        onOpenChange={(open) => {
-          if (!open) window.ePi.models.cancelLogin();
-          onSettingsOpenChange(open);
-        }}
-      >
-        <DialogContent className="settings-dialog">
-          <DialogHeader>
-            <DialogTitle>Settings</DialogTitle>
-            <DialogDescription>Manage models and application details.</DialogDescription>
-          </DialogHeader>
+      {settingsOpen ? (
+        <div className="settings-overlay" role="dialog" aria-label="Settings">
+          <div className="settings-overlay-header">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Back to sessions"
+              title="Back to sessions"
+              onClick={() => {
+                window.ePi.models.cancelLogin();
+                onSettingsOpenChange(false);
+              }}
+            >
+              <ArrowLeft size={16} />
+            </Button>
+            <div className="settings-overlay-title">
+              <h2>Settings</h2>
+              <p>Manage models and application details.</p>
+            </div>
+          </div>
           <Tabs className="settings-tabs" defaultValue="models">
             <TabsList variant="line">
               <TabsTrigger value="models">Models</TabsTrigger>
@@ -155,8 +179,8 @@ export function AppDialogs({
               <CommonSettings defaultCwd={appInfo?.defaultCwd} onChanged={onAppInfoChange} />
             </TabsContent>
           </Tabs>
-        </DialogContent>
-      </Dialog>
+        </div>
+      ) : null}
     </>
   );
 }
