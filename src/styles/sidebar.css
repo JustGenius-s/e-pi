@@ -248,12 +248,77 @@
 .session-menu-button time {
   color: var(--muted-foreground);
   font-size: var(--fs-mini);
+  white-space: nowrap;
+}
+
+/* Hover actions (⋯ / pin / archive) float over the row's right side and
+   replace the time while visible. */
+.session-row-actions {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  translate: 0 -50%;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in oklch, var(--sidebar) 92%, var(--sidebar-foreground));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.session-menu-item:hover .session-row-actions,
+.session-menu-item:focus-within .session-row-actions,
+.session-row-actions[data-open] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Hide the time while the actions are visible (hover or open menu), but keep
+   its grid slot and widen it to the actions bar's footprint — the title
+   track then naturally shrinks and ellipsizes before the bar, instead of the
+   bar covering the title's tail. */
+.session-menu-item:hover .session-menu-button time,
+.session-menu-item:focus-within .session-menu-button time,
+.session-menu-item:has(.session-row-actions[data-open]) .session-menu-button time {
+  visibility: hidden;
+  min-width: 76px;
+}
+
+.session-row-action {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.session-row-action:hover {
+  color: var(--sidebar-foreground);
+  background: var(--sidebar-accent);
+}
+
+.session-row-action.active {
+  color: var(--primary);
 }
 
 .session-label {
   overflow: hidden;
+  min-width: 0;
   font-weight: 540;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-group {
@@ -264,8 +329,8 @@
   display: grid;
   min-width: 0;
   min-height: 26px;
-  /* pin button | folder icon | path | new-session button */
-  grid-template-columns: auto 12px minmax(0, 1fr) auto;
+  /* folder icon | path | pin button | new-session button */
+  grid-template-columns: 12px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 6px;
   margin: 3px 0 2px;
@@ -369,9 +434,17 @@
   background: transparent;
   color: var(--muted-foreground);
   cursor: pointer;
+  opacity: 0;
   transition:
+    opacity 120ms ease,
     color 120ms ease,
     background-color 120ms ease;
+}
+
+/* Only visible on hover (pinned state keeps the color, not the icon). */
+.project-header:hover .project-pin,
+.project-pin:focus-visible {
+  opacity: 1;
 }
 
 .project-pin.active {
@@ -386,6 +459,31 @@
 .project-sessions {
   width: calc(100% - 18px);
   margin-left: 18px;
+}
+
+/* "Show more" expander below the 5-session preview of a project. */
+.project-show-more {
+  display: flex;
+  width: calc(100% - 18px);
+  margin: 2px 0 4px 18px;
+  padding: 5px 8px;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: var(--fs-small);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.project-show-more:hover {
+  color: var(--sidebar-foreground);
+  background: var(--sidebar-accent);
 }
 
 /* Empty state shown when there are no sessions yet. */

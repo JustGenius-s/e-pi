@@ -8,15 +8,7 @@ import type { Component } from "@earendil-works/pi-tui";
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 /** Full ordered set of thinking levels pi knows about. */
-const EXTENDED_THINKING_LEVELS: readonly ThinkingLevel[] = [
-  "off",
-  "minimal",
-  "low",
-  "medium",
-  "high",
-  "xhigh",
-  "max",
-];
+const EXTENDED_THINKING_LEVELS: readonly ThinkingLevel[] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 /**
  * Levels a model actually supports, mirroring pi-ai's getSupportedThinkingLevels
@@ -159,6 +151,51 @@ let sessionUsage: BridgeUsage = emptyUsage();
 let sessionCacheHitRate: number | undefined;
 let writeChain: Promise<void> = Promise.resolve();
 
+/**
+ * Elapsed-time suffix appended to pi's inline working indicator while a task
+ * runs (agent_start .. agent_settled). The loader re-renders every 80ms for
+ * the spinner, so a once-per-second message update adds negligible cost.
+ */
+const WORKING_TIMER_INTERVAL_MS = 1_000;
+let workingStartedAt = 0;
+let workingTimer: ReturnType<typeof setInterval> | undefined;
+
+function formatWorkingElapsed(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  const mm = String(minutes).padStart(2, "0");
+  const ss = String(seconds).padStart(2, "0");
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${minutes}:${ss}`;
+}
+
+function stopWorkingTimer(): void {
+  if (workingTimer !== undefined) {
+    clearInterval(workingTimer);
+    workingTimer = undefined;
+  }
+  workingStartedAt = 0;
+}
+
+/**
+ * Show the elapsed time to the right of the working animation. Keeps the
+ * running total across retries/compactions: a second agent_start while the
+ * timer is already running only refreshes the label, it does not reset it.
+ */
+function startWorkingTimer(ctx: ExtensionContext): void {
+  const refresh = () => {
+    ctx.ui.setWorkingMessage(`Working... ${formatWorkingElapsed(Date.now() - workingStartedAt)}`);
+  };
+  if (workingTimer !== undefined) {
+    refresh();
+    return;
+  }
+  workingStartedAt = Date.now();
+  refresh();
+  workingTimer = setInterval(refresh, WORKING_TIMER_INTERVAL_MS);
+}
+
 function activityTarget(sessionFile: string | undefined): string | undefined {
   if (!sessionFile) return undefined;
   return join(dirname(sessionFile), `${basename(sessionFile)}${ACTIVITY_SUFFIX}`);
@@ -283,12 +320,18 @@ export default function ePiBridge(pi: ExtensionAPI): void {
   });
 
   pi.on("agent_start", (_event, ctx) => {
+    // Elapsed-time suffix on the working indicator; safe regardless of whether
+    // this extension event fires before or after the core creates the
+    // indicator (setWorkingMessage persists the label either way).
+    startWorkingTimer(ctx);
     reportState(ctx, { status: "busy" });
   });
 
   // agent_settled fires only when no retry, compaction retry, or queued
   // follow-up remains, so it is the right "fully done" signal for a status UI.
   pi.on("agent_settled", (_event, ctx) => {
+    stopWorkingTimer();
+    ctx.ui.setWorkingMessage("Working...");
     reportState(ctx, {
       status: "idle",
       context: contextUsageOf(ctx),
@@ -349,6 +392,7 @@ export default function ePiBridge(pi: ExtensionAPI): void {
   });
 
   pi.on("session_shutdown", (_event, ctx) => {
+    stopWorkingTimer();
     void clearActivity(ctx);
   });
 }

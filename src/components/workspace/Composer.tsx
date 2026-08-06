@@ -51,7 +51,8 @@ import { SessionStats } from "./SessionStats";
 
 interface ComposerProps {
   sessionPath?: string;
-  status: PiProcessStatus;
+  /** Undefined while the session's runtime has not reported in yet (freshly switched/new session). */
+  status?: PiProcessStatus;
   activity?: PiActivityStatus;
   model?: ModelRef;
   /** Actual thinking level of the session's pi process, reported via the bridge. */
@@ -64,6 +65,12 @@ interface ComposerProps {
   speed?: number;
   disabled: boolean;
   cwd?: string;
+  /**
+   * Changes trigger a focus of the input box. App passes the active session
+   * path once its runtime is ready, so switching sessions or starting a new
+   * one lands the user directly in the composer.
+   */
+  focusRequest?: string;
   onSubmit: (messages: string[]) => Promise<boolean>;
   onInterrupt: () => void;
 }
@@ -99,6 +106,7 @@ export function Composer({
   speed,
   disabled,
   cwd,
+  focusRequest,
   onSubmit,
   onInterrupt,
 }: ComposerProps) {
@@ -124,6 +132,21 @@ export function Composer({
   const { onCompositionStart, onCompositionEnd, isComposing } = useImeComposition();
   const busy = status === "starting" || status === "stopping" || submitting;
   const hasContent = Boolean(text.trim() || files.length > 0 || selectedSkill);
+  // Session loading: runtime not reported yet, or the pi process is still
+  // booting. The model/thinking values come from the bridge's sidecar, so they
+  // are unknown until the session is ready — show a loading label instead of
+  // a misleading default.
+  const sessionLoading = status === undefined || status === "starting" || status === "stopping";
+  const modelLoading = sessionLoading && !model;
+
+  // Session switches and freshly started sessions hand focus back to the
+  // composer so the user can type immediately. The terminal only keeps focus
+  // for trust prompts while a new session is still starting; once it reports
+  // running this effect takes over (focusRequest flips from undefined).
+  useEffect(() => {
+    if (!focusRequest || disabled || busy) return;
+    textareaRef.current?.focus();
+  }, [focusRequest, disabled, busy]);
   // The bridge reports busy/idle through a sidecar file watched by the main
   // process. No data-stream fallback here: pi's TUI also writes output while
   // idle (status line refreshes, cursor), so stream activity cannot
@@ -151,7 +174,11 @@ export function Composer({
       : "";
   const modelRef = pendingModel && pendingModel.sessionPath === sessionPath ? pendingModel.ref : actualModelRef;
   const selectedModel = availableModels.find((candidate) => `${candidate.provider}/${candidate.id}` === modelRef);
-  const selectedModelLabel = selectedModel ? displayModel(selectedModel) : (model?.id ?? "Model");
+  const selectedModelLabel = selectedModel
+    ? displayModel(selectedModel)
+    : modelLoading
+      ? "Loading model…"
+      : (model?.id ?? "Model");
   const selectedThinking = THINKING_LEVELS.find((level) => level.value === thinking);
   // Only offer levels the current model actually supports, so picking one never
   // gets silently re-clamped (and then re-synced) by the running pi process.
@@ -512,8 +539,8 @@ export function Composer({
             <MenubarMenu>
               <MenubarTrigger className="composer-config-trigger">
                 <span className="composer-config-values">
-                  <strong>{selectedModelLabel}</strong>
-                  <span>{selectedThinking?.label ?? "Medium"}</span>
+                  <strong className={modelLoading ? "composer-config-loading" : undefined}>{selectedModelLabel}</strong>
+                  <span>{modelLoading ? "…" : (selectedThinking?.label ?? "Medium")}</span>
                 </span>
               </MenubarTrigger>
               <MenubarContent className="composer-config-menu" align="start">

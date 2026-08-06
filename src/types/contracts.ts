@@ -488,6 +488,8 @@ export interface EPiApi {
     create(request: CreateSessionRequest): Promise<SessionSummary>;
     rename(request: RenameSessionRequest): Promise<void>;
     remove(path: string): Promise<void>;
+    /** Push an up-to-date session list whenever a session file changes on disk (e.g. the first message lands). */
+    onUpdated(listener: (sessions: SessionSummary[]) => void): () => void;
   };
   runtime: {
     getStates(): Promise<Record<string, PiRuntimeState>>;

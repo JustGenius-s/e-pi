@@ -10,3 +10,6 @@ build/*
 !build/icon.iconset/**
 *.log
 .DS_Store
+
+# Subagent scratch artifacts
+.pi-subagents/

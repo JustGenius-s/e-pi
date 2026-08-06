@@ -22,6 +22,7 @@ import { piCliEntry } from "./pi-agent-loader";
 
 type StateListener = (state: PiRuntimeState) => void;
 type GlobalDataListener = (sessionPath: string, data: string) => void;
+type SessionFileListener = (sessionPath: string) => void;
 
 /** Matches the suffix the bridge extension writes next to each session file. */
 const ACTIVITY_SUFFIX = ".e-pi-activity.json";
@@ -109,6 +110,7 @@ export class PiRuntime {
   #instances = new Map<string, Instance>();
   #stateListeners = new Set<StateListener>();
   #globalDataListeners = new Set<GlobalDataListener>();
+  #sessionFileListeners = new Set<SessionFileListener>();
   #activeSessionPath: string | undefined;
   /** Serializes lifecycle operations (start/stop) per session. */
   #chains = new Map<string, Promise<void>>();
@@ -149,6 +151,16 @@ export class PiRuntime {
   onGlobalData(listener: GlobalDataListener): () => void {
     this.#globalDataListeners.add(listener);
     return () => this.#globalDataListeners.delete(listener);
+  }
+
+  /**
+   * Forward session-file changes (first message, title, activity). The
+   * watcher only runs while the session's pi process is alive, which is
+   * exactly when the file is being appended.
+   */
+  onSessionFileChanged(listener: SessionFileListener): () => void {
+    this.#sessionFileListeners.add(listener);
+    return () => this.#sessionFileListeners.delete(listener);
   }
 
   async start(sessionPath: string, cwd: string): Promise<void> {
@@ -557,7 +569,15 @@ export class PiRuntime {
     };
     try {
       instance.watchActivity = watch(dirname(instance.sessionPath), (_event, filename) => {
-        if (filename === null || String(filename) === activityName) refresh();
+        if (filename === null || String(filename) === activityName) {
+          refresh();
+          return;
+        }
+        // The session file itself changed (first message appended, session
+        // renamed, …): tell the shell so the sidebar title can update.
+        if (String(filename) === basename(instance.sessionPath)) {
+          for (const listener of this.#sessionFileListeners) listener(instance.sessionPath);
+        }
       });
       // The sidecar may already exist from a previous run of the same process;
       // pick up its current value immediately.

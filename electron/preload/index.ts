@@ -87,6 +87,11 @@ const api: EPiApi = {
       ipcRenderer.invoke("sessions:create", request) as Promise<SessionSummary>,
     rename: (request: RenameSessionRequest) => ipcRenderer.invoke("sessions:rename", request) as Promise<void>,
     remove: (path: string) => ipcRenderer.invoke("sessions:remove", path) as Promise<void>,
+    onUpdated: (callback: (sessions: SessionSummary[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, sessions: SessionSummary[]) => callback(sessions);
+      ipcRenderer.on("sessions:updated", listener);
+      return () => ipcRenderer.removeListener("sessions:updated", listener);
+    },
   },
   runtime: {
     getStates: () => ipcRenderer.invoke("runtime:get-states") as Promise<Record<string, PiRuntimeState>>,

@@ -26,12 +26,7 @@ import type {
 import { ensureNpmOnPath } from "./npm-path";
 import { getAgentConfig, saveAgentConfig } from "./services/agent-config-service";
 import { appsForExtension, chooseAppFromSystem, listDevApps, openWithApp } from "./services/app-launch-service";
-import {
-  getAppSettings,
-  resolveDefaultCwd,
-  setDefaultCwd,
-  setOpenWithApp,
-} from "./services/app-settings-service";
+import { getAppSettings, resolveDefaultCwd, setDefaultCwd, setOpenWithApp } from "./services/app-settings-service";
 import { CommandService } from "./services/command-service";
 import { debugLog, resetDebugLog } from "./services/debug-log";
 import { FileService } from "./services/file-service";
@@ -39,8 +34,8 @@ import { GitService } from "./services/git-service";
 import { ModelService } from "./services/model-service";
 import { TaskNotificationService } from "./services/notification-service";
 import { PackageService } from "./services/package-service";
-import { applyPiUpdate, checkPiUpdate, readInstalledPiVersion } from "./services/pi-update-service";
 import { PiRuntime } from "./services/pi-runtime";
+import { applyPiUpdate, checkPiUpdate, readInstalledPiVersion } from "./services/pi-update-service";
 import { SessionService } from "./services/session-service";
 import { SideTerminalService } from "./services/side-terminal-service";
 import { SkillService } from "./services/skill-service";
@@ -481,6 +476,22 @@ function createWindow(): void {
 runtime.onGlobalData((sessionPath, data) => sendToRenderer("runtime:data", { sessionPath, data }));
 runtime.onState((state) => sendToRenderer("runtime:state", state));
 
+// Sidebar titles/counts live off the session files, which pi appends while
+// running. Coalesce file-watcher bursts (an entry is written line-by-line)
+// into one re-list, then push the fresh list so a new session's title appears
+// as soon as the first message lands instead of staying "(no messages)".
+let sessionListRefreshTimer: NodeJS.Timeout | undefined;
+runtime.onSessionFileChanged(() => {
+  if (sessionListRefreshTimer) return;
+  sessionListRefreshTimer = setTimeout(() => {
+    sessionListRefreshTimer = undefined;
+    void sessions
+      .list()
+      .then((next) => sendToRenderer("sessions:updated", next))
+      .catch(() => undefined);
+  }, 300);
+});
+
 // Task-completion banners: busy -> idle on a session raises a native
 // notification when it finished in the background.
 let notificationHintShown = false;
@@ -506,7 +517,7 @@ const notifications = new TaskNotificationService(
         message: "E-Pi wants to show a notification when a task finishes.",
         detail: app.isPackaged
           ? "Allow notifications for E-Pi in System Settings, then completed tasks will show a banner."
-          : "Allow notifications for \"Electron\" in System Settings (the dev build shares that app identity; the packaged E-Pi app has its own entry).",
+          : 'Allow notifications for "Electron" in System Settings (the dev build shares that app identity; the packaged E-Pi app has its own entry).',
         buttons: ["Open Notification Settings", "Not now"],
         defaultId: 0,
         cancelId: 1,

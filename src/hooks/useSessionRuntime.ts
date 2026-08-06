@@ -68,9 +68,18 @@ export function useSessionRuntime() {
       window.ePi.app.log(`[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
       setRuntimeStates((current) => ({ ...current, [state.sessionPath]: state }));
     });
+    // The main process pushes a fresh list when a session file changes (first
+    // message, title, recency), so the sidebar never sits on a stale title.
+    const stopSessionsUpdated = window.ePi.sessions.onUpdated((next) => {
+      setSessions(next);
+      setActivePath((current) =>
+        current && next.some((session) => session.path === current) ? current : next[0]?.path,
+      );
+    });
     return () => {
       mounted = false;
       stopState();
+      stopSessionsUpdated();
     };
   }, []);
 

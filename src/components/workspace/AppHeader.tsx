@@ -24,10 +24,10 @@ export function AppHeader({ activeSession, panelOpen, onTogglePanel }: AppHeader
           <span className="brand-name">E-Pi</span>
         </div>
       </div>
+      <div className="workspace-title">
+        <h2>{activeSession ? sessionTitle(activeSession) : "Pi workspace"}</h2>
+      </div>
       <div className="topbar-actions">
-        <div className="workspace-title">
-          <h2>{activeSession ? sessionTitle(activeSession) : "Pi workspace"}</h2>
-        </div>
         <div className="topbar-panel-toggle">
           <IconButton
             label={panelOpen ? "Collapse panel (⌘G)" : "Expand panel (⌘G)"}
