@@ -381,10 +381,11 @@ export function Composer({
         onFocus={() => setInputFocused(true)}
         onBlur={() => setInputFocused(false)}
         onPaste={(event) => {
-          const hasImage = Array.from(event.clipboardData.items).some(
-            (item) => item.kind === "file" && item.type.startsWith("image/"),
-          );
-          if (!hasImage) return;
+          const items = Array.from(event.clipboardData.items);
+          // Pixels (screenshot/browser copy) or a copied file (Finder/WeCom
+          // expose a file URL, not pixels — the main process resolves both).
+          const hasFile = items.some((item) => item.kind === "file");
+          if (!hasFile) return;
           event.preventDefault();
           void window.ePi.app
             .pasteImage()

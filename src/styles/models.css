@@ -838,7 +838,8 @@
 
 .custom-model-row {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 70px 70px auto auto;
+  /* id | name | context | maxTokens | reasoning | vision | remove */
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) 70px 70px auto auto auto;
   align-items: center;
   gap: 6px;
 }

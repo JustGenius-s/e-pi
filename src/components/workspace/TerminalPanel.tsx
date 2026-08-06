@@ -121,6 +121,20 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
      * settles.
      */
     let disposed = false;
+    let restoreGeneration = 0;
+    let restoreFrame1: number | undefined;
+    let restoreFrame2: number | undefined;
+    const cancelPendingRestore = () => {
+      restoreGeneration += 1;
+      if (restoreFrame1 !== undefined) {
+        cancelAnimationFrame(restoreFrame1);
+        restoreFrame1 = undefined;
+      }
+      if (restoreFrame2 !== undefined) {
+        cancelAnimationFrame(restoreFrame2);
+        restoreFrame2 = undefined;
+      }
+    };
     const fitTerminal = () => {
       const host = hostRef.current;
       if (!host) return;
@@ -135,6 +149,11 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
         return;
       }
       const refit = () => {
+        // A previous refit may still have a delayed restoration queued. If it
+        // runs after this refit, its old line number can move the viewport to
+        // the wrong place (including the top) after a second reflow.
+        cancelPendingRestore();
+
         // Capture the viewport by line, not pixel: reflow re-wraps the whole
         // scrollback, so a pixel offset no longer maps to the same content
         // (and the browser/xterm may clamp it to the new scroll height, which
@@ -155,16 +174,22 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
         // occasionally leave the viewport pinned at the top of the
         // scrollback. Wait two frames for xterm to settle, then restore — and
         // only when the viewport clearly drifted (clamped to top / bottom),
-        // so a position xterm kept itself is never disturbed.
-        const restoreScroll = () => {
-          if (disposed) return;
-          if (wasAtBottom) {
-            terminal.scrollToBottom();
-          } else if (Math.abs(terminal.buffer.active.viewportY - topLine) > 5) {
-            terminal.scrollToLine(topLine);
-          }
-        };
-        requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
+        // so a position xterm kept itself is never disturbed. The generation
+        // check is important: cancelAnimationFrame alone cannot prevent a
+        // callback that is already executing from scheduling the next frame.
+        const generation = restoreGeneration;
+        restoreFrame1 = requestAnimationFrame(() => {
+          restoreFrame1 = undefined;
+          restoreFrame2 = requestAnimationFrame(() => {
+            restoreFrame2 = undefined;
+            if (disposed || generation !== restoreGeneration) return;
+            if (wasAtBottom) {
+              terminal.scrollToBottom();
+            } else if (Math.abs(terminal.buffer.active.viewportY - topLine) > 5) {
+              terminal.scrollToLine(topLine);
+            }
+          });
+        });
       };
       if (!fittedOnceRef.current) {
         // First mount: fit immediately so the terminal has a size right away.
@@ -203,6 +228,7 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
 
     return () => {
       disposed = true;
+      cancelPendingRestore();
       unsubscribeAppearance();
       stopData();
       input.dispose();

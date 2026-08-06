@@ -95,6 +95,10 @@ const IMAGE_MIME: Record<string, string> = {
   ".bmp": "image/bmp",
 };
 
+function isImage(path: string): boolean {
+  return extname(path).toLowerCase() in IMAGE_MIME;
+}
+
 function registerHandlers(): void {
   ipcMain.handle("app:get-info", async () => {
     const settings = await getAppSettings();
@@ -211,11 +215,31 @@ function registerHandlers(): void {
   });
 
   ipcMain.handle("app:paste-image", async () => {
+    // 1) The clipboard holds raw image pixels (screenshots, copying an image
+    //    in a browser): persist them to a temp PNG.
     const image = clipboard.readImage();
-    if (image.isEmpty()) return null;
-    const filePath = join(app.getPath("temp"), `e-pi-paste-${randomUUID()}.png`);
-    await writeFile(filePath, image.toPNG());
-    return filePath;
+    if (!image.isEmpty()) {
+      const filePath = join(app.getPath("temp"), `e-pi-paste-${randomUUID()}.png`);
+      await writeFile(filePath, image.toPNG());
+      return filePath;
+    }
+    // 2) The clipboard holds a copied image FILE (Finder, WeCom, …): the
+    //    pixels are empty but the file URL is available — attach the file
+    //    directly instead of failing silently.
+    const fileUrl = clipboard.read("public.file-url");
+    if (fileUrl) {
+      const path = fileURLToPath(fileUrl);
+      if (isImage(path)) return path;
+      return null;
+    }
+    // 3) Some apps copy plain "file://…" text instead of the typed pasteboard
+    //    representation.
+    const text = clipboard.readText();
+    if (text.startsWith("file://")) {
+      const path = fileURLToPath(text);
+      if (isImage(path)) return path;
+    }
+    return null;
   });
 
   ipcMain.handle("app:image-data", async (_event, filePath: string, maxSize?: number) => {
