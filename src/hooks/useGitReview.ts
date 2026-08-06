@@ -5,8 +5,14 @@ import type { GitDiffResult, GitFileEntry, GitStatus } from "../types/contracts"
 
 export type GitReviewPhase = "idle" | "generating" | "committing" | "pushing" | "pulling";
 
+/** ipcRenderer wraps handler errors as "Error invoking remote method 'git:status': Error: <message>". */
+function isNotRepoError(reason: unknown): boolean {
+  return reason instanceof Error && /not a git repository/i.test(reason.message);
+}
+
 export function useGitReview(cwd: string) {
   const [status, setStatus] = useState<GitStatus>();
+  const [isRepo, setIsRepo] = useState(true);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [diffs, setDiffs] = useState<Record<string, GitDiffResult>>({});
   const [diffErrors, setDiffErrors] = useState<Record<string, string>>({});
@@ -29,12 +35,18 @@ export function useGitReview(cwd: string) {
     setError(undefined);
     try {
       setStatus(await window.ePi.git.status(cwd));
+      setIsRepo(true);
     } catch (reason) {
       setStatus(undefined);
       setDiffs({});
       setDiffErrors({});
       setExpanded(new Set());
-      setError(reason instanceof Error ? reason.message : String(reason));
+      if (isNotRepoError(reason)) {
+        setIsRepo(false);
+      } else {
+        setIsRepo(true);
+        setError(reason instanceof Error ? reason.message : String(reason));
+      }
     }
   }, [cwd]);
 
@@ -44,6 +56,7 @@ export function useGitReview(cwd: string) {
     setExpanded(new Set());
     setDiffs({});
     setDiffErrors({});
+    setIsRepo(true);
     void refresh();
   }, [cwd, refresh]);
 
@@ -231,6 +244,7 @@ export function useGitReview(cwd: string) {
 
   return {
     status,
+    isRepo,
     expanded,
     diffs,
     diffErrors,

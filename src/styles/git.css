@@ -522,6 +522,24 @@
   font-size: var(--fs-body);
 }
 
+.git-empty-repo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.git-empty-repo p {
+  margin: 0;
+}
+
+.git-empty-repo-hint {
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  opacity: 0.8;
+}
+
 /* --- Main area: flat file sections + floating file-tree card --- */
 
 .git-main {

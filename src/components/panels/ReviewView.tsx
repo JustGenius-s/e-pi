@@ -300,7 +300,7 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
           {review.phase === "pulling" ? <span className="git-busy">Pulling…</span> : null}
         </div>
       ) : null}
-      {review.error ? (
+      {review.isRepo && review.error ? (
         <div className="git-error" role="alert">
           {review.error}
         </div>
@@ -354,7 +354,19 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
           ) : null}
         </div>
       ) : (
-        <div className="git-empty-panel">{review.error ? "Not a git repository in this folder" : "Loading…"}</div>
+        <div className="git-empty-panel">
+          {!review.isRepo ? (
+            <div className="git-empty-repo">
+              <GitBranch size={20} />
+              <p>This folder is not a git repository.</p>
+              <p className="git-empty-repo-hint">Run git init to start version control.</p>
+            </div>
+          ) : review.error ? (
+            "Unable to load git status"
+          ) : (
+            "Loading…"
+          )}
+        </div>
       )}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="git-commit-dialog max-w-md">
