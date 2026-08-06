@@ -11,13 +11,12 @@ import {
   ListChevronsDownUp,
   ListChevronsUpDown,
   Rows2,
-  Sparkles,
   Square,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -138,7 +137,7 @@ const FileSection = memo(function FileSection({
       {expanded ? (
         <div className="git-diff-wrap">
           {loading ? (
-            <div className="git-diff-empty">加载中…</div>
+            <div className="git-diff-empty">Loading…</div>
           ) : diffError ? (
             <div className="git-diff-error">{diffError}</div>
           ) : diff ? (
@@ -152,7 +151,7 @@ const FileSection = memo(function FileSection({
 
 export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
   const review = useGitReview(cwd);
-  const [showTree, setShowTree] = useState(true);
+  const [showTree, setShowTree] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [diffStyle, setDiffStyle] = useState<DiffStyle>(() => {
     try {
@@ -202,6 +201,9 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
   const commit = async () => {
     if (await review.commit()) setDialogOpen(false);
   };
+  const commitAndPush = async () => {
+    if (await review.commit(true)) setDialogOpen(false);
+  };
 
   return (
     <div className="git-panel-body">
@@ -221,17 +223,17 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
         ) : null}
         <div className="git-review-actions">
           <IconButton
-            label={allExpanded ? "全部折叠" : "全部展开"}
+            label={allExpanded ? "Collapse all" : "Expand all"}
             onClick={toggleAll}
             disabled={!review.status || review.status.files.length === 0}
           >
             {allExpanded ? <ListChevronsDownUp size={14} /> : <ListChevronsUpDown size={14} />}
           </IconButton>
-          <IconButton label={diffStyle === "split" ? "切换为单栏显示" : "切换为分栏显示"} onClick={toggleDiffStyle}>
+          <IconButton label={diffStyle === "split" ? "Switch to unified view" : "Switch to split view"} onClick={toggleDiffStyle}>
             {diffStyle === "split" ? <Columns2 size={14} /> : <Rows2 size={14} />}
           </IconButton>
           <IconButton
-            label={showTree ? "隐藏文件树" : "显示文件树"}
+            label={showTree ? "Hide file tree" : "Show file tree"}
             className={showTree ? "active" : ""}
             onClick={() => setShowTree((current) => !current)}
           >
@@ -240,22 +242,22 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
           <div className="git-combo">
             <button type="button" className="git-combo-primary" onClick={() => setDialogOpen(true)}>
               <GitCommitHorizontal size={13} />
-              提交
+              Commit
             </button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button type="button" className="git-combo-caret" aria-label="更多 Git 操作">
+                <button type="button" className="git-combo-caret" aria-label="More Git actions">
                   <ChevronDown size={12} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" sideOffset={4}>
                 <DropdownMenuItem onSelect={() => setDialogOpen(true)}>
                   <GitCommitHorizontal size={13} />
-                  提交或推送
+                  Commit or push
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void review.pull()} disabled={review.busy}>
                   <ArrowDownToLine size={13} />
-                  拉取代码
+                  Pull
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -302,7 +304,7 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
           </div>
           {showTree && review.status.files.length > 0 ? (
             <div className="git-tree-card">
-              <div className="git-tree-card-head">文件 · {review.status.files.length}</div>
+              <div className="git-tree-card-head">Files · {review.status.files.length}</div>
               <div className="git-tree-card-list">
                 {review.status.files.map((entry) => (
                   <button
@@ -328,12 +330,7 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="git-commit-dialog max-w-md">
           <DialogHeader>
-            <DialogTitle>提交更改</DialogTitle>
-            <DialogDescription>
-              {review.status?.branch
-                ? `分支 ${review.status.branch}${review.status.stagedCount > 0 ? ` · 已暂存 ${review.status.stagedCount} 个文件` : ""}`
-                : ""}
-            </DialogDescription>
+            <DialogTitle>Commit Changes</DialogTitle>
           </DialogHeader>
           {review.error ? (
             <div className="git-error" role="alert">
@@ -348,40 +345,23 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
             disabled={review.busy}
           />
           <div className="git-actions">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void review.generate()}
-                  disabled={review.busy || !review.status || review.status.files.length === 0}
-                >
-                  <Sparkles size={13} />
-                  Generate
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Generate commit message with pi</TooltipContent>
-            </Tooltip>
-            {review.status && review.status.stagedCount > 0 ? (
-              <Button variant="outline" size="sm" onClick={() => void review.unstageAll()} disabled={review.busy}>
-                Unstage all
-              </Button>
-            ) : (
-              <Button variant="outline" size="sm" onClick={() => void review.stageAll()} disabled={review.busy}>
-                Stage all
-              </Button>
-            )}
             <Button
+              variant="ghost"
               size="sm"
               onClick={() => void commit()}
-              disabled={review.busy || !review.message.trim() || !review.status || review.status.stagedCount === 0}
+              disabled={review.busy || !review.status || review.status.files.length === 0}
             >
               <GitCommitHorizontal size={13} />
               {review.phase === "committing" ? "Committing…" : "Commit"}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => void review.push()} disabled={review.busy}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void commitAndPush()}
+              disabled={review.busy || !review.status || review.status.files.length === 0}
+            >
               <ArrowUp size={13} />
-              {review.phase === "pushing" ? "Pushing…" : "Push"}
+              {review.phase === "pushing" ? "Pushing…" : "Commit & Push"}
             </Button>
           </div>
           <div className="git-status-line">

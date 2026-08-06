@@ -144,8 +144,9 @@ export function useGitReview(cwd: string) {
     await refresh();
   };
 
-  const generate = async () => {
-    if (!cwd || !status) return;
+  /** Generate a commit message with pi; returns the message or undefined on failure. */
+  const generate = async (): Promise<string | undefined> => {
+    if (!cwd || !status) return undefined;
     setPhase("generating");
     setError(undefined);
     setNotice(undefined);
@@ -153,8 +154,10 @@ export function useGitReview(cwd: string) {
       const result = await window.ePi.git.generateMessage(cwd, status.stagedCount > 0);
       setMessage(result.message);
       setNotice(`Commit message generated with ${result.model}`);
+      return result.message;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+      return undefined;
     } finally {
       setPhase("idle");
     }
@@ -177,24 +180,47 @@ export function useGitReview(cwd: string) {
     }
   };
 
-  const commit = async () => {
-    if (!cwd || !message.trim()) return;
-    if (!status || status.stagedCount === 0) {
-      setError("Nothing staged — stage files first");
-      return;
-    }
-    setPhase("committing");
+  /**
+   * Commit the current changes. Auto-generates the message with pi when empty,
+   * and stages everything when nothing is staged yet. When `pushAfter` is set,
+   * pushes after a successful commit.
+   */
+  const commit = async (pushAfter = false): Promise<boolean> => {
+    if (!cwd || !status) return false;
     setError(undefined);
     setNotice(undefined);
     try {
-      const result = await window.ePi.git.commit(cwd, message);
-      if (!result.ok) setError(result.message);
-      else {
-        setNotice(result.message);
-        setMessage("");
+      let finalMessage: string | undefined = message.trim();
+      if (!finalMessage) {
+        finalMessage = await generate();
+        if (!finalMessage) return false;
+      }
+      if (status.stagedCount === 0) {
+        const staged = await window.ePi.git.stage(cwd, []);
+        if (!staged.ok) {
+          setError(staged.message);
+          return false;
+        }
+      }
+      setPhase("committing");
+      const result = await window.ePi.git.commit(cwd, finalMessage);
+      if (!result.ok) {
+        setError(result.message);
+        return false;
+      }
+      setNotice(result.message);
+      setMessage("");
+      if (pushAfter) {
+        setPhase("pushing");
+        const pushed = await window.ePi.git.push(cwd);
+        if (!pushed.ok) {
+          setError(pushed.message);
+          return false;
+        }
+        setNotice(pushed.message);
       }
       await refresh();
-      return result.ok;
+      return true;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
       return false;
