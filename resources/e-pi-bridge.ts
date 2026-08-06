@@ -194,19 +194,38 @@ export default function ePiBridge(pi: ExtensionAPI): void {
         images: string[];
       };
       const prompt = payload.text || "Review the attached images.";
-      const imageBlocks = await Promise.all(
+      // Read each image independently: a missing/unreadable file (e.g. the
+      // temp paste file was cleaned up before send) must not silently drop
+      // the whole message — report the failure in the text instead.
+      const imageBlocks: Array<{ type: "image"; data: string; mimeType: string }> = [];
+      const failures: string[] = [];
+      await Promise.all(
         payload.images.map(async (path) => {
-          const data = (await readFile(path)).toString("base64");
-          const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
-          return {
-            type: "image" as const,
-            data,
-            mimeType: imageMime[ext] || "image/png",
-          };
+          try {
+            const data = (await readFile(path)).toString("base64");
+            const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
+            imageBlocks.push({
+              type: "image" as const,
+              data,
+              mimeType: imageMime[ext] || "image/png",
+            });
+          } catch (error) {
+            const reason = error instanceof Error ? error.message : String(error);
+            failures.push(`[Image attachment could not be read: ${path} (${reason})]`);
+          }
         }),
       );
+      // pi's TUI only renders text blocks of a user message (image blocks get
+      // no indicator), so prepend a textual marker per successfully attached
+      // image — mirroring the "Attached path:" lines the composer adds for
+      // regular file attachments.
+      const markers = payload.images
+        .filter((path) => !failures.some((f) => f.includes(path)))
+        .map((path) => `Attached image: ${path}`);
+      const parts = [...markers, prompt, ...failures].filter(Boolean);
+      const text = parts.join("\n");
       const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
-        { type: "text", text: prompt },
+        { type: "text", text },
         ...imageBlocks,
       ];
       pi.sendUserMessage(content);
