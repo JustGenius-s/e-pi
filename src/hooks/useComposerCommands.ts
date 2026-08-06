@@ -3,9 +3,9 @@ import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import type { CommandRecord, CommandSource, SkillRecord } from "../types/contracts";
 
 const COMMAND_GROUPS: Array<{ label: string; sources: CommandSource[] }> = [
-  { label: "系统", sources: ["builtin"] },
-  { label: "插件", sources: ["template", "plugin"] },
-  { label: "技能", sources: ["skill"] },
+  { label: "System", sources: ["builtin"] },
+  { label: "Extensions", sources: ["template", "plugin"] },
+  { label: "Skills", sources: ["skill"] },
 ];
 
 interface UseComposerCommandsOptions {

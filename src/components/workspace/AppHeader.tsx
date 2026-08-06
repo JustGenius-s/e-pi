@@ -30,7 +30,7 @@ export function AppHeader({ activeSession, panelOpen, onTogglePanel }: AppHeader
         </div>
         <div className="topbar-panel-toggle">
           <IconButton
-            label={panelOpen ? "收起面板 (⌘G)" : "展开面板 (⌘G)"}
+            label={panelOpen ? "Collapse panel (⌘G)" : "Expand panel (⌘G)"}
             className={panelOpen ? "topbar-git-toggle active" : "topbar-git-toggle"}
             onClick={onTogglePanel}
           >

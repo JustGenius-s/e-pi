@@ -102,7 +102,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
 
   return (
     <div className="git-panel-body">
-      {state === "starting" ? <div className="git-empty-panel">启动终端…</div> : null}
+      {state === "starting" ? <div className="git-empty-panel">Starting terminal…</div> : null}
       {state === "error" ? <div className="git-error">{error}</div> : null}
       <div className="tool-terminal-host" ref={hostRef} aria-label="Embedded terminal" />
     </div>

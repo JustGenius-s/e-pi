@@ -218,7 +218,7 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
     <button
       data-slot="sidebar-rail"
       data-resizing={resizing ? "true" : undefined}
-      aria-label="调整侧边栏宽度"
+      aria-label="Adjust sidebar width"
       tabIndex={-1}
       onPointerDown={(event) => {
         if (event.button !== 0) return;

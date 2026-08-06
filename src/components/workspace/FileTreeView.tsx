@@ -106,7 +106,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
           ) : null}
         </button>
         {expanded ? (node.children ?? []).map((child) => renderTree(child, depth + 1)) : null}
-        {isDir && node.loading ? <div className="tool-file-loading">加载中…</div> : null}
+        {isDir && node.loading ? <div className="tool-file-loading">Loading…</div> : null}
         {isDir && node.error ? <div className="tool-file-error">{node.error}</div> : null}
       </div>
     );
@@ -119,7 +119,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
       {root ? (
         <div className="tool-file-tree">{renderTree(root, 0)}</div>
       ) : (
-        <div className="git-empty-panel">加载中…</div>
+        <div className="git-empty-panel">Loading…</div>
       )}
       <div className="tool-view-bar">
         <IconButton

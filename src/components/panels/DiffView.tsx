@@ -89,7 +89,7 @@ export const DiffView = memo(function DiffView({ patch, style }: { patch: string
   return (
     <div className="git-diff-pierre" style={wrapperStyle}>
       <PatchDiff patch={cleanPatch} options={options} disableWorkerPool />
-      {!painted ? <div className="git-diff-loading">加载中…</div> : null}
+      {!painted ? <div className="git-diff-loading">Loading…</div> : null}
       {truncated ? <div className="git-diff-truncated">Diff truncated for display</div> : null}
     </div>
   );

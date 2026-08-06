@@ -209,13 +209,13 @@ function NewSessionMenuItems({ onNewSession, onNewProject }: { onNewSession: () 
     <>
       <DropdownMenuItem onSelect={onNewSession}>
         <FilePlus size={14} />
-        <span>新会话</span>
+        <span>New session</span>
         <DropdownMenuShortcut>Home</DropdownMenuShortcut>
       </DropdownMenuItem>
       <DropdownMenuItem onSelect={onNewProject}>
         <FolderPlus size={14} />
-        <span>新项目</span>
-        <DropdownMenuShortcut>选择文件夹</DropdownMenuShortcut>
+        <span>New project</span>
+        <DropdownMenuShortcut>Choose folder</DropdownMenuShortcut>
       </DropdownMenuItem>
     </>
   );
@@ -551,8 +551,8 @@ export function SessionSidebar({
               <button
                 type="button"
                 className="sidebar-theme-toggle"
-                title={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
-                aria-label={theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                title={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+                aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
                 onClick={toggleTheme}
               >
                 {theme === "dark" ? <Sun /> : <Moon />}

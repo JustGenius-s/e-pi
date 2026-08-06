@@ -42,12 +42,12 @@ interface ToolPanelProps {
 }
 
 const VIEW_META: Record<PanelView, { title: string; icon: LucideIcon }> = {
-  review: { title: "审阅", icon: GitPullRequest },
-  files: { title: "文件", icon: FolderOpen },
-  terminal: { title: "终端", icon: SquareTerminal },
+  review: { title: "Review", icon: GitPullRequest },
+  files: { title: "Files", icon: FolderOpen },
+  terminal: { title: "Terminal", icon: SquareTerminal },
 };
 
-/** Duplicate views get numbered titles ("文件", "文件 2", …). */
+/** Duplicate views get numbered titles ("Files", "Files 2", …). */
 function tabTitle(tabs: PanelTab[], index: number): string {
   const tab = tabs[index];
   const base = VIEW_META[tab.view].title;
@@ -56,9 +56,9 @@ function tabTitle(tabs: PanelTab[], index: number): string {
 }
 
 const LAUNCH_ITEMS: Array<{ view: PanelView; title: string; icon: LucideIcon; key: string }> = [
-  { view: "review", title: "审阅", icon: GitPullRequest, key: "1" },
-  { view: "files", title: "文件", icon: FolderOpen, key: "2" },
-  { view: "terminal", title: "终端", icon: SquareTerminal, key: "3" },
+  { view: "review", title: "Review", icon: GitPullRequest, key: "1" },
+  { view: "files", title: "Files", icon: FolderOpen, key: "2" },
+  { view: "terminal", title: "Terminal", icon: SquareTerminal, key: "3" },
 ];
 
 function LaunchPad({ platform, onSelect }: { platform?: NodeJS.Platform; onSelect: (view: PanelView) => void }) {
@@ -98,7 +98,7 @@ interface TabBarProps {
 function TabBar({ tabs, activeTabId, onOpenTab, onCloseTab, onSelectTab }: TabBarProps) {
   const reviewOpen = tabs.some((tab) => tab.view === "review");
   return (
-    <div className="tool-tab-bar" role="tablist" aria-label="工具面板标签页">
+    <div className="tool-tab-bar" role="tablist" aria-label="Tool panel tabs">
       {tabs.map((tab, index) => {
         const title = tabTitle(tabs, index);
         const Icon = VIEW_META[tab.view].icon;
@@ -122,7 +122,7 @@ function TabBar({ tabs, activeTabId, onOpenTab, onCloseTab, onSelectTab }: TabBa
             <button
               type="button"
               className="tool-tab-close"
-              aria-label={`关闭${title}`}
+              aria-label={`Close ${title}`}
               onClick={(event) => {
                 event.stopPropagation();
                 onCloseTab(tab.id);
@@ -135,7 +135,7 @@ function TabBar({ tabs, activeTabId, onOpenTab, onCloseTab, onSelectTab }: TabBa
       })}
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button type="button" className="tool-tab-add" aria-label="新建标签页" title="新建标签页">
+          <button type="button" className="tool-tab-add" aria-label="New tab" title="New tab">
             <Plus size={14} />
           </button>
         </DropdownMenuTrigger>
@@ -143,16 +143,16 @@ function TabBar({ tabs, activeTabId, onOpenTab, onCloseTab, onSelectTab }: TabBa
           {!reviewOpen ? (
             <DropdownMenuItem onSelect={() => onOpenTab("review", true)}>
               <GitPullRequest size={13} />
-              审阅
+              Review
             </DropdownMenuItem>
           ) : null}
           <DropdownMenuItem onSelect={() => onOpenTab("files", true)}>
             <FolderOpen size={13} />
-            文件
+            Files
           </DropdownMenuItem>
           <DropdownMenuItem onSelect={() => onOpenTab("terminal", true)}>
             <SquareTerminal size={13} />
-            终端
+            Terminal
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
