@@ -26,6 +26,14 @@ export function useSessionRuntime() {
     }
   }, []);
 
+  const refreshAppInfo = useCallback(async () => {
+    try {
+      setAppInfo(await window.ePi.app.getInfo());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }, []);
+
   const activate = useCallback(async (path: string): Promise<void> => {
     setError(undefined);
     const target = runtimeStatesRef.current[path];
@@ -76,6 +84,7 @@ export function useSessionRuntime() {
     setError,
     setActivePath,
     refreshSessions,
+    refreshAppInfo,
     activate,
   };
 }

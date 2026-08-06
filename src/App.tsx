@@ -29,6 +29,7 @@ export function App() {
     setError,
     setActivePath,
     refreshSessions,
+    refreshAppInfo,
     activate,
   } = useSessionRuntime();
   const [packageOpen, setPackageOpen] = useState(false);
@@ -344,6 +345,7 @@ export function App() {
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         appInfo={appInfo}
+        onAppInfoChange={() => void refreshAppInfo()}
       />
 
       <PackagePanel open={packageOpen} cwd={activeCwd} onOpenChange={setPackageOpen} onReloadPi={onReloadPi} />

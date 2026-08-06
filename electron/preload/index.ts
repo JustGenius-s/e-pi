@@ -26,6 +26,7 @@ import type {
   PackageUpdateInfo,
   PackageUpdateRequest,
   PiAgentConfig,
+  PiUpdateInfo,
   PiRuntimeState,
   RemotePackageInfo,
   RenameSessionRequest,
@@ -48,6 +49,8 @@ function subscribe<T>(channel: string, listener: (payload: T) => void): () => vo
 const api: EPiApi = {
   app: {
     getInfo: () => ipcRenderer.invoke("app:get-info") as Promise<AppInfo>,
+    setDefaultCwd: (cwd: string) => ipcRenderer.invoke("app:set-default-cwd", cwd) as Promise<AppInfo>,
+    checkPiUpdate: () => ipcRenderer.invoke("app:check-pi-update") as Promise<PiUpdateInfo>,
     chooseDirectory: (defaultPath?: string) =>
       ipcRenderer.invoke("app:choose-directory", defaultPath) as Promise<string | undefined>,
     chooseFiles: () => ipcRenderer.invoke("app:choose-files") as Promise<string[]>,

@@ -34,6 +34,13 @@ export interface AppInfo {
   defaultCwd: string;
 }
 
+export interface PiUpdateInfo {
+  /** Version of the pi package bundled with E-Pi. */
+  current: string;
+  /** Newest published pi version; undefined when the check failed or none is newer. */
+  latest?: string;
+}
+
 export interface SessionSummary {
   path: string;
   id: string;
@@ -386,6 +393,10 @@ export interface AgentConfigSaveRequest {
 export interface EPiApi {
   app: {
     getInfo(): Promise<AppInfo>;
+    /** Persist the default folder for new sessions; resolves with the refreshed app info. */
+    setDefaultCwd(cwd: string): Promise<AppInfo>;
+    /** Check the npm registry for a newer pi release. */
+    checkPiUpdate(): Promise<PiUpdateInfo>;
     chooseDirectory(defaultPath?: string): Promise<string | undefined>;
     chooseFiles(): Promise<string[]>;
     getPathForFile(file: File): string;

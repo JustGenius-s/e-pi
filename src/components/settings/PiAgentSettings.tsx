@@ -1,4 +1,4 @@
-import { Check, LoaderCircle } from "lucide-react";
+import { Check, Download, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
-import type { AgentThinkingLevel, PiAgentConfig } from "../../types/contracts";
+import type { AgentThinkingLevel, PiAgentConfig, PiUpdateInfo } from "../../types/contracts";
 
 const THINKING_OPTIONS: Array<{ value: AgentThinkingLevel; label: string }> = [
   { value: "", label: "Not set" },
@@ -22,6 +22,8 @@ const THINKING_OPTIONS: Array<{ value: AgentThinkingLevel; label: string }> = [
 interface PiAgentSettingsProps {
   /** Whether the settings dialog is open; reloads stored config when it becomes true. */
   active: boolean;
+  /** Version of the bundled pi package, shown in the Pi version row. */
+  piVersion?: string;
 }
 
 /**
@@ -29,11 +31,13 @@ interface PiAgentSettingsProps {
  * config and passed to pi as CLI args at session launch, so they only affect
  * sessions started from E-Pi (never `~/.pi` files or terminal usage).
  */
-export function PiAgentSettings({ active }: PiAgentSettingsProps) {
+export function PiAgentSettings({ active, piVersion }: PiAgentSettingsProps) {
   const [config, setConfig] = useState<PiAgentConfig>();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>();
+  const [update, setUpdate] = useState<PiUpdateInfo>();
+  const [checking, setChecking] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -79,20 +83,53 @@ export function PiAgentSettings({ active }: PiAgentSettingsProps) {
     }
   };
 
+  const checkUpdate = async () => {
+    if (checking) return;
+    setChecking(true);
+    setError(undefined);
+    try {
+      setUpdate(await window.ePi.app.checkPiUpdate());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const updateLabel =
+    update === undefined ? null : update.latest ? `Update available: ${update.latest}` : "Up to date";
+
   return (
     <section className="agent-section">
       <div className="agent-group-title">Pi Agent</div>
-      <p className="agent-description">
-        Applied to sessions launched by E-Pi. Save restarts running sessions so the changes take effect immediately.
-      </p>
 
       {config ? (
         <>
-          <div className="agent-field">
-            <div className="agent-field-head">
-              <label htmlFor="agent-system-prompt">System prompt (replace)</label>
-              <span className="agent-field-note">Replaces the default Pi prompt when set</span>
+          <div className="agent-row">
+            <div className="agent-row-label">
+              <span>Pi version</span>
             </div>
+            <div className="agent-version">
+              <code className="agent-version-code">{piVersion || "-"}</code>
+              {checking ? (
+                <span className="agent-version-status">
+                  <LoaderCircle className="spin" size={12} /> Checking…
+                </span>
+              ) : updateLabel ? (
+                <span className={`agent-version-status${update?.latest ? " outdated" : ""}`}>
+                  {update?.latest ? <Download size={12} /> : <Check size={12} />}
+                  {updateLabel}
+                </span>
+              ) : null}
+              <Button variant="ghost" size="sm" className="agent-update-btn" onClick={() => void checkUpdate()} disabled={checking}>
+                <RefreshCw size={13} />
+                {checking ? "Checking…" : "Check updates"}
+              </Button>
+            </div>
+          </div>
+
+          <div className="agent-field">
+            <label htmlFor="agent-system-prompt">System prompt (replace)</label>
             <Textarea
               id="agent-system-prompt"
               className="agent-textarea"
@@ -103,10 +140,7 @@ export function PiAgentSettings({ active }: PiAgentSettingsProps) {
           </div>
 
           <div className="agent-field">
-            <div className="agent-field-head">
-              <label htmlFor="agent-append-prompt">System prompt (append)</label>
-              <span className="agent-field-note">Appended after the prompt, e.g. behavior or style preferences</span>
-            </div>
+            <label htmlFor="agent-append-prompt">System prompt (append)</label>
             <Textarea
               id="agent-append-prompt"
               className="agent-textarea"
@@ -119,7 +153,6 @@ export function PiAgentSettings({ active }: PiAgentSettingsProps) {
           <div className="agent-row">
             <div className="agent-row-label">
               <span>Default thinking level</span>
-              <small>Starting level for new sessions</small>
             </div>
             <Select
               value={config.thinkingLevel}
@@ -141,7 +174,6 @@ export function PiAgentSettings({ active }: PiAgentSettingsProps) {
           <div className="agent-row">
             <div className="agent-row-label">
               <span>Context files</span>
-              <small>Load AGENTS.md / CLAUDE.md into the system prompt</small>
             </div>
             <Switch
               checked={config.contextFiles}

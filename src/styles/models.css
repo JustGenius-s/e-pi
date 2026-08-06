@@ -1,7 +1,7 @@
 .settings-dialog {
-  width: min(860px, calc(100vw - 32px));
-  max-width: 860px;
-  height: min(680px, calc(100vh - 48px));
+  width: min(80vw, calc(100vw - 32px));
+  max-width: 80vw;
+  height: min(80vh, calc(100vh - 48px));
   grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   padding: 20px;
@@ -302,7 +302,6 @@
   padding: 6px 8px;
   color: var(--foreground);
   border: 0;
-  border-bottom: 1px solid var(--border);
   background: transparent;
   font: inherit;
   text-align: left;
@@ -416,7 +415,6 @@
   align-items: center;
   gap: 16px;
   min-height: 40px;
-  border-bottom: 1px solid var(--border);
   font-size: var(--fs-body);
 }
 
@@ -459,9 +457,9 @@
 
 .agent-group-title {
   color: var(--muted-foreground);
-  font-size: var(--fs-small);
-  font-weight: 550;
-  letter-spacing: 0.04em;
+  font-size: var(--fs-medium);
+  font-weight: 600;
+  letter-spacing: 0.01em;
 }
 
 .agent-description {
@@ -475,25 +473,11 @@
   margin-top: 14px;
 }
 
-.agent-field-head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+.agent-field label {
+  display: block;
   margin-bottom: 6px;
-}
-
-.agent-field-head label {
   font-size: var(--fs-body);
   font-weight: 500;
-}
-
-.agent-field-note {
-  overflow: hidden;
-  color: var(--muted-foreground);
-  font-size: var(--fs-small);
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .agent-textarea {
@@ -511,7 +495,6 @@
   gap: 16px;
   min-height: 44px;
   margin-top: 6px;
-  border-bottom: 1px solid var(--border);
   font-size: var(--fs-body);
 }
 
@@ -529,6 +512,85 @@
 
 .agent-select {
   width: 132px;
+}
+
+.agent-version {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agent-version-code {
+  overflow: hidden;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-version-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  white-space: nowrap;
+}
+
+.agent-version-status.outdated {
+  color: var(--chart-2);
+}
+
+.agent-update-btn {
+  height: 26px;
+  padding: 0 8px;
+  font-size: var(--fs-small);
+}
+
+/* --- Common (general tab) --- */
+
+.common-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  min-height: 44px;
+  margin-top: 6px;
+  font-size: var(--fs-body);
+}
+
+.common-row-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.common-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.common-input {
+  width: 260px;
+  height: 28px;
+  padding: 0 8px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-body);
+  box-shadow: none;
+}
+
+.common-save-indicator {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+
+.common-saved {
+  color: var(--chart-2);
 }
 
 .agent-save {

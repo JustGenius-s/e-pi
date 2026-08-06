@@ -24,12 +24,14 @@ import type {
 } from "../../src/types/contracts";
 import { ensureNpmOnPath } from "./npm-path";
 import { getAgentConfig, saveAgentConfig } from "./services/agent-config-service";
+import { resolveDefaultCwd, setDefaultCwd } from "./services/app-settings-service";
 import { CommandService } from "./services/command-service";
 import { debugLog, resetDebugLog } from "./services/debug-log";
 import { FileService } from "./services/file-service";
 import { GitService } from "./services/git-service";
 import { ModelService } from "./services/model-service";
 import { PackageService } from "./services/package-service";
+import { checkPiUpdate } from "./services/pi-update-service";
 import { PiRuntime } from "./services/pi-runtime";
 import { SessionService } from "./services/session-service";
 import { SideTerminalService } from "./services/side-terminal-service";
@@ -84,13 +86,26 @@ const IMAGE_MIME: Record<string, string> = {
 };
 
 function registerHandlers(): void {
-  ipcMain.handle("app:get-info", () => ({
+  ipcMain.handle("app:get-info", async () => ({
     platform: process.platform,
     arch: process.arch,
     appVersion: app.getVersion(),
     piVersion: PI_VERSION,
-    defaultCwd: app.getPath("home"),
+    defaultCwd: await resolveDefaultCwd(),
   }));
+
+  ipcMain.handle("app:set-default-cwd", async (_event, cwd: string) => {
+    await setDefaultCwd(cwd);
+    return {
+      platform: process.platform,
+      arch: process.arch,
+      appVersion: app.getVersion(),
+      piVersion: PI_VERSION,
+      defaultCwd: await resolveDefaultCwd(),
+    };
+  });
+
+  ipcMain.handle("app:check-pi-update", () => checkPiUpdate());
 
   // The renderer owns the theme choice (CSS variables + persistence); this
   // keeps native chrome (macOS traffic lights, scrollbars) in step with it.

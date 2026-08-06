@@ -23,6 +23,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useImeComposition } from "../../hooks/useImeComposition";
 import { sessionTitle } from "../../lib/format";
 import type { AppInfo, SessionSummary } from "../../types/contracts";
+import { CommonSettings } from "./CommonSettings";
 import { FontSettings } from "./FontSettings";
 import { ModelSettings } from "./ModelSettings";
 import { PiAgentSettings } from "./PiAgentSettings";
@@ -72,6 +73,8 @@ interface AppDialogsProps {
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
   appInfo?: AppInfo;
+  /** Called when E-Pi-level settings (e.g. default folder) changed. */
+  onAppInfoChange: () => void;
 }
 
 export function AppDialogs({
@@ -86,6 +89,7 @@ export function AppDialogs({
   settingsOpen,
   onSettingsOpenChange,
   appInfo,
+  onAppInfoChange,
 }: AppDialogsProps) {
   return (
     <>
@@ -147,17 +151,8 @@ export function AppDialogs({
               <FontSettings />
             </TabsContent>
             <TabsContent value="general">
-              <div className="settings-summary">
-                <div>
-                  <span>Pi version</span>
-                  <strong>{appInfo?.piVersion || "-"}</strong>
-                </div>
-                <div>
-                  <span>Default folder</span>
-                  <strong title={appInfo?.defaultCwd}>{appInfo?.defaultCwd || "-"}</strong>
-                </div>
-              </div>
-              <PiAgentSettings active={settingsOpen} />
+              <PiAgentSettings active={settingsOpen} piVersion={appInfo?.piVersion} />
+              <CommonSettings defaultCwd={appInfo?.defaultCwd} onChanged={onAppInfoChange} />
             </TabsContent>
           </Tabs>
         </DialogContent>
