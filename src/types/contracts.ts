@@ -484,6 +484,10 @@ export interface EPiApi {
     fetchModels(request: FetchModelsRequest): Promise<CustomModelDefinition[]>;
     onLoginEvent(listener: (event: ModelLoginEvent) => void): () => void;
   };
+  notifications: {
+    /** A task-completion banner was clicked; activate the given session. */
+    onOpenSession(listener: (sessionPath: string) => void): () => void;
+  };
   agent: {
     getConfig(): Promise<PiAgentConfig>;
     /** Persist the config and restart every live session so it takes effect. */

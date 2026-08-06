@@ -8,7 +8,7 @@
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
+    "dev": "node scripts/fix-dev-bundle-id.mjs && electron-vite dev",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
     "format": "oxfmt .",
