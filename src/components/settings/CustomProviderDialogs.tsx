@@ -185,9 +185,7 @@ export function CustomProviderDialogs({
                 </label>
                 <div className="custom-field-row">
                   <label className="custom-field">
-                    <span>
-                      API type <em className="custom-required">*</em>
-                    </span>
+                    <span>API type</span>
                     <Select value={draft.api} onValueChange={(api) => updateDraft({ api })}>
                       <SelectTrigger aria-label="API type">
                         <SelectValue placeholder="API type" />
@@ -202,9 +200,7 @@ export function CustomProviderDialogs({
                     </Select>
                   </label>
                   <label className="custom-field">
-                    <span>
-                      Base URL <em className="custom-required">*</em>
-                    </span>
+                    <span>Base URL</span>
                     <Input
                       value={draft.baseUrl}
                       placeholder="https://api.example.com/v1"

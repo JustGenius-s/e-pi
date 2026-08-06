@@ -728,11 +728,6 @@
   font-weight: 400;
 }
 
-/* Required-field marker. */
-.custom-required {
-  color: var(--destructive);
-  font-style: normal;
-}
 
 .custom-field-row {
   display: grid;
