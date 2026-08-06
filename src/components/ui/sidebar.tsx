@@ -24,7 +24,37 @@ const SIDEBAR_WIDTH_DEFAULT = 320;
 // key so left/right widths don't clobber each other.
 const SIDEBAR_WIDTH_STORAGE_KEY = "sidebar-width-v2";
 
+/**
+ * Smallest main-area width the layout guarantees (px). Kept 24px wider than
+ * .composer-shell's min-width in workspace.css (400px) so at the minimum the
+ * composer still sits centered with its usual 12px side margins instead of
+ * touching the panel edges.
+ */
+const MIN_MAIN_WIDTH = 424;
+
+/**
+ * Live width of each side, shared across both SidebarProviders so dragging
+ * one rail can leave room for the other side plus the main area. Kept in a
+ * module variable (not context) because the two providers are siblings and
+ * drags mutate widths without re-rendering.
+ */
+const liveWidths: Partial<Record<SidebarSide, number>> = {};
+
 const clampSidebarWidth = (width: number, max: number) => Math.min(max, Math.max(SIDEBAR_WIDTH_MIN, width));
+
+/**
+ * Max width a side may be dragged to on this window: the configured cap,
+ * bounded by what still leaves MIN_MAIN_WIDTH for the main area and the
+ * other side's current width. Prevents the tool panel from pushing the
+ * terminal/composer out of the window when both panels are open.
+ */
+function dragMaxFor(side: SidebarSide): number {
+  const other = side === "right" ? "left" : "right";
+  const configuredMax = side === "right" ? SIDEBAR_WIDTH_RIGHT_MAX : SIDEBAR_WIDTH_MAX;
+  const otherWidth = liveWidths[other] ?? 0;
+  const windowMax = Math.max(SIDEBAR_WIDTH_MIN, window.innerWidth - MIN_MAIN_WIDTH - otherWidth);
+  return Math.min(configuredMax, windowMax);
+}
 
 function readSavedSidebarWidth(storageKey: string, max: number): number {
   try {
@@ -94,16 +124,19 @@ function SidebarProvider({
   const toggleSidebar = React.useCallback(() => setOpen(!open), [open, setOpen]);
   const state: SidebarState = open ? "expanded" : "collapsed";
 
-  const [width, setWidth] = React.useState(() =>
-    readSavedSidebarWidth(storageKey, side === "right" ? SIDEBAR_WIDTH_RIGHT_MAX : SIDEBAR_WIDTH_MAX),
-  );
+  const [width, setWidth] = React.useState(() => {
+    const initial = readSavedSidebarWidth(storageKey, side === "right" ? SIDEBAR_WIDTH_RIGHT_MAX : SIDEBAR_WIDTH_MAX);
+    liveWidths[side] = initial;
+    return initial;
+  });
   const widthRef = React.useRef(width);
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const getWidth = React.useCallback(() => widthRef.current, []);
   const applyWidth = React.useCallback(
     (next: number, persist: boolean) => {
-      const clamped = clampSidebarWidth(next, side === "right" ? SIDEBAR_WIDTH_RIGHT_MAX : SIDEBAR_WIDTH_MAX);
+      const clamped = clampSidebarWidth(next, dragMaxFor(side));
       widthRef.current = clamped;
+      liveWidths[side] = clamped;
       // Live drags mutate the CSS variable directly so React never re-renders
       // per pointermove (the wrapper re-renders often; a stale style prop would
       // otherwise reset the width mid-drag, but React only writes style props

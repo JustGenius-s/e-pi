@@ -110,7 +110,18 @@ export function Composer({
   const { onCompositionStart, onCompositionEnd, isComposing } = useImeComposition();
   const busy = status === "starting" || status === "stopping" || submitting;
   const hasContent = Boolean(text.trim() || files.length > 0 || selectedSkill);
-  const showStop = status === "running" && activity === "busy";
+  // The bridge reports busy/idle through a sidecar file watched by the main
+  // process. No data-stream fallback here: pi's TUI also writes output while
+  // idle (status line refreshes, cursor), so stream activity cannot
+  // distinguish "a task is running" from "the terminal is alive" — it would
+  // flip the button to Stop for no reason.
+  const taskActive = status === "running" && activity === "busy";
+  // The button is context-driven, not task-state-driven: while a task runs
+  // the user may still type and queue another message, so any input content
+  // shows Send; an empty input shows Stop (interrupt the running task). When
+  // idle, Send is shown but disabled until there is content.
+  const showStop = taskActive && !hasContent;
+  const sendEnabled = !disabled && !busy && hasContent;
   const availableProviders =
     models?.providers
       .map((provider) => ({
@@ -245,9 +256,13 @@ export function Composer({
     setSubmitting(true);
     const submitted = await onSubmit(messages).finally(() => setSubmitting(false));
     if (!submitted) return;
+    // Normal send behavior: clear the input. Keep the focus in the box so
+    // the user can immediately type the next message (empty input while a
+    // task runs also flips the button back to Stop).
     setText("");
     setFiles([]);
     setSelectedSkill(undefined);
+    textareaRef.current?.focus();
   };
 
   const changeModel = async (value: string) => {
@@ -525,7 +540,7 @@ export function Composer({
             size="sm"
             data-action={showStop ? "stop" : "send"}
             onClick={showStop ? onInterrupt : () => void submit()}
-            disabled={!showStop && (!hasContent || disabled || busy)}
+            disabled={!showStop && !sendEnabled}
             aria-label={showStop ? "Interrupt Pi" : "Send message"}
             title={showStop ? "Stop" : "Send"}
           >

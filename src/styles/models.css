@@ -644,12 +644,19 @@
 .custom-provider-dialog {
   width: min(620px, calc(100vw - 32px));
   max-width: 620px;
+  /* Long model lists must not push the dialog past the screen: cap the
+     height and let the form scroll internally. Grid rows: header (auto),
+     form (minmax(0,1fr) so it shrinks and scrolls), footer (auto). */
+  max-height: min(86vh, 720px);
+  grid-template-rows: auto minmax(0, 1fr) auto;
 }
 
 .custom-provider-form {
   display: flex;
   flex-direction: column;
   gap: 11px;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .custom-field {
@@ -695,6 +702,11 @@
   font-weight: 540;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+.custom-models-actions {
+  display: flex;
+  gap: 6px;
 }
 
 .custom-models-empty {

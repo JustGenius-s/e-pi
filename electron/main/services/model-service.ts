@@ -6,9 +6,11 @@ import { dirname, join } from "node:path";
 import { getAgentDir, ModelRuntime, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 import type {
+  CustomModelDefinition,
   CustomProviderConfig,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
+  FetchModelsRequest,
   ModelAuthType,
   ModelLoginEvent,
   ModelLoginRequest,
@@ -369,5 +371,43 @@ export class ModelService {
       defaultModel: defaultProvider && defaultModel ? { provider: defaultProvider, id: defaultModel } : undefined,
       error: runtime.getError(),
     };
+  }
+
+  /**
+   * Fetch the model list from an OpenAI-compatible `/models` endpoint.
+   * Tries `<baseUrl>/models` first; when the base URL does not already end
+   * in `/v1`, falls back to `<baseUrl>/v1/models` (the OpenAI layout).
+   */
+  async fetchModels(request: FetchModelsRequest): Promise<CustomModelDefinition[]> {
+    const base = request.baseUrl.trim().replace(/\/+$/, "");
+    if (!base) throw new Error("Base URL is required");
+    const candidates = [`${base}/models`];
+    if (!/\/v1$/i.test(base)) candidates.push(`${base}/v1/models`);
+    let lastError: unknown;
+    for (const url of candidates) {
+      try {
+        const response = await fetch(url, {
+          headers: {
+            ...(request.apiKey ? { Authorization: `Bearer ${request.apiKey}` } : {}),
+            Accept: "application/json",
+          },
+          signal: AbortSignal.timeout(15_000),
+        });
+        if (!response.ok) {
+          lastError = new Error(`HTTP ${response.status} ${response.statusText} from ${url}`);
+          continue;
+        }
+        const payload = (await response.json()) as { data?: Array<{ id?: unknown }> };
+        if (!Array.isArray(payload.data)) {
+          throw new Error(`Unexpected response shape from ${url}`);
+        }
+        return payload.data
+          .filter((item): item is { id: string } => typeof item.id === "string" && item.id.length > 0)
+          .map((item) => ({ id: item.id }));
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError instanceof Error ? lastError : new Error("Failed to fetch models");
   }
 }

@@ -172,10 +172,17 @@ export function ModelSettings({ active }: ModelSettingsProps) {
 
   const saveCustom = async () => {
     if (!customDraft) return;
+    // Drop model rows that have no id (user clicked Add but never typed
+    // one, or rows left empty around a Fetch merge) so saving never fails
+    // with "Every model needs an ID.".
+    const cleanDraft = {
+      ...customDraft,
+      models: customDraft.models.filter((model) => model.id.trim().length > 0),
+    };
     setBusyCustom(true);
     setError(undefined);
     try {
-      await window.ePi.models.customSave({ provider: customDraft });
+      await window.ePi.models.customSave({ provider: cleanDraft });
       setCustomDraft(undefined);
       await loadState();
     } catch (reason) {

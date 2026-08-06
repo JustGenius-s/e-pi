@@ -182,6 +182,11 @@
      popup appears to emerge from behind the input box. */
   z-index: 30;
   width: min(820px, calc(100% - 24px));
+  /* Never let the action bar (attach / skill / send) get squeezed into a
+     jumbled layout when the session sidebar and tool panel are both open on
+     a narrow window. Below this the shell overflows instead of compressing.
+     Keep in sync with MIN_MAIN_WIDTH in sidebar.tsx. */
+  min-width: 400px;
   margin: 8px auto 12px;
   overflow: hidden;
   border: 1px solid var(--border);

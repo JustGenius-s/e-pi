@@ -286,6 +286,12 @@ export interface CustomProviderRequest {
   provider: CustomProviderConfig;
 }
 
+/** Fetch the model list from an OpenAI-compatible /models endpoint. */
+export interface FetchModelsRequest {
+  baseUrl: string;
+  apiKey?: string;
+}
+
 export interface CustomProviderRemoveRequest {
   providerId: string;
 }
@@ -474,6 +480,8 @@ export interface EPiApi {
     customList(): Promise<CustomProviderConfig[]>;
     customSave(request: CustomProviderRequest): Promise<CustomProviderConfig[]>;
     customRemove(request: CustomProviderRemoveRequest): Promise<CustomProviderConfig[]>;
+    /** Fetch the model list from an OpenAI-compatible /models endpoint. */
+    fetchModels(request: FetchModelsRequest): Promise<CustomModelDefinition[]>;
     onLoginEvent(listener: (event: ModelLoginEvent) => void): () => void;
   };
   agent: {
