@@ -24,6 +24,23 @@
   font-size: var(--fs-small);
 }
 
+/* Branch info stacks vertically: local branch on top, remote below. */
+.git-review-branches {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.git-review-branch,
+.git-review-upstream {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 5px;
+}
+
 .git-review-actions {
   display: flex;
   align-items: center;
@@ -59,6 +76,7 @@
   font: inherit;
   font-size: var(--fs-body);
   font-weight: 550;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -355,8 +373,42 @@
      expanded diffs don't each get their own scrollbar. */
   --background-stronger: color-mix(in oklch, var(--background) 90%, var(--foreground));
   --diff-bg: color-mix(in oklch, var(--background) 92%, var(--foreground));
+  position: relative;
   min-height: 0;
   background: var(--diff-bg);
+}
+
+/* Floating minimize button in the top-right corner of an expanded diff. */
+.git-diff-minimize {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted-foreground);
+  background: color-mix(in oklch, var(--card) 88%, transparent);
+  cursor: pointer;
+  opacity: 0.45;
+  transition:
+    opacity 120ms ease,
+    background-color 120ms ease,
+    color 120ms ease;
+}
+
+.git-diff-wrap:hover .git-diff-minimize,
+.git-diff-minimize:focus-visible {
+  opacity: 1;
+}
+
+.git-diff-minimize:hover {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
 }
 
 .git-diff-pierre {
@@ -430,6 +482,7 @@
   justify-content: flex-start;
   gap: 7px;
   padding: 0 12px;
+  white-space: nowrap;
   font-size: var(--fs-body);
   color: var(--foreground);
   border-radius: 6px;

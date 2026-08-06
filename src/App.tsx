@@ -1,5 +1,5 @@
 import { Terminal, X } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { PackagePanel } from "@/components/panels/PackagePanel";
@@ -88,6 +88,15 @@ export function App() {
     setActivePath(session.path);
     void activate(session.path);
   };
+
+  // Clicking a task-completion banner opens that session in the UI.
+  useEffect(() => {
+    return window.ePi.notifications.onOpenSession((sessionPath) => {
+      const session = sessions.find((candidate) => candidate.path === sessionPath);
+      if (!session) return;
+      selectSession(session);
+    });
+  });
 
   const renameSession = async (session: SessionSummary) => {
     setRenameTarget(session);

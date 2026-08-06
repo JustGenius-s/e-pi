@@ -130,6 +130,9 @@ const api: EPiApi = {
       ipcRenderer.invoke("models:fetch-models", request) as Promise<CustomModelDefinition[]>,
     onLoginEvent: (listener: (event: ModelLoginEvent) => void) => subscribe("models:login-event", listener),
   },
+  notifications: {
+    onOpenSession: (listener: (sessionPath: string) => void) => subscribe("notifications:open-session", listener),
+  },
   agent: {
     getConfig: () => ipcRenderer.invoke("agent:get-config") as Promise<PiAgentConfig>,
     saveConfig: (request: AgentConfigSaveRequest) =>

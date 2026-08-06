@@ -37,6 +37,7 @@ import { debugLog, resetDebugLog } from "./services/debug-log";
 import { FileService } from "./services/file-service";
 import { GitService } from "./services/git-service";
 import { ModelService } from "./services/model-service";
+import { TaskNotificationService } from "./services/notification-service";
 import { PackageService } from "./services/package-service";
 import { checkPiUpdate } from "./services/pi-update-service";
 import { PiRuntime } from "./services/pi-runtime";
@@ -45,6 +46,9 @@ import { SideTerminalService } from "./services/side-terminal-service";
 import { SkillService } from "./services/skill-service";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
+// Required for native notifications on Windows (toast activation identity;
+// must match the electron-builder appId).
+app.setAppUserModelId("works.earendil.e-pi");
 const runtime = new PiRuntime();
 const sessions = new SessionService();
 const packages = new PackageService();
@@ -425,6 +429,48 @@ function createWindow(): void {
 
 runtime.onGlobalData((sessionPath, data) => sendToRenderer("runtime:data", { sessionPath, data }));
 runtime.onState((state) => sendToRenderer("runtime:state", state));
+
+// Task-completion banners: busy -> idle on a session raises a native
+// notification when it finished in the background.
+let notificationHintShown = false;
+const notifications = new TaskNotificationService(
+  (sessionPath) => {
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+    // Ask the renderer to open this session so the banner click lands on
+    // the conversation that finished.
+    sendToRenderer("notifications:open-session", sessionPath);
+  },
+  () => {
+    // macOS refuses banners without notification permission and never asks
+    // twice — guide the user to the system settings pane, once per run.
+    if (notificationHintShown) return;
+    notificationHintShown = true;
+    void dialog
+      .showMessageBox({
+        type: "info",
+        title: "Notifications are off",
+        message: "E-Pi wants to show a notification when a task finishes.",
+        detail: app.isPackaged
+          ? "Allow notifications for E-Pi in System Settings, then completed tasks will show a banner."
+          : "Allow notifications for \"Electron\" in System Settings (the dev build shares that app identity; the packaged E-Pi app has its own entry).",
+        buttons: ["Open Notification Settings", "Not now"],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      .then(({ response }) => {
+        if (response === 0) void shell.openExternal("x-apple.systempreferences:com.apple.preference.notifications");
+      });
+  },
+);
+runtime.onState((state) => {
+  notifications.observe(state, {
+    activeSessionPath: runtime.activeSessionPath,
+    windowFocused: mainWindow?.isFocused() ?? false,
+  });
+});
 packages.setProgressListener((progress) => sendToRenderer("packages:progress", progress));
 
 const hasLock = app.requestSingleInstanceLock();
