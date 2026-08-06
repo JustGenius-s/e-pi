@@ -177,7 +177,7 @@
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 4px 6px;
 }
 
 .git-file {
@@ -186,13 +186,14 @@
   gap: 4px;
   min-height: 30px;
   padding: 0 10px 0 4px;
+  border-radius: 6px;
   font-size: var(--fs-medium);
   cursor: pointer;
   user-select: none;
 }
 
 .git-file:hover {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  background: var(--accent);
 }
 
 .git-file.expanded {
@@ -527,7 +528,7 @@
 }
 
 .git-tree-card-item:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: var(--accent);
 }
 
 .git-tree-card-status {
@@ -602,7 +603,7 @@
 
 .tool-tab:hover {
   color: var(--foreground);
-  background: color-mix(in oklch, var(--foreground) 6%, transparent);
+  background: var(--accent);
 }
 
 .tool-tab.active {
@@ -679,7 +680,7 @@
 
 .tool-tab-add:hover {
   color: var(--foreground);
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: var(--accent);
 }
 
 /* --- View stack: all tabs stay mounted, inactive ones hidden --- */
@@ -730,7 +731,7 @@
 }
 
 .tool-launch-item:hover {
-  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+  background: var(--accent);
 }
 
 .tool-launch-item > svg {
@@ -750,7 +751,7 @@
   min-height: 0;
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 4px 6px;
 }
 
 .tool-file-row {
@@ -760,6 +761,7 @@
   align-items: center;
   gap: 5px;
   padding-right: 8px;
+  border-radius: 6px;
   color: var(--foreground);
   border: 0;
   background: transparent;
@@ -770,8 +772,9 @@
   user-select: none;
 }
 
+/* 与 shadcn 菜单悬浮高亮一致（dark: --accent = oklch(0.32 0 0)）。 */
 .tool-file-row:hover {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  background: var(--accent);
 }
 
 .tool-file-row.selected {
@@ -846,7 +849,7 @@
 }
 
 .tool-file-open-with-trigger:hover {
-  background: color-mix(in oklch, var(--foreground) 5%, transparent);
+  background: var(--accent);
   color: var(--foreground);
 }
 
