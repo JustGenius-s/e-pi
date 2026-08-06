@@ -1,104 +1,184 @@
+<p align="center">
+  <img src="public/e-pi-mark.svg" width="110" alt="E-Pi logo" />
+</p>
+
 # E-Pi
 
-> E-Pi is a focused desktop shell for Pi sessions, packages, and terminal workflows.
+> A focused desktop shell for [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent) sessions, packages, and terminal workflows.
 
-E-Pi 是一个基于 Electron 的桌面应用，为 [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent) 提供原生桌面体验。它把 Pi 的会话、包管理、技能管理与一个功能完整的终端集成在同一个窗口里。
+E-Pi is an Electron desktop app that brings the [Pi Coding Agent](https://github.com/earendil-works/pi-coding-agent) into a native desktop experience. It combines Pi sessions, package and skill management, Git workflows, and a full-featured terminal into a single window — so you can drive Pi, review its work, and manage your project without ever leaving the app.
 
-## 特性
+![E-Pi main window](public/e-pi.png)
 
-- **多会话并行** — 每个会话独立运行一个 Pi 进程，按项目分组，互不干扰
-- **终端集成** — 内嵌 xterm.js 终端（WebGL 渲染加速），与 Pi 会话同屏协作
-- **代码审查** — 基于 [Pierre diffs](https://www.npmjs.com/package/@pierre/diffs) 引擎渲染 diff，附带 git numstat 行数统计
-- **技能管理** — 可视化查看、管理 Pi 技能（Skills）
-- **包管理面板** — 浏览与管理 Pi 包（Packages）
-- **模型设置** — 按会话切换模型、配置模型参数
-- **会话统计** — 实时展示输出速度（tok/s）、token 用量等运行时指标
-- **图片粘贴** — 输入框直接粘贴图片
-- **点阵状态指示** — 侧边栏用 3×3 点阵 + Braille spinner 展示各会话的 agent 工作状态
-- **现代 UI** — React 19 + Tailwind CSS 4 + Radix UI 组件
+## Features
 
-## 技术栈
+- **Parallel multi-session workflows** — every session runs its own isolated Pi process. Sessions are grouped by project in the sidebar, run concurrently without interfering with each other, and switch instantly.
+- **Native desktop terminal** — an embedded [xterm.js](https://xtermjs.org/) terminal with WebGL rendering shows Pi's own TUI live. Additional side terminals (node-pty) can be spawned side-by-side for shell work next to your agent.
+- **Git code review** — a full review panel built on the [Pierre diffs](https://www.npmjs.com/package/@pierre/diffs) engine. See per-file status, line counts (git numstat), stage/unstage changes, generate commit messages with AI, then commit, push, or pull. The repo is watched automatically, so external edits refresh the review in real time.
+- **AI commit messages** — let Pi read the diff and draft a concise, conventional commit message for you.
+- **Skill management** — browse, create, read, enable/disable, and remove Pi skills from a visual panel. Add external skill directories and see user/project/path scopes at a glance.
+- **Package management** — a built-in package panel to browse installed Pi packages, search the npm registry, check for updates, view download stats, and install/update/remove packages (npm or git sources) — no CLI needed.
+- **Model settings** — manage providers and models visually: sign in with an API key or OAuth, switch the default model per session, and add custom OpenAI-compatible providers with your own base URL and model definitions.
+- **Live session stats** — a context-usage ring in the composer, plus per-session token usage, cache hit rate, output speed (tok/s), and cost. All reported by a bridge extension that runs inside each Pi process.
+- **Image & file attachments** — paste images straight into the composer, or attach files from disk; attachments are delivered to Pi with proper mime types via a custom `e-pi-attach` command.
+- **Slash-command autocomplete** — type `/` to see Pi built-ins, prompt templates, and your skills with argument hints, just like the TUI.
+- **Skill shortcut in the composer** — pick a skill from the "+" menu and send a prompt through it (`/skill:<name>`).
+- **Thinking-level control** — set the reasoning effort per session with the `e-pi-thinking` command.
+- **Status dot-matrix** — the sidebar shows each session's agent state on a 3×3 dot grid with a Braille spinner, so background work is visible across projects at a glance.
+- **File tree panel** — browse project files and peek into them without leaving the app.
+- **Modern UI** — React 19, Tailwind CSS 4, and Radix UI with light/dark themes and per-module font sizing.
 
-| 层       | 技术                                                                                                                  |
-| -------- | --------------------------------------------------------------------------------------------------------------------- |
-| 桌面框架 | Electron 43 + electron-vite                                                                                           |
-| 前端     | React 19、TypeScript、Tailwind CSS 4、Radix UI                                                                        |
-| 终端     | xterm.js + WebGL 渲染                                                                                                 |
-| 核心     | [@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent)（pi 本体）、node-pty |
-| 测试     | Vitest                                                                                                                |
-| 质量     | oxlint、oxfmt、Husky + lint-staged                                                                                    |
+## Tech Stack
 
-## 快速开始
+| Layer | Technology |
+| ----- | ---------- |
+| Desktop | Electron 43 + electron-vite |
+| Frontend | React 19, TypeScript, Tailwind CSS 4, Radix UI |
+| Terminal | xterm.js + WebGL renderer |
+| Core | [@earendil-works/pi-coding-agent](https://www.npmjs.com/package/@earendil-works/pi-coding-agent) (Pi itself), node-pty |
+| Diffs | [@pierre/diffs](https://www.npmjs.com/package/@pierre/diffs) |
+| Testing | Vitest |
+| Quality | oxlint, oxfmt, Husky + lint-staged |
 
-### 环境要求
+## Installation
 
-- Node.js 20+（建议 22 LTS）
+E-Pi ships prebuilt installers for both platforms from the [Releases](https://github.com/JustGenius-s/e-pi/releases) page — no Node.js or pnpm required.
+
+### macOS
+
+1. Download `E-Pi-<version>-arm64.dmg` (Apple Silicon) or `E-Pi-<version>-x64.dmg` (Intel) from Releases.
+2. Open the DMG and drag **E-Pi** into your Applications folder.
+3. If you see an error like *"E-Pi can't be opened because Apple cannot check it for malicious software"*, use one of the bypass methods below.
+
+> Prefer the `.zip` artifact if your org blocks DMGs; it contains the same `.app` bundle.
+
+#### Running unsigned builds
+
+Release builds are not signed or notarized, so macOS Gatekeeper blocks the first launch. The recommended fix is to clear the quarantine attribute once in Terminal:
+
+> **Clear the quarantine attribute (recommended)**
+>
+> Run this in Terminal — it removes the "downloaded from the internet" flag so the app opens normally afterwards:
+>
+> ```bash
+> xattr -cr /Applications/E-Pi.app
+> ```
+>
+> Note: every fresh download gets quarantined again, so repeat the command for each new build.
+
+One-time alternatives: right-click **E-Pi** → **Open** → **Open**, or **System Settings → Privacy & Security → Open Anyway**. Avoid `sudo spctl --master-disable` (disables Gatekeeper globally).
+
+### Windows
+
+1. Download `E-Pi-Setup-<version>.exe` (NSIS installer) or `E-Pi-<version>-portable.exe` (portable build) from Releases.
+2. **NSIS installer** — run it and pick an install directory; you get Start Menu and desktop shortcuts plus an uninstall entry.
+3. **Portable** — double-click to run directly, no installation required.
+
+## Building from Source
+
+### Prerequisites
+
+- Node.js 20+ (Node 22 LTS recommended)
 - pnpm 10
 
-### 安装与运行
+### Install & Run (development)
 
 ```bash
-# 安装依赖（postinstall 会自动安装 Electron 与构建依赖）
+# Install dependencies (postinstall fetches Electron and build deps automatically)
 pnpm install
 
-# 启动开发模式（热重载）
+# Start the dev build with hot reload
 pnpm dev
 
-# 或先构建再预览
+# Or build first, then preview the result
 pnpm build
 pnpm start
 ```
 
-### 常用命令
+### Commands
 
-| 命令                                | 说明                           |
-| ----------------------------------- | ------------------------------ |
-| `pnpm dev`                          | 开发模式，热重载               |
-| `pnpm build`                        | 类型检查 + 测试 + 构建         |
-| `pnpm start`                        | 预览已构建的应用               |
-| `pnpm test`                         | 运行 Vitest 测试               |
-| `pnpm lint` / `pnpm lint:fix`       | 代码检查                       |
-| `pnpm format` / `pnpm format:check` | 代码格式化                     |
-| `pnpm typecheck`                    | TypeScript 类型检查            |
-| `pnpm dist:mac`                     | 打包 macOS 安装包（dmg + zip） |
+| Command | Description |
+| ------- | ----------- |
+| `pnpm dev` | Dev mode with hot reload |
+| `pnpm build` | Type check + tests + production build |
+| `pnpm start` | Preview the built app |
+| `pnpm test` | Run Vitest tests |
+| `pnpm lint` / `pnpm lint:fix` | Lint (oxlint) |
+| `pnpm format` / `pnpm format:check` | Format (oxfmt) |
+| `pnpm typecheck` | TypeScript type check |
+| `pnpm fetch:node` | Download the bundled Node sidecar for packaged builds |
+| `pnpm dist:mac` | Package macOS installers (dmg + zip) |
+| `pnpm dist:win` | Package Windows installers (NSIS exe + portable exe) |
 
-## 项目结构
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+| -------- | ------ |
+| `⌘/Ctrl + N` | New session |
+| `⌘/Ctrl + G` | Toggle the tool panel |
+| `⌘/Ctrl + 1/2/3` | Open Review / Files / Terminal tabs |
+| `Esc` | Close a drawer or dialog |
+| `Enter` | Send the composer message |
+| `Shift + Enter` | New line in the composer |
+
+## Project Structure
 
 ```
 e-pi/
-├── electron/            # Electron 主进程与 preload
+├── electron/                 # Electron main process & preload
 │   ├── main/
-│   │   ├── index.ts     # 应用入口
-│   │   └── services/    # pi 运行时、会话、git、模型、包、技能等服务
-│   └── preload/index.ts # 预加载脚本（IPC 桥接）
-├── src/                 # 渲染进程（React）
-│   ├── components/      # 界面组件（Composer、终端、审查、侧边栏等）
-│   ├── styles/          # 模块化 CSS
-│   ├── types/           # 类型定义
-│   └── main.tsx         # React 入口
-├── resources/           # 打包资源（e-pi-bridge.ts）
-├── public/              # 静态资源
-├── test/                # 单元测试
-└── scripts/
+│   │   ├── index.ts          # App entry, window, IPC handlers
+│   │   └── services/         # pi-runtime, sessions, git, models, packages, skills…
+│   └── preload/index.ts      # Preload script (context-isolated IPC bridge)
+├── src/                      # Renderer (React)
+│   ├── components/           # Composer, Terminal, Review, Sidebar, panels…
+│   ├── lib/                  # Helpers (theme, diff, formatting)
+│   ├── styles/               # Modular CSS
+│   ├── types/                # Shared contracts (EPiApi, runtime states…)
+│   └── main.tsx              # React entry
+├── resources/
+│   ├── e-pi-bridge.ts        # Pi extension loaded into every session
+│   └── node/                 # Bundled Node sidecar (see scripts/fetch-node.mjs)
+├── public/                   # Static assets
+├── scripts/                  # Build tooling (fetch-node…)
+├── test/                     # Unit tests
+└── src/types/contracts.ts    # Typed contract between renderer and main
 ```
 
-## 开发
+## How It Works
 
-核心架构：Electron 主进程通过 `pi-runtime` 服务管理多个 Pi 进程（每会话一个），通过 IPC 与渲染进程通信；渲染进程用 React 渲染会话 UI，并通过 preload 暴露的桥接接口与主进程交互。
+The Electron main process owns a `pi-runtime` service that spawns and supervises one Pi process per session (node-pty based), plus services for Git, models, packages, and skills. The renderer is a React app that talks to these services over a typed, context-isolated IPC bridge (`window.ePi`) exposed by the preload script.
 
-### 运行测试
+Each Pi session additionally loads `resources/e-pi-bridge.ts` — a small Pi extension that suppresses the in-app TUI, wires a custom editor, and reports runtime telemetry (model, context usage, token totals, cache hit rate, output speed) to a JSON sidecar the app reads live. It also provides the custom `e-pi-thinking` and `e-pi-attach` commands.
+
+For packaged builds, `pnpm fetch:node` downloads a standalone Node binary into `resources/node` and ships it as a sidecar, so package installs work even when the user has no Node/npm on their PATH.
+
+### Development
 
 ```bash
+# Run the test suite
 pnpm test
 ```
 
-## 打包发布
+## Packaging Releases
+
+Both scripts run type checks and tests first, then invoke [electron-builder](https://www.electron.build/):
 
 ```bash
-# macOS（dmg + zip）
+# macOS (dmg + zip) — must run on macOS
+dist/  E-Pi-<version>-arm64.dmg, E-Pi-<version>-x64.dmg, E-Pi-<version>-mac.zip
 pnpm dist:mac
+
+# Windows (NSIS installer + portable exe) — must run on Windows
+# (or in CI; cross-building Windows targets from macOS/Linux requires Wine)
+dist/  E-Pi-Setup-<version>.exe, E-Pi-<version>-portable.exe
+pnpm dist:win
 ```
+
+The Windows installer is a standard NSIS setup with directory selection, Start Menu and desktop shortcuts, and an uninstall entry; the portable exe runs standalone without installation.
+
+For multi-platform releases, the simplest approach is a CI workflow that runs `pnpm dist:mac` on a macOS runner and `pnpm dist:win` on a Windows runner, then uploads the artifacts to a GitHub Release.
 
 ## License
 
-暂未指定（private 项目，如需开源请补充许可证）。
+[MIT](LICENSE) © 2026 JustGenius

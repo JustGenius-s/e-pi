@@ -4,6 +4,7 @@
   "private": true,
   "description": "E-Pi is a focused desktop shell for Pi sessions, packages, and terminal workflows.",
   "author": "JustGenius",
+  "license": "MIT",
   "type": "module",
   "main": "out/main/index.js",
   "scripts": {
@@ -16,6 +17,7 @@
     "build": "npm run typecheck && npm run test && electron-vite build",
     "fetch:node": "node scripts/fetch-node.mjs",
     "dist:mac": "npm run fetch:node && npm run build && electron-builder --mac",
+    "dist:win": "npm run fetch:node && npm run build && electron-builder --win",
     "postinstall": "install-electron --no && electron-builder install-app-deps",
     "lint": "oxlint",
     "lint:fix": "oxlint --fix",
@@ -111,6 +113,20 @@
         "dmg",
         "zip"
       ]
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
     }
   }
 }

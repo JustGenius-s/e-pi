@@ -5,6 +5,7 @@ release/
 resources/node/
 build/*
 !build/icon.icns
+!build/icon.ico
 !build/icon.iconset/
 !build/icon.iconset/**
 *.log
