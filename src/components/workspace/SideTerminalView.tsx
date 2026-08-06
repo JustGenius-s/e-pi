@@ -4,6 +4,7 @@ import { memo, useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
+import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 
 interface SideTerminalViewProps {
@@ -31,8 +32,6 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
     let resizeObserver: ResizeObserver | undefined;
     let fitTimer: number | undefined;
     let restoreGeneration = 0;
-    let restoreFrame1: number | undefined;
-    let restoreFrame2: number | undefined;
     let unsubscribeAppearance: (() => void) | undefined;
 
     const start = async () => {
@@ -63,43 +62,31 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       terminal.open(hostRef.current);
       terminalRef.current = terminal;
 
-      const cancelPendingRestore = () => {
-        restoreGeneration += 1;
-        if (restoreFrame1 !== undefined) {
-          cancelAnimationFrame(restoreFrame1);
-          restoreFrame1 = undefined;
-        }
-        if (restoreFrame2 !== undefined) {
-          cancelAnimationFrame(restoreFrame2);
-          restoreFrame2 = undefined;
-        }
-      };
       const fitTerminal = () => {
         try {
           const dims = fit.proposeDimensions();
           if (!dims || (dims.cols === terminal!.cols && dims.rows === terminal!.rows)) return;
           window.clearTimeout(fitTimer);
           fitTimer = undefined;
-          cancelPendingRestore();
+          // Bump the generation so any in-flight viewport restore from a
+          // previous refit aborts at its next frame check.
+          restoreGeneration += 1;
 
           // xterm reflows scrollback when its column count changes. Preserve
           // the logical line rather than the pixel offset, then wait for its
-          // queued viewport sync before restoring it. Without this, a resize
-          // can intermittently clamp the side terminal to the top.
+          // queued viewport sync to settle before restoring it. Without this,
+          // a resize can intermittently clamp the side terminal to the top.
           const wasAtBottom = terminal!.buffer.active.viewportY >= terminal!.buffer.active.baseY;
           const topLine = terminal!.buffer.active.viewportY;
           fit.fit();
           if (id) window.ePi.sideTerminal.resize(id, { cols: terminal!.cols, rows: terminal!.rows });
 
           const generation = restoreGeneration;
-          restoreFrame1 = requestAnimationFrame(() => {
-            restoreFrame1 = undefined;
-            restoreFrame2 = requestAnimationFrame(() => {
-              restoreFrame2 = undefined;
-              if (disposed || generation !== restoreGeneration) return;
-              if (wasAtBottom) terminal!.scrollToBottom();
-              else if (Math.abs(terminal!.buffer.active.viewportY - topLine) > 5) terminal!.scrollToLine(topLine);
-            });
+          restoreViewportAfterSettle({
+            terminal: terminal!,
+            wasAtBottom,
+            topLine,
+            isStale: () => disposed || generation !== restoreGeneration,
           });
         } catch {
           // Terminal may not be measurable yet.
@@ -134,8 +121,6 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       disposed = true;
       window.clearTimeout(fitTimer);
       restoreGeneration += 1;
-      if (restoreFrame1 !== undefined) cancelAnimationFrame(restoreFrame1);
-      if (restoreFrame2 !== undefined) cancelAnimationFrame(restoreFrame2);
       if (id) window.ePi.sideTerminal.kill(id);
       stopData?.();
       inputDisposable?.dispose();

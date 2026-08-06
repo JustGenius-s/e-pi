@@ -6,30 +6,34 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
+import { appendTerminalReplay } from "../../lib/terminalReplayBuffer";
+import type { TerminalReplayBuffer } from "../../lib/terminalReplayBuffer";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
+import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
 
 interface TerminalPanelProps {
   sessionKey: string;
   /** Focus the terminal while it is interactive (e.g. a trust prompt on a freshly created session). */
   autoFocus?: boolean;
+  /** Fired once when the terminal first receives output for this session (replay or live). */
+  onFirstPaint?: (sessionKey: string) => void;
 }
 
 /**
  * Scrollback per session, kept across terminal unmount/remount (switching to
  * another session destroys the xterm instance). A hidden session keeps
  * accumulating output in the background via the app-lifetime feeder below, so
- * switching back replays exactly what the process printed while hidden.
+ * switching back replays the latest self-contained TUI frame plus subsequent
+ * output. Obsolete full-redraw frames are compacted instead of replayed.
  */
-const MAX_BUFFER_CHARS = 400_000;
-const buffers = new Map<string, string>();
+const buffers = new Map<string, TerminalReplayBuffer>();
 
 export function clearTerminalBuffer(sessionKey: string): void {
   buffers.delete(sessionKey);
 }
 
 function appendTerminalBuffer(sessionKey: string, data: string): void {
-  const next = (buffers.get(sessionKey) ?? "") + data;
-  buffers.set(sessionKey, next.length > MAX_BUFFER_CHARS ? next.slice(-MAX_BUFFER_CHARS) : next);
+  buffers.set(sessionKey, appendTerminalReplay(buffers.get(sessionKey), data));
 }
 
 let feederStarted = false;
@@ -69,13 +73,16 @@ function ensureBufferFeeder(): void {
   window.ePi.runtime.onAnyData((sessionPath, data) => appendTerminalBuffer(sessionPath, data));
 }
 
-export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
+export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitTimerRef = useRef<number | undefined>(undefined);
   const fittedOnceRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
   const isDarkRef = useTerminalTheme(hostRef, terminalRef);
+  // Keep the latest callback without re-running the mount effect.
+  const onFirstPaintRef = useRef(onFirstPaint);
+  onFirstPaintRef.current = onFirstPaint;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -121,19 +128,23 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
      * settles.
      */
     let disposed = false;
+    let painted = false;
+    const markPainted = (): void => {
+      if (painted || disposed) return;
+      painted = true;
+      onFirstPaintRef.current?.(sessionKey);
+    };
     let restoreGeneration = 0;
-    let restoreFrame1: number | undefined;
-    let restoreFrame2: number | undefined;
+    let pendingWrites = 0;
+    let deferredRefit = false;
+    let resizeBarrierQueued = false;
+    let runResizeBarrier: (() => void) | undefined;
+    // Bump the generation so any in-flight viewport restore from a previous
+    // refit aborts at its next frame check. cancelAnimationFrame cannot stop a
+    // callback that is already executing (it would reschedule itself), so the
+    // generation check inside the restore loop is the real guard.
     const cancelPendingRestore = () => {
       restoreGeneration += 1;
-      if (restoreFrame1 !== undefined) {
-        cancelAnimationFrame(restoreFrame1);
-        restoreFrame1 = undefined;
-      }
-      if (restoreFrame2 !== undefined) {
-        cancelAnimationFrame(restoreFrame2);
-        restoreFrame2 = undefined;
-      }
     };
     const fitTerminal = () => {
       const host = hostRef.current;
@@ -149,6 +160,27 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
         return;
       }
       const refit = () => {
+        // xterm parses writes asynchronously. Resizing while a TUI frame is
+        // still queued makes the producer and emulator disagree about cursor
+        // coordinates; the next spinner update can then scroll instead of
+        // replacing its row. Wait until the current write batch is committed.
+        if (pendingWrites > 0) {
+          deferredRefit = true;
+          if (!resizeBarrierQueued) {
+            resizeBarrierQueued = true;
+            // An empty write is an explicit FIFO barrier behind all terminal
+            // data queued so far. This prevents a sustained stream from
+            // starving resize forever while preserving parser ordering.
+            terminal.write("", () => {
+              resizeBarrierQueued = false;
+              if (disposed || !deferredRefit) return;
+              runResizeBarrier?.();
+            });
+          }
+          return;
+        }
+        deferredRefit = false;
+
         // A previous refit may still have a delayed restoration queued. If it
         // runs after this refit, its old line number can move the viewport to
         // the wrong place (including the top) after a second reflow.
@@ -169,26 +201,18 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
         // once per resize pause — one PTY resize, one TUI re-layout.
         window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
         // xterm's resize schedules its own viewport sync on a refresh callback
-        // (viewport.queueSync -> _sync on rAF, with scroll events suppressed
-        // meanwhile). Restoring immediately races that sync and can
-        // occasionally leave the viewport pinned at the top of the
-        // scrollback. Wait two frames for xterm to settle, then restore — and
-        // only when the viewport clearly drifted (clamped to top / bottom),
-        // so a position xterm kept itself is never disturbed. The generation
-        // check is important: cancelAnimationFrame alone cannot prevent a
-        // callback that is already executing from scheduling the next frame.
+        // (viewport.queueSync -> _sync on rAF) that can run AFTER a fixed-delay
+        // restore and clamp the viewport back to the top of the scrollback.
+        // Restore only once the viewport has stopped moving on its own, so the
+        // restore lands after xterm's sync instead of racing it. The stale
+        // check makes a newer refit (or unmount) abort the loop at the next
+        // frame.
         const generation = restoreGeneration;
-        restoreFrame1 = requestAnimationFrame(() => {
-          restoreFrame1 = undefined;
-          restoreFrame2 = requestAnimationFrame(() => {
-            restoreFrame2 = undefined;
-            if (disposed || generation !== restoreGeneration) return;
-            if (wasAtBottom) {
-              terminal.scrollToBottom();
-            } else if (Math.abs(terminal.buffer.active.viewportY - topLine) > 5) {
-              terminal.scrollToLine(topLine);
-            }
-          });
+        restoreViewportAfterSettle({
+          terminal,
+          wasAtBottom,
+          topLine,
+          isStale: () => disposed || generation !== restoreGeneration,
         });
       };
       if (!fittedOnceRef.current) {
@@ -217,13 +241,44 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
       fitTerminal();
     });
 
-    const replay = buffers.get(sessionKey);
-    if (replay) terminal.write(replay);
+    runResizeBarrier = fitTerminal;
 
+    const flushWrite = (data: string, onWritten?: () => void) => {
+      pendingWrites += 1;
+      terminal.write(data, () => {
+        pendingWrites -= 1;
+        onWritten?.();
+      });
+    };
+
+    // Subscribe before taking the replay snapshot. IPC dispatch is ordered, so
+    // the app-lifetime feeder has already appended each event by the time this
+    // listener sees it. Live chunks arriving while xterm parses the snapshot
+    // are queued and appended afterwards, preventing both gaps and reordering.
+    let replaying = true;
+    let queuedLiveData = "";
     const stopData = window.ePi.runtime.onAnyData((path, data) => {
       if (disposed || path !== sessionKey) return;
-      terminal.write(data);
+      markPainted();
+      if (replaying) queuedLiveData += data;
+      else flushWrite(data);
     });
+    const finishReplay = () => {
+      if (disposed) return;
+      replaying = false;
+      if (queuedLiveData) {
+        const queued = queuedLiveData;
+        queuedLiveData = "";
+        flushWrite(queued);
+      }
+    };
+    const replay = buffers.get(sessionKey)?.content;
+    if (replay) {
+      markPainted();
+      flushWrite(replay, finishReplay);
+    } else {
+      finishReplay();
+    }
     const input = terminal.onData((data) => window.ePi.runtime.write(sessionKey, data));
 
     return () => {

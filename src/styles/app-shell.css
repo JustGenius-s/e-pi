@@ -45,7 +45,8 @@
 }
 
 .brand-lockup,
-.topbar-actions {
+.topbar-actions,
+.app-topbar .workspace-title {
   position: relative;
   z-index: 1;
   display: flex;
@@ -106,12 +107,20 @@
   justify-content: flex-end;
   gap: 12px;
   min-width: 0;
-  flex: 1;
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--border);
 }
 
-.topbar-actions .workspace-title {
-  max-width: min(60vw, 640px);
+/* Session title sits on the left, directly after the brand zone, and grows
+   to fill the remaining topbar width (the h2 truncates long titles). No
+   explicit app-region: events pass through to the drag region below, so the
+   whole header stays draggable. */
+.app-topbar .workspace-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  padding-left: 12px;
+  border-bottom: 1px solid var(--border);
 }
 
 .session-status {

@@ -18,7 +18,7 @@ applyAppearance();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <TooltipProvider>
+    <TooltipProvider skipDelayDuration={0}>
       <App />
       <Toaster position="top-right" />
     </TooltipProvider>

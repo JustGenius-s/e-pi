@@ -42,6 +42,8 @@ export function App() {
    * immediately answerable.
    */
   const [justCreatedPath, setJustCreatedPath] = useState<string>();
+  /** Sessions whose terminal painted at least one frame; hides the "loading session" overlay. */
+  const [paintedPaths, setPaintedPaths] = useState<Set<string>>(new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
   /** Open tool-panel tabs plus the active one; review is a singleton. */
@@ -50,6 +52,17 @@ export function App() {
   const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;
   const activeCwd = activeSession?.cwd || appInfo?.defaultCwd || "";
+  const handleFirstPaint = useCallback((sessionKey: string) => {
+    setPaintedPaths((current) => (current.has(sessionKey) ? current : new Set(current).add(sessionKey)));
+  }, []);
+  // The TUI has not mounted yet (pi still booting, or the session was never
+  // started in this app run); a failed session shows the error bar instead.
+  const showTerminalLoading =
+    !loading &&
+    !!activePath &&
+    !paintedPaths.has(activePath) &&
+    runtimeState?.status !== "exited" &&
+    runtimeState?.status !== "error";
 
   const createSession = async (cwd?: string): Promise<SessionSummary | undefined> => {
     setError(undefined);
@@ -277,6 +290,7 @@ export function App() {
                 <TerminalPanel
                   sessionKey={activeSession.path}
                   autoFocus={activePath === justCreatedPath && runtimeState?.status === "starting"}
+                  onFirstPaint={handleFirstPaint}
                 />
               ) : (
                 <div className="workspace-empty">
@@ -287,6 +301,12 @@ export function App() {
                   <p>{appInfo?.defaultCwd}</p>
                 </div>
               )}
+              {showTerminalLoading ? (
+                <div className="terminal-loading" role="status" aria-label="Loading session">
+                  <span className="terminal-loading-spinner" />
+                  <span className="terminal-loading-label">Loading session…</span>
+                </div>
+              ) : null}
             </div>
             {error ? (
               <div className="runtime-error" role="alert">
@@ -299,7 +319,7 @@ export function App() {
             ) : null}
             <Composer
               sessionPath={activePath}
-              status={runtimeState?.status ?? "idle"}
+              status={runtimeState?.status}
               activity={runtimeState?.activity}
               model={runtimeState?.model}
               thinkingLevel={runtimeState?.thinkingLevel}
@@ -309,6 +329,7 @@ export function App() {
               cacheHitRate={runtimeState?.cacheHitRate}
               speed={runtimeState?.speed}
               cwd={activeCwd}
+              focusRequest={activePath !== undefined && runtimeState?.status === "running" ? activePath : undefined}
               disabled={
                 loading ||
                 runtimeState?.status === "starting" ||

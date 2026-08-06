@@ -1,10 +1,14 @@
 import {
+  Archive,
   BadgePlus,
+  ChevronDown,
+  ChevronUp,
   FilePlus,
   Folder,
   FolderOpen,
   FolderPlus,
   Moon,
+  MoreVertical,
   Package,
   Pin,
   Plus,
@@ -16,22 +20,14 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import { toast } from "sonner";
 
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuSeparator,
-  ContextMenuTrigger,
-} from "@/components/ui/context-menu";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
-
-import { emitAttachFiles } from "../../lib/attachmentsBus";
 import {
   Sidebar,
   SidebarContent,
@@ -46,7 +42,9 @@ import {
   SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+import { emitAttachFiles } from "../../lib/attachmentsBus";
 import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../../lib/format";
 import { useTheme } from "../../lib/theme";
 import type { PiRuntimeState, SessionSummary } from "../../types/contracts";
@@ -159,7 +157,12 @@ interface ActivityIndicatorProps {
  * - working (process running, agent busy): blue braille spinner
  * - done (process running, agent settled): green dot-matrix square
  * - error: red dot-matrix square
- * - every other state: nothing rendered
+ * - every other state: an invisible 12px placeholder
+ *
+ * The placeholder keeps the row grid at three columns — status, title
+ * (1fr, ellipsized), time (auto). Without it a row with no status has only
+ * two children, so the title lands in the auto column and the time in the
+ * 1fr track, where a long title squeezes it to zero width.
  */
 function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
   const working = runtime?.status === "running" && runtime.activity === "busy";
@@ -183,7 +186,7 @@ function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
       </span>
     );
   }
-  return null;
+  return <span className="session-activity" aria-hidden="true" />;
 }
 
 interface SessionItemContentProps {
@@ -342,6 +345,17 @@ export function SessionSidebar({
   onOpenSettings,
 }: SessionSidebarProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  /**
+   * Session whose "more actions" dropdown is open. While it is open the
+   * row's action bar stays visible even when the pointer leaves the row.
+   */
+  const [moreMenuPath, setMoreMenuPath] = useState<string | undefined>();
+  /**
+   * Projects whose session list was expanded past the 5-row preview via
+   * "Show more". Collapsing a project resets its expansion, so re-expanding
+   * returns to the compact preview.
+   */
+  const [expandedSessionProjects, setExpandedSessionProjects] = useState<ReadonlySet<string>>(new Set());
   const { state, setOpen } = useSidebar();
   const { theme, toggleTheme } = useTheme();
 
@@ -351,8 +365,10 @@ export function SessionSidebar({
     toast.info(`Added to chat: ${sessionTitle(session)}`);
   };
 
-  /** Pinned sessions/projects, persisted in localStorage so the order
-   *  survives restarts. Pins only affect ordering, nothing else. */
+  /**
+   * Pinned sessions/projects, persisted in localStorage so the order
+   * survives restarts. Pins only affect ordering, nothing else.
+   */
   const [pins, setPins] = useState<SidebarPins>(readPins);
   const pinnedSessions = useMemo(() => new Set(pins.sessions), [pins.sessions]);
   const pinnedProjects = useMemo(() => new Set(pins.projects), [pins.projects]);
@@ -419,14 +435,132 @@ export function SessionSidebar({
         .filter((session): session is SessionSummary => Boolean(session)),
     [pins.sessions, sessions],
   );
+  const pinnedProjectList = useMemo(
+    () => orderedProjects.filter((project) => pinnedProjects.has(project.cwd)),
+    [orderedProjects, pinnedProjects],
+  );
+  const regularProjects = useMemo(
+    () => orderedProjects.filter((project) => !pinnedProjects.has(project.cwd)),
+    [orderedProjects, pinnedProjects],
+  );
+
+  /**
+   * One project row (header + expandable sessions) — used in the Pinned
+   * section for pinned workspaces and in the regular list below.
+   */
+  const renderProjectRow = (project: ProjectGroup) => {
+    const pinned = pinnedProjects.has(project.cwd);
+    const visibleSessions = project.sessions.filter((session) => !pinnedSessions.has(session.path));
+    // Preview the first 5 sessions; "Show more" reveals the rest and "Show
+    // less" collapses back. Collapsing the project also resets the expansion
+    // (see toggleProject), so re-expanding returns to the preview.
+    const showAll = expandedSessionProjects.has(project.cwd);
+    const limited = visibleSessions.length > 5 && !showAll;
+    const shownSessions = limited ? visibleSessions.slice(0, 5) : visibleSessions;
+    return (
+      <div key={project.cwd} className="project-group">
+        <div
+          className="project-header"
+          role="button"
+          tabIndex={0}
+          title={project.cwd}
+          onClick={() => toggleProject(project.cwd)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              toggleProject(project.cwd);
+            }
+          }}
+        >
+          {isCollapsed(project.cwd) ? (
+            <Folder size={12} className="project-icon" aria-hidden="true" />
+          ) : (
+            <FolderOpen size={12} className="project-icon" aria-hidden="true" />
+          )}
+          <span className="project-path">{projectLabel(project.cwd)}</span>
+          <button
+            type="button"
+            className={`project-pin${pinned ? " active" : ""}`}
+            aria-label={pinned ? "Unpin workspace" : "Pin workspace"}
+            title={pinned ? "Unpin workspace" : "Pin workspace"}
+            onClick={(event) => {
+              event.stopPropagation();
+              toggleProjectPin(project.cwd);
+            }}
+          >
+            <Pin size={11} fill={pinned ? "currentColor" : "none"} />
+          </button>
+          <button
+            type="button"
+            className="project-add"
+            aria-label={`New session in ${project.cwd}`}
+            title={`New session in ${project.cwd}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onCreate(project.cwd);
+            }}
+          >
+            <Plus size={12} />
+          </button>
+        </div>
+        {!isCollapsed(project.cwd) && (
+          <SidebarMenu className="project-sessions">
+            {shownSessions.map((session) => renderSessionRow(session))}
+          </SidebarMenu>
+        )}
+        {!isCollapsed(project.cwd) && limited ? (
+          <button
+            type="button"
+            className="project-show-more"
+            onClick={(event) => {
+              event.stopPropagation();
+              setExpandedSessionProjects((current) => new Set(current).add(project.cwd));
+            }}
+          >
+            <ChevronDown size={12} />
+            <span>Show more</span>
+          </button>
+        ) : null}
+        {!isCollapsed(project.cwd) && showAll && visibleSessions.length > 5 ? (
+          <button
+            type="button"
+            className="project-show-more"
+            onClick={(event) => {
+              event.stopPropagation();
+              setExpandedSessionProjects((current) => {
+                if (!current.has(project.cwd)) return current;
+                const next = new Set(current);
+                next.delete(project.cwd);
+                return next;
+              });
+            }}
+          >
+            <ChevronUp size={12} />
+            <span>Show less</span>
+          </button>
+        ) : null}
+      </div>
+    );
+  };
 
   const toggleProject = (cwd: string) => {
+    const closing = !collapsed.has(cwd);
     setCollapsed((current) => {
       const next = new Set(current);
       if (next.has(cwd)) next.delete(cwd);
       else next.add(cwd);
       return next;
     });
+    if (closing) {
+      // Collapsing resets the session-list expansion, so re-expanding the
+      // project returns to the 5-row preview instead of the full list.
+      setExpandedSessionProjects((current) => {
+        if (!current.has(cwd)) return current;
+        const next = new Set(current);
+        next.delete(cwd);
+        return next;
+      });
+    }
   };
 
   const isCollapsed = (cwd: string) => collapsed.has(cwd);
@@ -444,7 +578,7 @@ export function SessionSidebar({
 
   const projectLabel = (cwd: string) => (homeCwd && cwd === homeCwd ? "Home" : pathBaseName(cwd));
 
-  /** One session row (menu button + pin badge + context menu). */
+  /** One session row (menu button + hover actions). */
   const renderSessionRow = (session: SessionSummary) => {
     const active = session.path === activePath;
     const title = sessionTitle(session);
@@ -452,43 +586,71 @@ export function SessionSidebar({
     const pinned = pinnedSessions.has(session.path);
     return (
       <SidebarMenuItem key={session.path} className="session-menu-item">
-        <ContextMenu>
-          <ContextMenuTrigger asChild>
-            <SidebarMenuButton
-              className="session-menu-button"
-              isActive={active}
-              tooltip={title}
-              title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
-              onClick={() => onSelect(session)}
-            >
-              <SessionItemContent session={session} runtime={runtime} labelClassName="session-label" />
-            </SidebarMenuButton>
-          </ContextMenuTrigger>
-          <ContextMenuContent>
-            <ContextMenuItem onSelect={() => toggleSessionPin(session.path)}>
-              {pinned ? "Unpin chat" : "Pin chat"}
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => onRename(session)}>Rename chat</ContextMenuItem>
-            <ContextMenuSeparator />
-            {platform === "darwin" && (
-              <ContextMenuItem onSelect={() => session.cwd && onOpenFolder(session.cwd)}>
-                Open in Finder
-              </ContextMenuItem>
-            )}
-            <ContextMenuItem onSelect={() => session.cwd && onCopyText(session.cwd)}>
-              Copy working directory
-            </ContextMenuItem>
-            <ContextMenuItem onSelect={() => onCopyText(session.path)}>
-              Copy session
-            </ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem onSelect={() => addToChat(session)}>Add to chat</ContextMenuItem>
-            <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" onSelect={() => onRemove(session)}>
-              Archive chat
-            </ContextMenuItem>
-          </ContextMenuContent>
-        </ContextMenu>
+        <SidebarMenuButton
+          className="session-menu-button"
+          isActive={active}
+          tooltip={title}
+          title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
+          onClick={() => onSelect(session)}
+        >
+          <SessionItemContent session={session} runtime={runtime} labelClassName="session-label" />
+        </SidebarMenuButton>
+        {/* Hover actions: replace the time with ⋯ (more) / pin / archive. */}
+        <div className="session-row-actions" data-open={moreMenuPath === session.path ? "true" : undefined}>
+          <DropdownMenu
+            open={moreMenuPath === session.path}
+            onOpenChange={(open) => setMoreMenuPath(open ? session.path : undefined)}
+          >
+            <Tooltip delayDuration={1200}>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger className="session-row-action" aria-label="More actions">
+                  <MoreVertical size={13} />
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent side="top">More actions</TooltipContent>
+            </Tooltip>
+            <DropdownMenuContent side="right" align="start" sideOffset={6} className="min-w-[10rem]">
+              <DropdownMenuItem onSelect={() => onRename(session)}>Rename chat</DropdownMenuItem>
+              {platform === "darwin" && (
+                <DropdownMenuItem onSelect={() => session.cwd && onOpenFolder(session.cwd)}>
+                  Open in Finder
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onSelect={() => session.cwd && onCopyText(session.cwd)}>
+                Copy working directory
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onCopyText(session.path)}>Copy session</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => addToChat(session)}>Add to chat</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Tooltip delayDuration={1200}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className={`session-row-action${pinned ? " active" : ""}`}
+                aria-label={pinned ? "Unpin chat" : "Pin chat"}
+                onClick={() => toggleSessionPin(session.path)}
+              >
+                <Pin size={13} fill={pinned ? "currentColor" : "none"} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{pinned ? "Unpin chat" : "Pin chat"}</TooltipContent>
+          </Tooltip>
+          <Tooltip delayDuration={1200}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                className="session-row-action"
+                aria-label="Archive chat"
+                onClick={() => onRemove(session)}
+              >
+                <Archive size={13} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Archive chat</TooltipContent>
+          </Tooltip>
+        </div>
       </SidebarMenuItem>
     );
   };
@@ -533,12 +695,13 @@ export function SessionSidebar({
           )}
 
           <SidebarGroupContent>
-            {pinnedSessionList.length > 0 ? (
+            {pinnedSessionList.length > 0 || pinnedProjectList.length > 0 ? (
               <div className="pinned-sessions">
                 <div className="pinned-sessions-label">Pinned</div>
                 <SidebarMenu className="pinned-sessions-list">
                   {pinnedSessionList.map((session) => renderSessionRow(session))}
                 </SidebarMenu>
+                {pinnedProjectList.map((project) => renderProjectRow(project))}
               </div>
             ) : null}
             {state === "collapsed" ? (
@@ -582,61 +745,7 @@ export function SessionSidebar({
                 <span className="sidebar-empty-hint">New sessions start in Home.</span>
               </div>
             ) : (
-              orderedProjects.map((project) => (
-                <div key={project.cwd} className="project-group">
-                  <div
-                    className="project-header"
-                    role="button"
-                    tabIndex={0}
-                    title={project.cwd}
-                    onClick={() => toggleProject(project.cwd)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        toggleProject(project.cwd);
-                      }
-                    }}
-                  >
-                    <button
-                      type="button"
-                      className={`project-pin${pinnedProjects.has(project.cwd) ? " active" : ""}`}
-                      aria-label={pinnedProjects.has(project.cwd) ? "Unpin workspace" : "Pin workspace"}
-                      title={pinnedProjects.has(project.cwd) ? "Unpin workspace" : "Pin workspace"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        toggleProjectPin(project.cwd);
-                      }}
-                    >
-                      <Pin size={11} fill={pinnedProjects.has(project.cwd) ? "currentColor" : "none"} />
-                    </button>
-                    {isCollapsed(project.cwd) ? (
-                      <Folder size={12} className="project-icon" aria-hidden="true" />
-                    ) : (
-                      <FolderOpen size={12} className="project-icon" aria-hidden="true" />
-                    )}
-                    <span className="project-path">{projectLabel(project.cwd)}</span>
-                    <button
-                      type="button"
-                      className="project-add"
-                      aria-label={`New session in ${project.cwd}`}
-                      title={`New session in ${project.cwd}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onCreate(project.cwd);
-                      }}
-                    >
-                      <Plus size={12} />
-                    </button>
-                  </div>
-                  {!isCollapsed(project.cwd) && (
-                    <SidebarMenu className="project-sessions">
-                      {project.sessions
-                        .filter((session) => !pinnedSessions.has(session.path))
-                        .map((session) => renderSessionRow(session))}
-                    </SidebarMenu>
-                  )}
-                </div>
-              ))
+              regularProjects.map((project) => renderProjectRow(project))
             )}
           </SidebarGroupContent>
         </SidebarGroup>
