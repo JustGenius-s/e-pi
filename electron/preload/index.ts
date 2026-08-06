@@ -30,6 +30,7 @@ import type {
   PackageUpdateRequest,
   PiAgentConfig,
   PiUpdateInfo,
+  PiUpdateResult,
   PiRuntimeState,
   RemotePackageInfo,
   RenameSessionRequest,
@@ -54,6 +55,7 @@ const api: EPiApi = {
     getInfo: () => ipcRenderer.invoke("app:get-info") as Promise<AppInfo>,
     setDefaultCwd: (cwd: string) => ipcRenderer.invoke("app:set-default-cwd", cwd) as Promise<AppInfo>,
     checkPiUpdate: () => ipcRenderer.invoke("app:check-pi-update") as Promise<PiUpdateInfo>,
+    applyPiUpdate: () => ipcRenderer.invoke("app:apply-pi-update") as Promise<PiUpdateResult>,
     chooseDirectory: (defaultPath?: string) =>
       ipcRenderer.invoke("app:choose-directory", defaultPath) as Promise<string | undefined>,
     chooseFiles: () => ipcRenderer.invoke("app:choose-files") as Promise<string[]>,

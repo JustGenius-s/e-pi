@@ -1,5 +1,6 @@
 import { Check, Download, LoaderCircle, RefreshCw } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,6 +25,8 @@ interface PiAgentSettingsProps {
   active: boolean;
   /** Version of the bundled pi package, shown in the Pi version row. */
   piVersion?: string;
+  /** Called after a pi update finished, so callers can refresh app info. */
+  onUpdated?: () => void;
 }
 
 /**
@@ -31,13 +34,14 @@ interface PiAgentSettingsProps {
  * config and passed to pi as CLI args at session launch, so they only affect
  * sessions started from E-Pi (never `~/.pi` files or terminal usage).
  */
-export function PiAgentSettings({ active, piVersion }: PiAgentSettingsProps) {
+export function PiAgentSettings({ active, piVersion, onUpdated }: PiAgentSettingsProps) {
   const [config, setConfig] = useState<PiAgentConfig>();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>();
   const [update, setUpdate] = useState<PiUpdateInfo>();
   const [checking, setChecking] = useState(false);
+  const [updating, setUpdating] = useState(false);
   const savedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
@@ -96,6 +100,24 @@ export function PiAgentSettings({ active, piVersion }: PiAgentSettingsProps) {
     }
   };
 
+  const applyUpdate = async () => {
+    if (updating) return;
+    setUpdating(true);
+    setError(undefined);
+    try {
+      const result = await window.ePi.app.applyPiUpdate();
+      setUpdate({ current: result.to, latest: undefined });
+      toast.success(`Pi updated from ${result.from} to ${result.to}`);
+      onUpdated?.();
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Failed to update Pi: ${message}`);
+    } finally {
+      setUpdating(false);
+    }
+  };
+
   const updateLabel =
     update === undefined ? null : update.latest ? `Update available: ${update.latest}` : "Up to date";
 
@@ -121,10 +143,18 @@ export function PiAgentSettings({ active, piVersion }: PiAgentSettingsProps) {
                   {updateLabel}
                 </span>
               ) : null}
-              <Button variant="ghost" size="sm" className="agent-update-btn" onClick={() => void checkUpdate()} disabled={checking}>
-                <RefreshCw size={13} />
-                {checking ? "Checking…" : "Check updates"}
-              </Button>
+              {checking || !update?.latest ? (
+                <Button variant="ghost" size="sm" className="agent-update-btn" onClick={() => void checkUpdate()} disabled={checking || updating}>
+                  <RefreshCw size={13} />
+                  {checking ? "Checking…" : "Check updates"}
+                </Button>
+              ) : null}
+              {update?.latest ? (
+                <Button variant="default" size="sm" className="agent-update-btn" onClick={() => void applyUpdate()} disabled={updating}>
+                  {updating ? <LoaderCircle className="spin" size={13} /> : <Download size={13} />}
+                  {updating ? "Updating…" : `Update to ${update.latest}`}
+                </Button>
+              ) : null}
             </div>
           </div>
 

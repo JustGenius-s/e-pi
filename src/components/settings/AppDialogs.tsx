@@ -175,7 +175,7 @@ export function AppDialogs({
               <FontSettings />
             </TabsContent>
             <TabsContent value="general">
-              <PiAgentSettings active={settingsOpen} piVersion={appInfo?.piVersion} />
+              <PiAgentSettings active={settingsOpen} piVersion={appInfo?.piVersion} onUpdated={onAppInfoChange} />
               <CommonSettings defaultCwd={appInfo?.defaultCwd} onChanged={onAppInfoChange} />
             </TabsContent>
           </Tabs>

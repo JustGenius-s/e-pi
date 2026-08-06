@@ -52,6 +52,16 @@ export interface PiUpdateInfo {
   latest?: string;
 }
 
+/** Result of applying a pi update. */
+export interface PiUpdateResult {
+  /** Previously bundled version. */
+  from: string;
+  /** Newly installed version. */
+  to: string;
+  /** Path to the package directory the new version was installed into. */
+  path: string;
+}
+
 export interface SessionSummary {
   path: string;
   id: string;
@@ -414,6 +424,13 @@ export interface EPiApi {
     setDefaultCwd(cwd: string): Promise<AppInfo>;
     /** Check the npm registry for a newer pi release. */
     checkPiUpdate(): Promise<PiUpdateInfo>;
+    /**
+     * Apply a pi update in place: download the tarball, install it next to the
+     * bundled package and atomically swap it in, then restart every live
+     * session so they run the new version. Resolves with the result of the
+     * update (the previous version and the newly installed one).
+     */
+    applyPiUpdate(): Promise<PiUpdateResult>;
     chooseDirectory(defaultPath?: string): Promise<string | undefined>;
     chooseFiles(): Promise<string[]>;
     getPathForFile(file: File): string;

@@ -40,6 +40,10 @@
 .settings-tabs {
   min-width: 0;
   min-height: 0;
+  /* The overlay is a drag region (its top strip doubles as the window drag
+     area) and app-region inherits — opt the whole tab body back out or every
+     control inside joins the drag mask and becomes unclickable. */
+  -webkit-app-region: no-drag;
 }
 
 .settings-tabs [data-slot="tabs-list"] {
@@ -578,6 +582,11 @@
   height: 26px;
   padding: 0 8px;
   font-size: var(--fs-small);
+}
+
+/* The actionable "Update to x.y.z" button next to the check button. */
+.agent-update-btn + .agent-update-btn {
+  margin-left: 6px;
 }
 
 /* --- Common (general tab) --- */

@@ -39,7 +39,7 @@ import { GitService } from "./services/git-service";
 import { ModelService } from "./services/model-service";
 import { TaskNotificationService } from "./services/notification-service";
 import { PackageService } from "./services/package-service";
-import { checkPiUpdate } from "./services/pi-update-service";
+import { applyPiUpdate, checkPiUpdate, readInstalledPiVersion } from "./services/pi-update-service";
 import { PiRuntime } from "./services/pi-runtime";
 import { SessionService } from "./services/session-service";
 import { SideTerminalService } from "./services/side-terminal-service";
@@ -103,7 +103,9 @@ function registerHandlers(): void {
       platform: process.platform,
       arch: process.arch,
       appVersion: app.getVersion(),
-      piVersion: PI_VERSION,
+      // Read from disk so an in-place pi update shows the new version without
+      // restarting the main process (the bundled VERSION constant is static).
+      piVersion: readInstalledPiVersion() || PI_VERSION,
       defaultCwd: await resolveDefaultCwd(),
       openWithApp: settings.openWithApp,
     };
@@ -152,6 +154,22 @@ function registerHandlers(): void {
   ipcMain.handle("app:choose-app", async () => chooseAppFromSystem());
 
   ipcMain.handle("app:check-pi-update", () => checkPiUpdate());
+
+  // Apply a pi update in place, then restart every live session so they run
+  // the new version. Fails without touching the install when no update exists
+  // or any step (download/extract/install/swap) errors. Session restarts are
+  // best-effort: a restart failure must not report the update itself as failed.
+  ipcMain.handle("app:apply-pi-update", async () => {
+    const result = await applyPiUpdate();
+    try {
+      await runtime.reloadAll();
+    } catch (reason) {
+      debugLog("[pi-update] session restart failed", {
+        message: reason instanceof Error ? reason.message : String(reason),
+      });
+    }
+    return result;
+  });
 
   // The renderer owns the theme choice (CSS variables + persistence); this
   // keeps native chrome (macOS traffic lights, scrollbars) in step with it.
