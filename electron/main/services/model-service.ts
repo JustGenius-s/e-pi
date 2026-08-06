@@ -96,6 +96,21 @@ interface ModelsFile {
   providers: Record<string, Partial<CustomProviderConfig>>;
 }
 
+/** models.json model entries may declare input modalities directly. */
+type PersistedModelEntry = CustomModelDefinition & { input?: string[] };
+
+function toCustomModel(model: PersistedModelEntry): CustomModelDefinition {
+  return {
+    id: model.id,
+    name: model.name,
+    contextWindow: model.contextWindow,
+    maxTokens: model.maxTokens,
+    reasoning: model.reasoning,
+    // Vision = the persisted model entry declares image input support.
+    vision: Array.isArray(model.input) ? model.input.includes("image") : undefined,
+  };
+}
+
 async function modelsJsonPath(): Promise<string> {
   const { getAgentDir } = await loadPiAgent();
   return join(getAgentDir(), "models.json");
@@ -133,13 +148,7 @@ function toCustomProvider(id: string, config: Partial<CustomProviderConfig>): Cu
     baseUrl: config.baseUrl ?? "",
     api: config.api ?? "",
     apiKey: config.apiKey,
-    models: (config.models ?? []).map((model) => ({
-      id: model.id,
-      name: model.name,
-      contextWindow: model.contextWindow,
-      maxTokens: model.maxTokens,
-      reasoning: model.reasoning,
-    })),
+    models: (config.models ?? []).map((model) => toCustomModel(model as PersistedModelEntry)),
   };
 }
 
@@ -299,6 +308,9 @@ export class ModelService {
               ...(model.contextWindow ? { contextWindow: model.contextWindow } : {}),
               ...(model.maxTokens ? { maxTokens: model.maxTokens } : {}),
               ...(model.reasoning ? { reasoning: true } : {}),
+              // Persist explicit input modalities so pi's vision gate
+              // (model.input.includes("image")) never misclassifies the model.
+              input: model.vision ? ["text", "image"] : ["text"],
             })),
           }
         : {}),

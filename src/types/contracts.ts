@@ -285,6 +285,8 @@ export interface CustomModelDefinition {
   contextWindow?: number;
   maxTokens?: number;
   reasoning?: boolean;
+  /** Image input support: persisted as input: ["text", "image"] in models.json. */
+  vision?: boolean;
 }
 
 export interface CustomProviderConfig {

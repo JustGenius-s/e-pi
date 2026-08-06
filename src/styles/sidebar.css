@@ -264,7 +264,8 @@
   display: grid;
   min-width: 0;
   min-height: 26px;
-  grid-template-columns: 12px minmax(0, 1fr) auto;
+  /* pin button | folder icon | path | new-session button */
+  grid-template-columns: auto 12px minmax(0, 1fr) auto;
   align-items: center;
   gap: 6px;
   margin: 3px 0 2px;
@@ -333,6 +334,51 @@
 }
 
 .project-add:hover {
+  color: var(--sidebar-accent-foreground);
+  background: var(--sidebar-accent);
+}
+
+/* Pinned sessions float above the project groups. */
+.pinned-sessions {
+  margin: 2px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pinned-sessions-label {
+  padding: 2px 8px 3px;
+  color: var(--muted-foreground);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.pinned-sessions-list {
+  gap: 1px;
+}
+
+.project-pin {
+  display: grid;
+  width: 14px;
+  height: 14px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.project-pin.active {
+  color: var(--primary);
+}
+
+.project-pin:hover {
   color: var(--sidebar-accent-foreground);
   background: var(--sidebar-accent);
 }

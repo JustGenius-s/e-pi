@@ -296,6 +296,13 @@ export function CustomProviderDialogs({
                         />
                         <span>reasoning</span>
                       </label>
+                      <label className="custom-model-reasoning">
+                        <Checkbox
+                          checked={Boolean(model.vision)}
+                          onCheckedChange={(checked) => updateModel(index, { vision: Boolean(checked) })}
+                        />
+                        <span title="Image input support">vision</span>
+                      </label>
                       <IconButton
                         label={`Remove model ${index + 1}`}
                         onClick={() => updateDraft({ models: draft.models.filter((_, current) => current !== index) })}

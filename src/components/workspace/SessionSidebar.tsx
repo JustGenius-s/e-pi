@@ -6,6 +6,7 @@ import {
   FolderPlus,
   Moon,
   Package,
+  Pin,
   Plus,
   Settings2,
   Sparkles,
@@ -73,6 +74,30 @@ interface SessionSidebarProps {
 interface ProjectGroup {
   cwd: string;
   sessions: SessionSummary[];
+}
+
+/** Pinned session paths and pinned project cwds, in pin order. */
+interface SidebarPins {
+  sessions: string[];
+  projects: string[];
+}
+
+const PIN_STORAGE_KEY = "sidebar-pins-v1";
+
+function readPins(): SidebarPins {
+  try {
+    const raw = window.localStorage.getItem(PIN_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as Partial<SidebarPins>;
+      return {
+        sessions: Array.isArray(parsed.sessions) ? parsed.sessions : [],
+        projects: Array.isArray(parsed.projects) ? parsed.projects : [],
+      };
+    }
+  } catch {
+    // Storage unavailable — start unpinned.
+  }
+  return { sessions: [], projects: [] };
 }
 
 const UNKNOWN_FOLDER = "Unknown folder";
@@ -325,6 +350,32 @@ export function SessionSidebar({
     emitAttachFiles([session.path]);
     toast.info(`Added to chat: ${sessionTitle(session)}`);
   };
+
+  /** Pinned sessions/projects, persisted in localStorage so the order
+   *  survives restarts. Pins only affect ordering, nothing else. */
+  const [pins, setPins] = useState<SidebarPins>(readPins);
+  const pinnedSessions = useMemo(() => new Set(pins.sessions), [pins.sessions]);
+  const pinnedProjects = useMemo(() => new Set(pins.projects), [pins.projects]);
+  const updatePins = (next: SidebarPins) => {
+    setPins(next);
+    try {
+      window.localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Storage unavailable — pins just won't survive a restart.
+    }
+  };
+  const toggleSessionPin = (path: string) => {
+    const nextSessions = pinnedSessions.has(path)
+      ? pins.sessions.filter((candidate) => candidate !== path)
+      : [...pins.sessions, path];
+    updatePins({ ...pins, sessions: nextSessions });
+  };
+  const toggleProjectPin = (cwd: string) => {
+    const projects = pinnedProjects.has(cwd)
+      ? pins.projects.filter((candidate) => candidate !== cwd)
+      : [...pins.projects, cwd];
+    updatePins({ ...pins, projects });
+  };
   /**
    * Stable project order. Sessions arrive sorted by recent activity (so
    * sessions within a project stay recency-ordered), but the project GROUP
@@ -354,6 +405,21 @@ export function SessionSidebar({
     return groupOrderRef.current.map((cwd) => ({ cwd, sessions: byCwd.get(cwd)! }));
   }, [sessions]);
 
+  // Pinned projects float above the stable group order. Pinned sessions move
+  // out of their project groups entirely and render in a dedicated "Pinned"
+  // section at the very top of the session list, in pin order.
+  const orderedProjects = useMemo(
+    () => [...projects].sort((a, b) => Number(pinnedProjects.has(b.cwd)) - Number(pinnedProjects.has(a.cwd))),
+    [projects, pinnedProjects],
+  );
+  const pinnedSessionList = useMemo(
+    () =>
+      pins.sessions
+        .map((path) => sessions.find((session) => session.path === path))
+        .filter((session): session is SessionSummary => Boolean(session)),
+    [pins.sessions, sessions],
+  );
+
   const toggleProject = (cwd: string) => {
     setCollapsed((current) => {
       const next = new Set(current);
@@ -377,6 +443,55 @@ export function SessionSidebar({
   };
 
   const projectLabel = (cwd: string) => (homeCwd && cwd === homeCwd ? "Home" : pathBaseName(cwd));
+
+  /** One session row (menu button + pin badge + context menu). */
+  const renderSessionRow = (session: SessionSummary) => {
+    const active = session.path === activePath;
+    const title = sessionTitle(session);
+    const runtime = runtimeStates?.[session.path];
+    const pinned = pinnedSessions.has(session.path);
+    return (
+      <SidebarMenuItem key={session.path} className="session-menu-item">
+        <ContextMenu>
+          <ContextMenuTrigger asChild>
+            <SidebarMenuButton
+              className="session-menu-button"
+              isActive={active}
+              tooltip={title}
+              title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
+              onClick={() => onSelect(session)}
+            >
+              <SessionItemContent session={session} runtime={runtime} labelClassName="session-label" />
+            </SidebarMenuButton>
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem onSelect={() => toggleSessionPin(session.path)}>
+              {pinned ? "Unpin chat" : "Pin chat"}
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onRename(session)}>Rename chat</ContextMenuItem>
+            <ContextMenuSeparator />
+            {platform === "darwin" && (
+              <ContextMenuItem onSelect={() => session.cwd && onOpenFolder(session.cwd)}>
+                Open in Finder
+              </ContextMenuItem>
+            )}
+            <ContextMenuItem onSelect={() => session.cwd && onCopyText(session.cwd)}>
+              Copy working directory
+            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => onCopyText(session.path)}>
+              Copy session
+            </ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem onSelect={() => addToChat(session)}>Add to chat</ContextMenuItem>
+            <ContextMenuSeparator />
+            <ContextMenuItem variant="destructive" onSelect={() => onRemove(session)}>
+              Archive chat
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      </SidebarMenuItem>
+    );
+  };
 
   return (
     <Sidebar aria-label="Sessions" collapsible="icon" className="session-sidebar">
@@ -418,6 +533,14 @@ export function SessionSidebar({
           )}
 
           <SidebarGroupContent>
+            {pinnedSessionList.length > 0 ? (
+              <div className="pinned-sessions">
+                <div className="pinned-sessions-label">Pinned</div>
+                <SidebarMenu className="pinned-sessions-list">
+                  {pinnedSessionList.map((session) => renderSessionRow(session))}
+                </SidebarMenu>
+              </div>
+            ) : null}
             {state === "collapsed" ? (
               <SidebarMenu>
                 <SidebarMenuItem>
@@ -439,7 +562,7 @@ export function SessionSidebar({
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </SidebarMenuItem>
-                {projects.map((project) => (
+                {orderedProjects.map((project) => (
                   <SidebarMenuItem key={project.cwd}>
                     <CollapsedProjectFlyout
                       project={project}
@@ -459,7 +582,7 @@ export function SessionSidebar({
                 <span className="sidebar-empty-hint">New sessions start in Home.</span>
               </div>
             ) : (
-              projects.map((project) => (
+              orderedProjects.map((project) => (
                 <div key={project.cwd} className="project-group">
                   <div
                     className="project-header"
@@ -474,6 +597,18 @@ export function SessionSidebar({
                       }
                     }}
                   >
+                    <button
+                      type="button"
+                      className={`project-pin${pinnedProjects.has(project.cwd) ? " active" : ""}`}
+                      aria-label={pinnedProjects.has(project.cwd) ? "Unpin workspace" : "Pin workspace"}
+                      title={pinnedProjects.has(project.cwd) ? "Unpin workspace" : "Pin workspace"}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        toggleProjectPin(project.cwd);
+                      }}
+                    >
+                      <Pin size={11} fill={pinnedProjects.has(project.cwd) ? "currentColor" : "none"} />
+                    </button>
                     {isCollapsed(project.cwd) ? (
                       <Folder size={12} className="project-icon" aria-hidden="true" />
                     ) : (
@@ -495,53 +630,9 @@ export function SessionSidebar({
                   </div>
                   {!isCollapsed(project.cwd) && (
                     <SidebarMenu className="project-sessions">
-                      {project.sessions.map((session) => {
-                        const active = session.path === activePath;
-                        const title = sessionTitle(session);
-                        const runtime = runtimeStates?.[session.path];
-                        return (
-                          <SidebarMenuItem key={session.path} className="session-menu-item">
-                            <ContextMenu>
-                              <ContextMenuTrigger asChild>
-                                <SidebarMenuButton
-                                  className="session-menu-button"
-                                  isActive={active}
-                                  tooltip={title}
-                                  title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
-                                  onClick={() => onSelect(session)}
-                                >
-                                  <SessionItemContent
-                                    session={session}
-                                    runtime={runtime}
-                                    labelClassName="session-label"
-                                  />
-                                </SidebarMenuButton>
-                              </ContextMenuTrigger>
-                              <ContextMenuContent>
-                                <ContextMenuItem onSelect={() => onRename(session)}>Rename chat</ContextMenuItem>
-                                <ContextMenuSeparator />
-                                {platform === "darwin" && (
-                                  <ContextMenuItem onSelect={() => session.cwd && onOpenFolder(session.cwd)}>
-                                    Open in Finder
-                                  </ContextMenuItem>
-                                )}
-                                <ContextMenuItem onSelect={() => session.cwd && onCopyText(session.cwd)}>
-                                  Copy working directory
-                                </ContextMenuItem>
-                                <ContextMenuItem onSelect={() => onCopyText(session.path)}>
-                                  Copy session
-                                </ContextMenuItem>
-                                <ContextMenuSeparator />
-                                <ContextMenuItem onSelect={() => addToChat(session)}>Add to chat</ContextMenuItem>
-                                <ContextMenuSeparator />
-                                <ContextMenuItem variant="destructive" onSelect={() => onRemove(session)}>
-                                  Archive chat
-                                </ContextMenuItem>
-                              </ContextMenuContent>
-                            </ContextMenu>
-                          </SidebarMenuItem>
-                        );
-                      })}
+                      {project.sessions
+                        .filter((session) => !pinnedSessions.has(session.path))
+                        .map((session) => renderSessionRow(session))}
                     </SidebarMenu>
                   )}
                 </div>
