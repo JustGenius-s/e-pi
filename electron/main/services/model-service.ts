@@ -128,6 +128,7 @@ interface RawModelEntry {
   maxTokens?: unknown;
   reasoning?: unknown;
   input?: unknown;
+  thinkingLevelMap?: unknown;
 }
 
 function toCustomModel(model: RawModelEntry): CustomModelDefinition {
@@ -137,9 +138,17 @@ function toCustomModel(model: RawModelEntry): CustomModelDefinition {
     contextWindow: typeof model.contextWindow === "number" ? model.contextWindow : undefined,
     maxTokens: typeof model.maxTokens === "number" ? model.maxTokens : undefined,
     reasoning: model.reasoning === true ? true : undefined,
+    thinkingLevels: thinkingLevelsFromMap(model.thinkingLevelMap),
     // Vision = the persisted model entry declares image input support.
     vision: Array.isArray(model.input) && model.input.includes("image") ? true : undefined,
   };
+}
+
+/** Inverse of buildThinkingLevelMap: levels with a non-null mapped value. */
+function thinkingLevelsFromMap(map: unknown): string[] | undefined {
+  if (!map || typeof map !== "object" || Array.isArray(map)) return undefined;
+  const levels = THINKING_LEVELS.filter((level) => (map as Record<string, unknown>)[level] != null);
+  return levels.length > 0 ? [...levels] : undefined;
 }
 
 async function modelsJsonPath(): Promise<string> {
@@ -353,12 +362,12 @@ export class ModelService {
     if (authHeader) normalized.authHeader = true;
     else delete normalized.authHeader;
     if (models.length > 0) {
-      const thinkingMap = defaultThinkingLevelMap(api.trim());
       normalized.models = models.map((model) => {
         const modelId = model.id.trim();
         const extras = existingModels.find((entry) => entry && entry.id === modelId) ?? {};
         const reasoning = Boolean(model.reasoning);
-        return {
+        const thinkingMap = reasoning ? buildThinkingLevelMap(model.thinkingLevels) : undefined;
+        const entry: Record<string, unknown> = {
           // Extras first so the dialog-managed keys below always win.
           ...extras,
           id: modelId,
@@ -370,10 +379,13 @@ export class ModelService {
           contextWindow: model.contextWindow || 128_000,
           maxTokens: model.maxTokens || 8_192,
           ...(extras.cost ? {} : { cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 } }),
-          // OpenAI-style APIs need an explicit effort map; anthropic-messages
-          // uses budget_tokens and needs none. Existing maps always win.
-          ...(reasoning && thinkingMap && !extras.thinkingLevelMap ? { thinkingLevelMap: thinkingMap } : {}),
         };
+        // An explicit level selection wins; otherwise keep any map already in
+        // models.json (e.g. hand-tuned provider values). No selection and no
+        // existing map = pi's provider defaults apply.
+        if (thinkingMap) entry.thinkingLevelMap = thinkingMap;
+        else if (extras.thinkingLevelMap) entry.thinkingLevelMap = extras.thinkingLevelMap;
+        return entry;
       });
     } else {
       delete normalized.models;
@@ -552,16 +564,20 @@ export class ModelService {
   }
 }
 
+/** Selectable thinking levels ("off" is implicit: pick no level at all). */
+const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
 /**
- * Thinking-level map template for APIs that take a literal `reasoning_effort`
- * string. Anthropic-messages models drive thinking via budget_tokens and need
- * no map; unknown APIs stay unmapped (pi falls back to its defaults).
+ * Build a thinkingLevelMap from the levels the user enabled: selected levels
+ * map to their effort string, unselected ones to null (hidden in pi), plus
+ * off: null. Returns undefined when the model is not a reasoning model or no
+ * level was picked (pi then falls back to its provider defaults).
  */
-function defaultThinkingLevelMap(api: string): Record<string, string | null> | undefined {
-  if (/^openai-/.test(api) || api === "azure-openai-responses") {
-    return { off: null, minimal: "minimal", low: "low", medium: "medium", high: "high", xhigh: null, max: null };
-  }
-  return undefined;
+function buildThinkingLevelMap(levels: string[] | undefined): Record<string, string | null> | undefined {
+  if (!levels || levels.length === 0) return undefined;
+  const map: Record<string, string | null> = { off: null };
+  for (const level of THINKING_LEVELS) map[level] = levels.includes(level) ? level : null;
+  return map;
 }
 
 /* --- models.dev catalog --- */

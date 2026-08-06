@@ -728,6 +728,12 @@
   font-weight: 400;
 }
 
+/* Required-field marker. */
+.custom-required {
+  color: var(--destructive);
+  font-style: normal;
+}
+
 .custom-field-row {
   display: grid;
   grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.6fr);
@@ -946,6 +952,31 @@
 
 .custom-model-meta .custom-check {
   padding-bottom: 4px;
+  font-size: var(--fs-mini);
+  white-space: nowrap;
+}
+
+/* Thinking-level multi-select row inside a model card. */
+.custom-model-levels {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 2px;
+}
+
+.custom-model-levels > span {
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: var(--fs-mini);
+}
+
+.custom-model-levels-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.custom-model-levels-options .custom-check {
   font-size: var(--fs-mini);
   white-space: nowrap;
 }

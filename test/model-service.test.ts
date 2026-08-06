@@ -140,16 +140,6 @@ describe("ModelService custom providers", () => {
       contextWindow: 128000,
       maxTokens: 8192,
       cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-      // openai-* reasoning models get the effort-string thinking map.
-      thinkingLevelMap: {
-        off: null,
-        minimal: "minimal",
-        low: "low",
-        medium: "medium",
-        high: "high",
-        xhigh: null,
-        max: null,
-      },
     });
 
     // Reading back surfaces the pi fields as dialog state.
@@ -158,21 +148,38 @@ describe("ModelService custom providers", () => {
     expect(list[0].models[0]).toMatchObject({ id: "m1", name: "m1", reasoning: true, vision: true });
   });
 
-  it("omits the thinking map for anthropic-messages and non-reasoning models", async () => {
+  it("persists selected thinking levels as a thinkingLevelMap", async () => {
     await service.saveCustomProvider({
       provider: {
         id: "",
-        name: "claude-gw",
+        name: "gw",
         baseUrl: "https://x.example.com/v1",
-        api: "anthropic-messages",
-        models: [{ id: "c1", reasoning: true }, { id: "c2" }],
+        api: "openai-completions",
+        models: [
+          { id: "m1", reasoning: true, thinkingLevels: ["low", "high"] },
+          { id: "m2", reasoning: true }, // reasoning but no levels picked → no map
+          { id: "m3", thinkingLevels: ["low"] }, // not reasoning → no map
+        ],
       },
     });
 
     const raw = JSON.parse(readFileSync(join(testAgentDir, "models.json"), "utf8"));
-    const models = raw.providers["claude-gw"].models;
-    expect(models[0].thinkingLevelMap).toBeUndefined();
+    const models = raw.providers.gw.models;
+    expect(models[0].thinkingLevelMap).toEqual({
+      off: null,
+      minimal: null,
+      low: "low",
+      medium: null,
+      high: "high",
+      xhigh: null,
+      max: null,
+    });
     expect(models[1].thinkingLevelMap).toBeUndefined();
+    expect(models[2].thinkingLevelMap).toBeUndefined();
+
+    // Reading back recovers the selected levels from the persisted map.
+    const list = await service.listCustomProviders();
+    expect(list[0].models[0].thinkingLevels?.sort()).toEqual(["high", "low"]);
   });
 
   it("preserves an existing thinkingLevelMap on re-save", async () => {

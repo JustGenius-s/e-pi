@@ -285,6 +285,12 @@ export interface CustomModelDefinition {
   contextWindow?: number;
   maxTokens?: number;
   reasoning?: boolean;
+  /**
+   * Supported thinking levels (pi levels minus "off"). Persisted as a
+   * thinkingLevelMap: selected levels map to their effort string, unselected
+   * levels map to null. Absent = let the provider default apply.
+   */
+  thinkingLevels?: string[];
   /** Image input support: persisted as input: ["text", "image"] in models.json. */
   vision?: boolean;
 }

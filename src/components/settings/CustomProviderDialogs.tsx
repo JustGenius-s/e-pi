@@ -30,6 +30,17 @@ import type { CustomModelDefinition, CustomProviderConfig, ModelCatalogMeta } fr
 
 const API_TYPES = ["openai-completions", "anthropic-messages", "openai-responses", "google-generative-ai"] as const;
 
+/** Thinking levels offered in the model card (pi levels minus "off"). */
+const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** Toggle one level in a multi-select list; empty result becomes undefined. */
+function toggleLevel(levels: string[] | undefined, level: string, on: boolean): string[] | undefined {
+  const next = new Set(levels ?? []);
+  if (on) next.add(level);
+  else next.delete(level);
+  return next.size > 0 ? [...next] : undefined;
+}
+
 /** 262144 → "256K", 1000000 → "1M". */
 function formatTokens(tokens: number): string {
   if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`;
@@ -157,9 +168,7 @@ export function CustomProviderDialogs({
         <DialogContent className="custom-provider-dialog">
           <DialogHeader>
             <DialogTitle>{existing ? "Edit custom provider" : "Add custom provider"}</DialogTitle>
-            <DialogDescription>
-              Saved to ~/.pi/models.json. The provider appears in the list after saving.
-            </DialogDescription>
+            <DialogDescription>Saved to ~/.pi/models.json.</DialogDescription>
           </DialogHeader>
           {draft ? (
             <div className="custom-provider-form">
@@ -167,18 +176,18 @@ export function CustomProviderDialogs({
                 {/* The provider ID is derived from the name (or host) on save;
                     users never see or manage it. */}
                 <label className="custom-field">
-                  <span>
-                    Name <small>optional</small>
-                  </span>
+                  <span>Name</span>
                   <Input
                     value={draft.name}
-                    placeholder="My Gateway"
+                    placeholder="My Gateway (optional)"
                     onChange={(event) => updateDraft({ name: event.target.value })}
                   />
                 </label>
                 <div className="custom-field-row">
                   <label className="custom-field">
-                    <span>API type</span>
+                    <span>
+                      API type <em className="custom-required">*</em>
+                    </span>
                     <Select value={draft.api} onValueChange={(api) => updateDraft({ api })}>
                       <SelectTrigger aria-label="API type">
                         <SelectValue placeholder="API type" />
@@ -193,7 +202,9 @@ export function CustomProviderDialogs({
                     </Select>
                   </label>
                   <label className="custom-field">
-                    <span>Base URL</span>
+                    <span>
+                      Base URL <em className="custom-required">*</em>
+                    </span>
                     <Input
                       value={draft.baseUrl}
                       placeholder="https://api.example.com/v1"
@@ -204,24 +215,20 @@ export function CustomProviderDialogs({
               </section>
               <section className="custom-section">
                 <label className="custom-field">
-                  <span>
-                    API key <small>optional — literal, $ENV_VAR, or !command</small>
-                  </span>
+                  <span>API key</span>
                   <Input
                     type="password"
                     value={draft.apiKey}
-                    placeholder="$MY_API_KEY or sk-…"
+                    placeholder="$MY_API_KEY or sk-… (optional)"
                     onChange={(event) => updateDraft({ apiKey: event.target.value })}
                   />
                 </label>
-                <label className="custom-check">
+                <label className="custom-check" title="Adds Authorization: Bearer <apiKey> to every request">
                   <Checkbox
                     checked={draft.authHeader}
                     onCheckedChange={(checked) => updateDraft({ authHeader: Boolean(checked) })}
                   />
-                  <span>
-                    Send Authorization: Bearer header <small>for providers that expect it explicitly</small>
-                  </span>
+                  <span>Send Authorization: Bearer header</span>
                 </label>
               </section>
               <section className="custom-section custom-models">
@@ -305,7 +312,7 @@ export function CustomProviderDialogs({
                 </div>
                 {fetchError ? <div className="model-settings-error">{fetchError}</div> : null}
                 {draft.models.length === 0 ? (
-                  <div className="custom-models-empty">No models — the provider will only expose overrides.</div>
+                  <div className="custom-models-empty">No models yet.</div>
                 ) : (
                   draft.models.map((model, index) => (
                     <div className="custom-model-card" key={model.id || index}>
@@ -313,7 +320,7 @@ export function CustomProviderDialogs({
                         <Input
                           className="custom-model-id"
                           value={model.id}
-                          placeholder="model-id"
+                          placeholder="model-id *"
                           aria-label={`Model ${index + 1} ID`}
                           onChange={(event) => updateModel(index, { id: event.target.value })}
                         />
@@ -360,21 +367,37 @@ export function CustomProviderDialogs({
                             }
                           />
                         </label>
-                        <label className="custom-check">
+                        <label className="custom-check" title="Supports extended thinking">
                           <Checkbox
                             checked={Boolean(model.reasoning)}
                             onCheckedChange={(checked) => updateModel(index, { reasoning: Boolean(checked) })}
                           />
                           <span>reasoning</span>
                         </label>
-                        <label className="custom-check">
+                        <label className="custom-check" title="Accepts image input">
                           <Checkbox
                             checked={Boolean(model.vision)}
                             onCheckedChange={(checked) => updateModel(index, { vision: Boolean(checked) })}
                           />
-                          <span title="Image input support">vision</span>
+                          <span>vision</span>
                         </label>
                       </div>
+                      {model.reasoning ? (
+                        <div className="custom-model-levels" role="group" aria-label={`Model ${index + 1} thinking levels`}>
+                          <span>Thinking levels</span>
+                          <div className="custom-model-levels-options">
+                            {THINKING_LEVELS.map((level) => (
+                              <label className="custom-check" key={level}>
+                                <Checkbox
+                                  checked={model.thinkingLevels?.includes(level) ?? false}
+                                  onCheckedChange={(checked) => updateModel(index, { thinkingLevels: toggleLevel(model.thinkingLevels, level, Boolean(checked)) })}
+                                />
+                                <span>{level}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))
                 )}
