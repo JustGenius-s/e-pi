@@ -1,6 +1,7 @@
-import { ChevronRight, FileText, Folder, FolderOpen, RefreshCw } from "lucide-react";
+import { ChevronRight, Folder, FolderOpen, RefreshCw } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
+import { FileTypeIcon } from "@/components/workspace/FileTypeIcon";
 import { IconButton } from "@/components/ui/IconButton";
 
 import { formatBytes } from "../../lib/format";
@@ -98,7 +99,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
               <Folder size={13} className="tool-file-dir-icon" />
             )
           ) : (
-            <FileText size={13} className="tool-file-file-icon" />
+            <FileTypeIcon name={node.name} />
           )}
           <span className="tool-file-name">{node.name}</span>
           {node.type === "file" && node.size !== undefined ? (

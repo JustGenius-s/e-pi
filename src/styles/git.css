@@ -796,12 +796,19 @@
 
 .tool-file-dir-icon {
   flex: 0 0 auto;
-  color: var(--chart-2);
+  color: var(--foreground);
 }
 
-.tool-file-file-icon {
+.tool-file-type-icon {
+  display: inline-flex;
   flex: 0 0 auto;
-  color: var(--muted-foreground);
+  align-items: center;
+}
+
+.tool-file-type-icon svg {
+  display: block;
+  width: 14px;
+  height: 14px;
 }
 
 .tool-file-name {
