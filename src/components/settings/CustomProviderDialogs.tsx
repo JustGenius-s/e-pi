@@ -1,4 +1,5 @@
-import { LoaderCircle, Plus, X } from "lucide-react";
+import { LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
+import { useState } from "react";
 
 import {
   AlertDialog,
@@ -64,6 +65,24 @@ export function CustomProviderDialogs({
     updateDraft({ models: draft.models.map((model, current) => (current === index ? { ...model, ...patch } : model)) });
   };
   const existing = Boolean(draft && providers.some((provider) => provider.id === draft.id));
+  const [fetching, setFetching] = useState(false);
+  const [fetchError, setFetchError] = useState<string>();
+  const fetchModels = async () => {
+    if (!draft || fetching) return;
+    setFetching(true);
+    setFetchError(undefined);
+    try {
+      const fetched = await window.ePi.models.fetchModels({ baseUrl: draft.baseUrl, apiKey: draft.apiKey });
+      // Merge by id so manually configured fields (name, context window, …)
+      // on existing rows are preserved.
+      const seen = new Set(draft.models.map((model) => model.id));
+      updateDraft({ models: [...draft.models, ...fetched.filter((model) => !seen.has(model.id))] });
+    } catch (reason) {
+      setFetchError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setFetching(false);
+    }
+  };
   return (
     <>
       <Dialog open={Boolean(draft)} onOpenChange={(open) => !open && onDraftChange(undefined)}>
@@ -132,15 +151,27 @@ export function CustomProviderDialogs({
               <div className="custom-models">
                 <div className="custom-models-heading">
                   <span>Models</span>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => updateDraft({ models: [...draft.models, { id: "" }] })}
-                    disabled={busy}
-                  >
-                    <Plus size={13} /> Add
-                  </Button>
+                  <div className="custom-models-actions">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void fetchModels()}
+                      disabled={busy || fetching || !draft.baseUrl.trim()}
+                      title="Fetch the model list from {baseUrl}/models"
+                    >
+                      {fetching ? <LoaderCircle className="spin" size={13} /> : <RefreshCw size={13} />} Fetch
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => updateDraft({ models: [...draft.models, { id: "" }] })}
+                      disabled={busy}
+                    >
+                      <Plus size={13} /> Add
+                    </Button>
+                  </div>
                 </div>
+                {fetchError ? <div className="model-settings-error">{fetchError}</div> : null}
                 {draft.models.length === 0 ? (
                   <div className="custom-models-empty">No models — the provider will only expose overrides.</div>
                 ) : (

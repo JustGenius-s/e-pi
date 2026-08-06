@@ -11,6 +11,7 @@ import type {
   CreateSessionRequest,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
+  FetchModelsRequest,
   ModelLoginRequest,
   ModelLoginResponse,
   PackageMutation,
@@ -312,6 +313,7 @@ function registerHandlers(): void {
   ipcMain.handle("models:custom-remove", (_event, request: CustomProviderRemoveRequest) =>
     models.removeCustomProvider(request),
   );
+  ipcMain.handle("models:fetch-models", (_event, request: FetchModelsRequest) => models.fetchModels(request));
 
   ipcMain.handle("agent:get-config", () => getAgentConfig());
   ipcMain.handle("agent:save-config", async (_event, request: AgentConfigSaveRequest) => {
@@ -325,7 +327,9 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 920,
-    minWidth: 980,
+    // Wide enough that the session sidebar (320px) + composer minimum
+    // (460px) + tool panel (320px) all fit without squeezing the composer.
+    minWidth: 1140,
     minHeight: 620,
     title: "E-Pi",
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : "default",

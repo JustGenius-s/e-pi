@@ -6,8 +6,10 @@ import type {
   CommandRecord,
   CreateSessionRequest,
   CustomProviderConfig,
+  CustomModelDefinition,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
+  FetchModelsRequest,
   EPiApi,
   FileContentResult,
   FileEntry,
@@ -112,6 +114,8 @@ const api: EPiApi = {
       ipcRenderer.invoke("models:custom-save", request) as Promise<CustomProviderConfig[]>,
     customRemove: (request: CustomProviderRemoveRequest) =>
       ipcRenderer.invoke("models:custom-remove", request) as Promise<CustomProviderConfig[]>,
+    fetchModels: (request: FetchModelsRequest) =>
+      ipcRenderer.invoke("models:fetch-models", request) as Promise<CustomModelDefinition[]>,
     onLoginEvent: (listener: (event: ModelLoginEvent) => void) => subscribe("models:login-event", listener),
   },
   agent: {
