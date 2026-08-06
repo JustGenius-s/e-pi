@@ -10,7 +10,9 @@ import type {
   CustomModelDefinition,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
+  CatalogMetaRequest,
   FetchModelsRequest,
+  ModelCatalogMeta,
   EPiApi,
   FileContentResult,
   FileEntry,
@@ -135,6 +137,8 @@ const api: EPiApi = {
       ipcRenderer.invoke("models:custom-remove", request) as Promise<CustomProviderConfig[]>,
     fetchModels: (request: FetchModelsRequest) =>
       ipcRenderer.invoke("models:fetch-models", request) as Promise<CustomModelDefinition[]>,
+    catalogMeta: (request: CatalogMetaRequest) =>
+      ipcRenderer.invoke("models:catalog-meta", request) as Promise<Record<string, ModelCatalogMeta>>,
     onLoginEvent: (listener: (event: ModelLoginEvent) => void) => subscribe("models:login-event", listener),
   },
   notifications: {

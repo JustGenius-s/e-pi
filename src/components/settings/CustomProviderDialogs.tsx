@@ -26,9 +26,27 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
-import type { CustomModelDefinition, CustomProviderConfig } from "../../types/contracts";
+import type { CustomModelDefinition, CustomProviderConfig, ModelCatalogMeta } from "../../types/contracts";
 
 const API_TYPES = ["openai-completions", "anthropic-messages", "openai-responses", "google-generative-ai"] as const;
+
+/** Thinking levels offered in the model card (pi levels minus "off"). */
+const THINKING_LEVELS = ["minimal", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** Toggle one level in a multi-select list; empty result becomes undefined. */
+function toggleLevel(levels: string[] | undefined, level: string, on: boolean): string[] | undefined {
+  const next = new Set(levels ?? []);
+  if (on) next.add(level);
+  else next.delete(level);
+  return next.size > 0 ? [...next] : undefined;
+}
+
+/** 262144 → "256K", 1000000 → "1M". */
+function formatTokens(tokens: number): string {
+  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`;
+  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
+  return String(tokens);
+}
 
 export interface CustomProviderDraft {
   id: string;
@@ -36,6 +54,7 @@ export interface CustomProviderDraft {
   baseUrl: string;
   api: string;
   apiKey: string;
+  authHeader: boolean;
   models: CustomModelDefinition[];
 }
 
@@ -72,6 +91,9 @@ export function CustomProviderDialogs({
   // them to add (popover with a scrollable, selectable list).
   const [fetchedModels, setFetchedModels] = useState<CustomModelDefinition[] | undefined>();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  // Curated metadata from models.dev, keyed by model id. Best-effort: ids
+  // without a catalog match just stay at defaults.
+  const [catalogMeta, setCatalogMeta] = useState<Record<string, ModelCatalogMeta>>({});
   const fetchModels = async () => {
     if (!draft || fetching) return;
     setFetching(true);
@@ -83,6 +105,11 @@ export function CustomProviderDialogs({
       // already in the list are shown disabled so they cannot be duplicated.
       setFetchedModels(fetched);
       setSelectedIds(new Set(fetched.filter((model) => !existingIds.has(model.id)).map((model) => model.id)));
+      // Enrich in the background; the popover is already usable meanwhile.
+      void window.ePi.models
+        .catalogMeta({ baseUrl: draft.baseUrl, modelIds: fetched.map((model) => model.id) })
+        .then((meta) => setCatalogMeta((current) => ({ ...current, ...meta })))
+        .catch(() => undefined);
     } catch (reason) {
       setFetchError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -115,7 +142,24 @@ export function CustomProviderDialogs({
   const addSelected = () => {
     if (!draft) return;
     const existingIds = new Set(draft.models.map((model) => model.id));
-    const toAdd = (fetchedModels ?? []).filter((model) => selectedIds.has(model.id) && !existingIds.has(model.id));
+    const toAdd = (fetchedModels ?? [])
+      .filter((model) => selectedIds.has(model.id) && !existingIds.has(model.id))
+      .map((model) => {
+        const meta = catalogMeta[model.id];
+        // Pre-fill curated capabilities; the user can still edit every field
+        // before saving, and unmatched ids fall back to the bare id.
+        return meta
+          ? {
+              ...model,
+              name: model.name || meta.name || model.id,
+              reasoning: meta.reasoning ?? model.reasoning,
+              vision: meta.vision ?? model.vision,
+              contextWindow: meta.contextWindow ?? model.contextWindow,
+              maxTokens: meta.maxTokens ?? model.maxTokens,
+              thinkingLevels: model.thinkingLevels,
+            }
+          : model;
+      });
     if (toAdd.length > 0) updateDraft({ models: [...draft.models, ...toAdd] });
     setFetchedModels(undefined);
   };
@@ -125,68 +169,70 @@ export function CustomProviderDialogs({
         <DialogContent className="custom-provider-dialog">
           <DialogHeader>
             <DialogTitle>{existing ? "Edit custom provider" : "Add custom provider"}</DialogTitle>
-            <DialogDescription>
-              Saved to ~/.pi/models.json. The provider appears in the list after saving.
-            </DialogDescription>
+            <DialogDescription>Saved to ~/.pi/models.json.</DialogDescription>
           </DialogHeader>
           {draft ? (
             <div className="custom-provider-form">
-              <label className="custom-field">
-                <span>Provider ID</span>
-                <Input
-                  value={draft.id}
-                  disabled={existing}
-                  placeholder="my-gateway"
-                  onChange={(event) => updateDraft({ id: event.target.value })}
-                />
-              </label>
-              <label className="custom-field">
-                <span>Name</span>
-                <Input
-                  value={draft.name}
-                  placeholder="My Gateway (optional)"
-                  onChange={(event) => updateDraft({ name: event.target.value })}
-                />
-              </label>
-              <div className="custom-field-row">
+              <section className="custom-section">
+                {/* The provider ID is derived from the name (or host) on save;
+                    users never see or manage it. */}
                 <label className="custom-field">
-                  <span>API type</span>
-                  <Select value={draft.api} onValueChange={(api) => updateDraft({ api })}>
-                    <SelectTrigger aria-label="API type">
-                      <SelectValue placeholder="API type" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {API_TYPES.map((api) => (
-                        <SelectItem key={api} value={api}>
-                          {api}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </label>
-                <label className="custom-field">
-                  <span>Base URL</span>
+                  <span>Name</span>
                   <Input
-                    value={draft.baseUrl}
-                    placeholder="https://api.example.com/v1"
-                    onChange={(event) => updateDraft({ baseUrl: event.target.value })}
+                    value={draft.name}
+                    placeholder="My Gateway (optional)"
+                    onChange={(event) => updateDraft({ name: event.target.value })}
                   />
                 </label>
-              </div>
-              <label className="custom-field">
-                <span>
-                  API key <small>optional — literal or $ENV_VAR, stored in ~/.pi/models.json</small>
-                </span>
-                <Input
-                  type="password"
-                  value={draft.apiKey}
-                  placeholder="$MY_API_KEY or sk-…"
-                  onChange={(event) => updateDraft({ apiKey: event.target.value })}
-                />
-              </label>
-              <div className="custom-models">
+                <div className="custom-field-row">
+                  <label className="custom-field">
+                    <span>API type</span>
+                    <Select value={draft.api} onValueChange={(api) => updateDraft({ api })}>
+                      <SelectTrigger aria-label="API type">
+                        <SelectValue placeholder="API type" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {API_TYPES.map((api) => (
+                          <SelectItem key={api} value={api}>
+                            {api}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </label>
+                  <label className="custom-field">
+                    <span>Base URL</span>
+                    <Input
+                      value={draft.baseUrl}
+                      placeholder="https://api.example.com/v1"
+                      onChange={(event) => updateDraft({ baseUrl: event.target.value })}
+                    />
+                  </label>
+                </div>
+              </section>
+              <section className="custom-section">
+                <label className="custom-field">
+                  <span>API key</span>
+                  <Input
+                    type="password"
+                    value={draft.apiKey}
+                    placeholder="$MY_API_KEY or sk-… (optional)"
+                    onChange={(event) => updateDraft({ apiKey: event.target.value })}
+                  />
+                </label>
+                <label className="custom-check" title="Adds Authorization: Bearer <apiKey> to every request">
+                  <Checkbox
+                    checked={draft.authHeader}
+                    onCheckedChange={(checked) => updateDraft({ authHeader: Boolean(checked) })}
+                  />
+                  <span>Send Authorization: Bearer header</span>
+                </label>
+              </section>
+              <section className="custom-section custom-models">
                 <div className="custom-models-heading">
-                  <span>Models</span>
+                  <span>
+                    Models <small>{draft.models.length}</small>
+                  </span>
                   <div className="custom-models-actions">
                     <Popover
                       open={fetchedModels !== undefined}
@@ -213,6 +259,7 @@ export function CustomProviderDialogs({
                         <div className="model-fetch-list" onWheel={onListWheel}>
                           {(fetchedModels ?? []).map((model) => {
                             const alreadyAdded = draft?.models.some((current) => current.id === model.id);
+                            const meta = catalogMeta[model.id];
                             return (
                               <label className="model-fetch-row" data-disabled={alreadyAdded || undefined} key={model.id}>
                                 <Checkbox
@@ -223,6 +270,15 @@ export function CustomProviderDialogs({
                                 <span className="model-fetch-id" title={model.id}>
                                   {model.id}
                                 </span>
+                                {meta ? (
+                                  <span className="model-fetch-badges">
+                                    {meta.vision ? <small title="Accepts image input">vision</small> : null}
+                                    {meta.reasoning ? <small title="Supports extended thinking">reasoning</small> : null}
+                                    {meta.contextWindow ? (
+                                      <small title="Context window">{formatTokens(meta.contextWindow)}</small>
+                                    ) : null}
+                                  </span>
+                                ) : null}
                                 {alreadyAdded ? <small className="model-fetch-added">added</small> : null}
                               </label>
                             );
@@ -253,74 +309,103 @@ export function CustomProviderDialogs({
                 </div>
                 {fetchError ? <div className="model-settings-error">{fetchError}</div> : null}
                 {draft.models.length === 0 ? (
-                  <div className="custom-models-empty">No models — the provider will only expose overrides.</div>
+                  <div className="custom-models-empty">No models yet.</div>
                 ) : (
                   draft.models.map((model, index) => (
-                    <div className="custom-model-row" key={model.id || index}>
-                      <Input
-                        value={model.id}
-                        placeholder="model-id"
-                        aria-label={`Model ${index + 1} ID`}
-                        onChange={(event) => updateModel(index, { id: event.target.value })}
-                      />
-                      <Input
-                        value={model.name ?? ""}
-                        placeholder="Name"
-                        aria-label={`Model ${index + 1} name`}
-                        onChange={(event) => updateModel(index, { name: event.target.value })}
-                      />
-                      <Input
-                        type="number"
-                        value={model.contextWindow ?? ""}
-                        placeholder="Context"
-                        aria-label={`Model ${index + 1} context window`}
-                        onChange={(event) =>
-                          updateModel(index, {
-                            contextWindow: event.target.value ? Number(event.target.value) : undefined,
-                          })
-                        }
-                      />
-                      <Input
-                        type="number"
-                        value={model.maxTokens ?? ""}
-                        placeholder="Max tokens"
-                        aria-label={`Model ${index + 1} max tokens`}
-                        onChange={(event) =>
-                          updateModel(index, { maxTokens: event.target.value ? Number(event.target.value) : undefined })
-                        }
-                      />
-                      <label className="custom-model-reasoning">
-                        <Checkbox
-                          checked={Boolean(model.reasoning)}
-                          onCheckedChange={(checked) => updateModel(index, { reasoning: Boolean(checked) })}
+                    <div className="custom-model-card" key={model.id || index}>
+                      <div className="custom-model-main">
+                        <Input
+                          className="custom-model-id"
+                          value={model.id}
+                          placeholder="model-id *"
+                          aria-label={`Model ${index + 1} ID`}
+                          onChange={(event) => updateModel(index, { id: event.target.value })}
                         />
-                        <span>reasoning</span>
-                      </label>
-                      <label className="custom-model-reasoning">
-                        <Checkbox
-                          checked={Boolean(model.vision)}
-                          onCheckedChange={(checked) => updateModel(index, { vision: Boolean(checked) })}
+                        <Input
+                          value={model.name ?? ""}
+                          placeholder="Display name (optional)"
+                          aria-label={`Model ${index + 1} name`}
+                          onChange={(event) => updateModel(index, { name: event.target.value })}
                         />
-                        <span title="Image input support">vision</span>
-                      </label>
-                      <IconButton
-                        label={`Remove model ${index + 1}`}
-                        onClick={() => updateDraft({ models: draft.models.filter((_, current) => current !== index) })}
-                        disabled={draft.models.length === 1 || busy}
-                      >
-                        <X size={13} />
-                      </IconButton>
+                        <IconButton
+                          label={`Remove model ${index + 1}`}
+                          onClick={() => updateDraft({ models: draft.models.filter((_, current) => current !== index) })}
+                          disabled={busy}
+                        >
+                          <X size={13} />
+                        </IconButton>
+                      </div>
+                      <div className="custom-model-meta">
+                        <label className="custom-model-num">
+                          <span>Context</span>
+                          <Input
+                            type="number"
+                            value={model.contextWindow ?? ""}
+                            placeholder="128000"
+                            aria-label={`Model ${index + 1} context window`}
+                            onChange={(event) =>
+                              updateModel(index, {
+                                contextWindow: event.target.value ? Number(event.target.value) : undefined,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="custom-model-num">
+                          <span>Max out</span>
+                          <Input
+                            type="number"
+                            value={model.maxTokens ?? ""}
+                            placeholder="8192"
+                            aria-label={`Model ${index + 1} max tokens`}
+                            onChange={(event) =>
+                              updateModel(index, {
+                                maxTokens: event.target.value ? Number(event.target.value) : undefined,
+                              })
+                            }
+                          />
+                        </label>
+                        <label className="custom-check" title="Supports extended thinking">
+                          <Checkbox
+                            checked={Boolean(model.reasoning)}
+                            onCheckedChange={(checked) => updateModel(index, { reasoning: Boolean(checked) })}
+                          />
+                          <span>reasoning</span>
+                        </label>
+                        <label className="custom-check" title="Accepts image input">
+                          <Checkbox
+                            checked={Boolean(model.vision)}
+                            onCheckedChange={(checked) => updateModel(index, { vision: Boolean(checked) })}
+                          />
+                          <span>vision</span>
+                        </label>
+                      </div>
+                      {model.reasoning ? (
+                        <div className="custom-model-levels" role="group" aria-label={`Model ${index + 1} thinking levels`}>
+                          <span>Thinking levels</span>
+                          <div className="custom-model-levels-options">
+                            {THINKING_LEVELS.map((level) => (
+                              <label className="custom-check" key={level}>
+                                <Checkbox
+                                  checked={model.thinkingLevels?.includes(level) ?? false}
+                                  onCheckedChange={(checked) => updateModel(index, { thinkingLevels: toggleLevel(model.thinkingLevels, level, Boolean(checked)) })}
+                                />
+                                <span>{level}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
                     </div>
                   ))
                 )}
-              </div>
+              </section>
             </div>
           ) : null}
           <DialogFooter>
             <Button variant="outline" onClick={() => onDraftChange(undefined)}>
               Cancel
             </Button>
-            <Button onClick={onSave} disabled={!draft?.id.trim() || !draft?.baseUrl.trim() || !draft?.api || busy}>
+            <Button onClick={onSave} disabled={!draft?.baseUrl.trim() || !draft?.api || busy}>
               {busy ? <LoaderCircle className="spin" /> : null} Save provider
             </Button>
           </DialogFooter>

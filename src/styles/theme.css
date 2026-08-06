@@ -63,14 +63,15 @@
      element that *declares* the property, so tokens inherited from :root
      would be frozen at the base scale — the ladder is therefore redeclared
      on every module scope element below (see the combined rule at the end of
-     this file). Defaults keep the pre-token values (9–15px anchored at 11px). */
-  --fs-scale: 11;
-  --fs-scale-sidebar: 11;
-  --fs-scale-workspace: 11;
-  --fs-scale-models: 11;
-  --fs-scale-packages: 11;
-  --fs-scale-git: 11;
-  --fs-scale-skills: 11;
+     this file). Defaults are anchored to the shadcn body size (14px);
+     dense modules sit one notch below (13px). */
+  --fs-scale: 14;
+  --fs-scale-sidebar: 13;
+  --fs-scale-workspace: 14;
+  --fs-scale-models: 13;
+  --fs-scale-packages: 13;
+  --fs-scale-git: 13;
+  --fs-scale-skills: 13;
 
   /* Default ladder (base scale) — overridden per module scope below. */
   --fs-mini: calc(var(--fs-scale) * 1px - 2px); /* badges, tiny metadata */

@@ -285,6 +285,12 @@ export interface CustomModelDefinition {
   contextWindow?: number;
   maxTokens?: number;
   reasoning?: boolean;
+  /**
+   * Supported thinking levels (pi levels minus "off"). Persisted as a
+   * thinkingLevelMap: selected levels map to their effort string, unselected
+   * levels map to null. Absent = let the provider default apply.
+   */
+  thinkingLevels?: string[];
   /** Image input support: persisted as input: ["text", "image"] in models.json. */
   vision?: boolean;
 }
@@ -295,6 +301,8 @@ export interface CustomProviderConfig {
   baseUrl: string;
   api: string;
   apiKey?: string;
+  /** Send `Authorization: Bearer <apiKey>` for non-standard APIs. */
+  authHeader?: boolean;
   models: CustomModelDefinition[];
 }
 
@@ -302,10 +310,25 @@ export interface CustomProviderRequest {
   provider: CustomProviderConfig;
 }
 
+export interface CatalogMetaRequest {
+  baseUrl: string;
+  modelIds: string[];
+}
+
 /** Fetch the model list from an OpenAI-compatible /models endpoint. */
 export interface FetchModelsRequest {
   baseUrl: string;
   apiKey?: string;
+}
+
+/** Curated model metadata from the models.dev community catalog. */
+export interface ModelCatalogMeta {
+  name?: string;
+  reasoning?: boolean;
+  /** True when the model accepts image input. */
+  vision?: boolean;
+  contextWindow?: number;
+  maxTokens?: number;
 }
 
 export interface CustomProviderRemoveRequest {
@@ -507,6 +530,8 @@ export interface EPiApi {
     customRemove(request: CustomProviderRemoveRequest): Promise<CustomProviderConfig[]>;
     /** Fetch the model list from an OpenAI-compatible /models endpoint. */
     fetchModels(request: FetchModelsRequest): Promise<CustomModelDefinition[]>;
+    /** Look up models.dev metadata for a set of model ids (best-effort, empty on failure). */
+    catalogMeta(request: CatalogMetaRequest): Promise<Record<string, ModelCatalogMeta>>;
     onLoginEvent(listener: (event: ModelLoginEvent) => void): () => void;
   };
   notifications: {

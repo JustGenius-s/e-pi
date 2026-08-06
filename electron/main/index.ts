@@ -10,6 +10,7 @@ import type {
   CreateSessionRequest,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
+  CatalogMetaRequest,
   FetchModelsRequest,
   ModelLoginRequest,
   ModelLoginResponse,
@@ -399,11 +400,21 @@ function registerHandlers(): void {
     models.removeCustomProvider(request),
   );
   ipcMain.handle("models:fetch-models", (_event, request: FetchModelsRequest) => models.fetchModels(request));
+  ipcMain.handle("models:catalog-meta", (_event, request: CatalogMetaRequest) => models.catalogMeta(request));
 
   ipcMain.handle("agent:get-config", () => getAgentConfig());
   ipcMain.handle("agent:save-config", async (_event, request: AgentConfigSaveRequest) => {
+    const prev = await getAgentConfig();
     const next = await saveAgentConfig(request.config);
-    await reloadActiveRuntime();
+    // Only relaunch live sessions when a launch-argument field changed
+    // (pi-runtime re-reads the config on every spawn). thinkingLevel is just
+    // the default for *new* sessions — running sessions get the change via
+    // /e-pi-thinking — so persisting it must not interrupt in-flight runs.
+    const launchArgsChanged =
+      prev.systemPrompt !== next.systemPrompt ||
+      prev.appendSystemPrompt !== next.appendSystemPrompt ||
+      prev.contextFiles !== next.contextFiles;
+    if (launchArgsChanged) await reloadActiveRuntime();
     return next;
   });
 }
