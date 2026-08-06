@@ -120,6 +120,7 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
      * canvas per resize, so it debounces to a single refit once the width
      * settles.
      */
+    let disposed = false;
     const fitTerminal = () => {
       const host = hostRef.current;
       if (!host) return;
@@ -134,32 +135,49 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
         return;
       }
       const refit = () => {
-        const viewport = host.querySelector<HTMLElement>(".xterm-viewport");
-        const beforeScrollTop = viewport?.scrollTop ?? 0;
+        // Capture the viewport by line, not pixel: reflow re-wraps the whole
+        // scrollback, so a pixel offset no longer maps to the same content
+        // (and the browser/xterm may clamp it to the new scroll height, which
+        // is the "jumps back to top" bug). Line numbers survive reflow.
         const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
+        const topLine = terminal.buffer.active.viewportY;
         try {
           fit.fit();
-          window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
         } catch {
           return;
         }
-        // Restore the scroll position so the visible line range doesn't jump:
-        // stick to the (possibly new) bottom when following output, otherwise
-        // keep the previous pixel offset for continuity.
-        if (wasAtBottom) {
-          terminal.scrollToBottom();
-        } else if (viewport && viewport.scrollTop !== beforeScrollTop) {
-          viewport.scrollTop = beforeScrollTop;
-        }
+        // refit() is coalesced (see fitTerminal below), so this is at most
+        // once per resize pause — one PTY resize, one TUI re-layout.
+        window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
+        // xterm's resize schedules its own viewport sync on a refresh callback
+        // (viewport.queueSync -> _sync on rAF, with scroll events suppressed
+        // meanwhile). Restoring immediately races that sync and can
+        // occasionally leave the viewport pinned at the top of the
+        // scrollback. Wait two frames for xterm to settle, then restore — and
+        // only when the viewport clearly drifted (clamped to top / bottom),
+        // so a position xterm kept itself is never disturbed.
+        const restoreScroll = () => {
+          if (disposed) return;
+          if (wasAtBottom) {
+            terminal.scrollToBottom();
+          } else if (Math.abs(terminal.buffer.active.viewportY - topLine) > 5) {
+            terminal.scrollToLine(topLine);
+          }
+        };
+        requestAnimationFrame(() => requestAnimationFrame(restoreScroll));
       };
-      if (webgl || !fittedOnceRef.current) {
-        // Live refit (WebGL) or first mount: run immediately.
+      if (!fittedOnceRef.current) {
+        // First mount: fit immediately so the terminal has a size right away.
         fittedOnceRef.current = true;
         refit();
       } else {
-        // Canvas fallback: collapse repeated fires into one refit.
+        // Coalesce refits while the window/panel width is being dragged: a
+        // per-frame refit repaints the renderer every frame (visible as a
+        // flicker) and reflows the scrollback repeatedly. xterm stays on the
+        // last settled size until resizing pauses, then refits once — which
+        // also means one PTY resize and one TUI re-layout per pause.
         window.clearTimeout(fitTimerRef.current);
-        fitTimerRef.current = window.setTimeout(refit, 120);
+        fitTimerRef.current = window.setTimeout(refit, 150);
       }
     };
     const resizeObserver = new ResizeObserver(fitTerminal);
@@ -174,7 +192,6 @@ export function TerminalPanel({ sessionKey, autoFocus }: TerminalPanelProps) {
       fitTerminal();
     });
 
-    let disposed = false;
     const replay = buffers.get(sessionKey);
     if (replay) terminal.write(replay);
 

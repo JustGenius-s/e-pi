@@ -464,6 +464,17 @@
   grid-row: 1 / -1;
 }
 
+/* Right tool panel opens/closes by resizing the grid column, which resizes
+   the terminal next door. With the 180ms width animation the ResizeObserver
+   refits the xterm every frame (repaint + PTY SIGWINCH + scroll-restore
+   races, visible as a flash and the scrollbar jumping to the top). Snap to
+   the target width instead so the terminal refits exactly once. Rail drags
+   already force transition:none above, so this only changes the toggle
+   animation, not drag behavior. */
+.sidebar-root[data-side="right"] {
+  transition: none;
+}
+
 .sidebar-root[data-side="right"] .sidebar-container {
   border-right: none;
   border-left: 1px solid var(--sidebar-border);
