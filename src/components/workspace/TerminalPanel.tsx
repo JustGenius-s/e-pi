@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
+import { ScrollbackGuard } from "../../lib/scrollbackGuard";
 import { appendTerminalReplay } from "../../lib/terminalReplayBuffer";
 import type { TerminalReplayBuffer } from "../../lib/terminalReplayBuffer";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
@@ -79,6 +80,8 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
   const fitTimerRef = useRef<number | undefined>(undefined);
   const fittedOnceRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
+  // Mirrors `atBottom` for use inside IPC/PTY callbacks (no re-render needed).
+  const atBottomRef = useRef(true);
   const isDarkRef = useTerminalTheme(hostRef, terminalRef);
   // Keep the latest callback without re-running the mount effect.
   const onFirstPaintRef = useRef(onFirstPaint);
@@ -116,7 +119,9 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
     terminalRef.current = terminal;
 
     const scrollSub = terminal.onScroll(() => {
-      setAtBottom(terminal.buffer.active.viewportY >= terminal.buffer.active.baseY);
+      const bottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
+      atBottomRef.current = bottom;
+      setAtBottom(bottom);
     });
 
     /**
@@ -265,9 +270,14 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
 
     runResizeBarrier = fitTerminal;
 
+    // While the user is scrolled up in history, strip `ESC[3J` (erase
+    // scrollback) from the stream: pi's TUI emits it on every full redraw and
+    // xterm responds by resetting ydisp to 0, yanking the viewport back to
+    // the top. At the bottom the trim is invisible and stays enabled.
+    const scrollbackGuard = new ScrollbackGuard();
     const flushWrite = (data: string, onWritten?: () => void) => {
       pendingWrites += 1;
-      terminal.write(data, () => {
+      terminal.write(scrollbackGuard.transform(data, !atBottomRef.current), () => {
         pendingWrites -= 1;
         onWritten?.();
       });
