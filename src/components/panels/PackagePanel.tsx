@@ -1,4 +1,4 @@
-import { RefreshCw } from "lucide-react";
+import { FolderOpen, RefreshCw } from "lucide-react";
 import { memo, useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -105,6 +105,14 @@ export const PackagePanel = memo(function PackagePanel({ open, cwd, onOpenChange
     setNeedsReload(false);
   };
 
+  // Local packages are plain directories referenced from settings — pi does
+  // not copy them, so installing one is just a directory pick plus a persist.
+  const installLocal = async () => {
+    const path = await window.ePi.app.chooseDirectory(cwd);
+    if (!path) return;
+    void run(() => window.ePi.packages.install({ source: path, cwd }), `${path.split("/").pop()} installed`);
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="package-drawer" showCloseButton={false} aria-describedby="package-drawer-description">
@@ -123,6 +131,16 @@ export const PackagePanel = memo(function PackagePanel({ open, cwd, onOpenChange
               <TabsTrigger value="explore">Explore</TabsTrigger>
             </TabsList>
           </Tabs>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={installLocal}
+            disabled={busy}
+            title="Install a package from a local directory"
+          >
+            <FolderOpen size={13} />
+            Install local…
+          </Button>
         </div>
         <div className="package-panes">
           <div
