@@ -7,11 +7,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
-import { ScrollbackGuard } from "../../lib/scrollbackGuard";
 import { appendTerminalReplay } from "../../lib/terminalReplayBuffer";
 import type { TerminalReplayBuffer } from "../../lib/terminalReplayBuffer";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
+import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 
 interface TerminalPanelProps {
   sessionKey: string;
@@ -19,6 +19,41 @@ interface TerminalPanelProps {
   autoFocus?: boolean;
   /** Fired once when the terminal first receives output for this session (replay or live). */
   onFirstPaint?: (sessionKey: string) => void;
+  /** Open a workspace file (from OSC 8 file links) in the built-in editor. */
+  onOpenFileLink?: (absPath: string, line?: number) => void;
+}
+
+const LOCATION_FRAGMENT_PATTERN = /^#L([1-9]\d*)(?:-L?([1-9]\d*))?$/i;
+
+/**
+ * Parse an OSC 8 link uri as a workspace file reference: `file:///abs/path`
+ * or a plain absolute path, optionally with a `#L10` / `#L10-L20` line
+ * fragment. Returns null when the uri is not a file reference.
+ */
+function parseWorkspaceFileLink(uri: string): { path: string; line?: number } | null {
+  let path = uri.trim();
+  let line: number | undefined;
+  const hashIndex = path.lastIndexOf("#");
+  if (hashIndex >= 0) {
+    const fragment = path.slice(hashIndex);
+    const match = LOCATION_FRAGMENT_PATTERN.exec(fragment);
+    if (match) {
+      line = Number(match[1]);
+      path = path.slice(0, hashIndex);
+    }
+  }
+  if (path.startsWith("file://")) {
+    try {
+      path = decodeURIComponent(path.slice("file://".length));
+    } catch {
+      path = path.slice("file://".length);
+    }
+  } else {
+    // Only absolute paths qualify; anything else is an external link.
+    if (!/^([a-zA-Z]:[\\/]|\/)/.test(path)) return null;
+  }
+  if (!path) return null;
+  return { path, line };
 }
 
 /**
@@ -75,18 +110,18 @@ function ensureBufferFeeder(): void {
   window.ePi.runtime.onAnyData((sessionPath, data) => appendTerminalBuffer(sessionPath, data));
 }
 
-export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalPanelProps) {
+export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileLink }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const fitTimerRef = useRef<number | undefined>(undefined);
   const fittedOnceRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
-  // Mirrors `atBottom` for use inside IPC/PTY callbacks (no re-render needed).
-  const atBottomRef = useRef(true);
   const isDarkRef = useTerminalTheme(hostRef, terminalRef);
   // Keep the latest callback without re-running the mount effect.
   const onFirstPaintRef = useRef(onFirstPaint);
   onFirstPaintRef.current = onFirstPaint;
+  const onOpenFileLinkRef = useRef(onOpenFileLink);
+  onOpenFileLinkRef.current = onOpenFileLink;
 
   useEffect(() => {
     if (!hostRef.current) return;
@@ -119,21 +154,26 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
     // pi's TUI emits OSC 8 hyperlinks (URLs in tool output, package pages,
     // …). xterm does not handle links on its own, so register the official
     // link addon. Like a system terminal, open on ⌘/Ctrl+click only, so a
-    // stray click never yanks the browser open. The sandboxed renderer's
-    // window.open is intercepted by the main process
-    // (setWindowOpenHandler → shell.openExternal), which is the existing
-    // path for opening external URLs.
+    // stray click never yanks the browser open. Workspace file links (file://
+    // or absolute paths with an optional #L<line> suffix) open in the built-in
+    // editor; everything else goes through window.open, which the main process
+    // intercepts (setWindowOpenHandler → shell.openExternal).
     const webLinks = new WebLinksAddon((event, uri) => {
-      if (event.metaKey || event.ctrlKey) window.open(uri, "_blank", "noopener");
+      if (!(event.metaKey || event.ctrlKey)) return;
+      const parsed = parseWorkspaceFileLink(uri);
+      if (parsed && onOpenFileLinkRef.current) {
+        event.preventDefault();
+        onOpenFileLinkRef.current(parsed.path, parsed.line);
+        return;
+      }
+      window.open(uri, "_blank", "noopener");
     });
     terminal.loadAddon(webLinks);
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
 
     const scrollSub = terminal.onScroll(() => {
-      const bottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
-      atBottomRef.current = bottom;
-      setAtBottom(bottom);
+      setAtBottom(terminal.buffer.active.viewportY >= terminal.buffer.active.baseY);
     });
 
     /**
@@ -282,14 +322,16 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
 
     runResizeBarrier = fitTerminal;
 
-    // While the user is scrolled up in history, strip `ESC[3J` (erase
-    // scrollback) from the stream: pi's TUI emits it on every full redraw and
-    // xterm responds by resetting ydisp to 0, yanking the viewport back to
-    // the top. At the bottom the trim is invisible and stays enabled.
-    const scrollbackGuard = new ScrollbackGuard();
+    // pi's TUI emits `ESC[2J ESC[H ESC[3J` full redraws whenever the PTY
+    // resizes or its layout changes. Executing `3J` would trim the whole
+    // scrollback and clamp ydisp to 0 — yanking a scrolled-up viewport back
+    // to the top and destroying the history the user is reading. Suppress it
+    // at parse time: a queue-time stream filter would race with xterm's
+    // asynchronous parser (see xtermScrollbackGuard).
+    const eraseScrollbackGuard = guardEraseScrollback(terminal);
     const flushWrite = (data: string, onWritten?: () => void) => {
       pendingWrites += 1;
-      terminal.write(scrollbackGuard.transform(data, !atBottomRef.current), () => {
+      terminal.write(data, () => {
         pendingWrites -= 1;
         onWritten?.();
       });
@@ -329,6 +371,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
       disposed = true;
       window.clearTimeout(shimmyTimer);
       cancelPendingRestore();
+      eraseScrollbackGuard.dispose();
       unsubscribeAppearance();
       stopData();
       input.dispose();

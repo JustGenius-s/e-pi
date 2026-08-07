@@ -3,6 +3,19 @@ export type PiProcessStatus = "idle" | "starting" | "running" | "stopping" | "ex
 /** Agent activity inside a running pi process (reported by the bridge extension). */
 export type PiActivityStatus = "busy" | "idle";
 
+/**
+ * Why a session is blocked waiting for the human. Neither is task completion:
+ * the agent turn stays busy and resumes once the user interacts.
+ */
+export type WaitingUserKind = "permission" | "ask_user";
+
+/** The session is blocked on a human interaction inside the pi process. */
+export interface WaitingUserState {
+  kind: WaitingUserKind;
+  /** Short display text (permission surface/command or the question), when available. */
+  detail?: string;
+}
+
 export interface ModelRef {
   provider: string;
   id: string;
@@ -115,6 +128,12 @@ export interface PiRuntimeState {
   generation: number;
   /** Agent activity while the process is running: "busy" (streaming/working) or "idle". */
   activity?: PiActivityStatus;
+  /**
+   * Set while the session waits on a human: a permission approval prompt
+   * (pi-permission-system) or an ask_user_question (e.g. rpiv-ask-user-question).
+   * The turn is NOT finished — it continues once the user interacts.
+   */
+  waitingUser?: WaitingUserState | null;
   /** Model currently selected inside this session's Pi process. */
   model?: ModelRef;
   /** Current thinking level inside this session's Pi process (after model clamping). */
@@ -441,6 +460,65 @@ export interface FileContentResult {
   binary: boolean;
 }
 
+/** Versioned read for the built-in editor (mtime + content hash snapshot). */
+export interface EditableTextResult {
+  content: string;
+  mtimeMs: number;
+  /** sha256 of the utf8 content, hex. */
+  contentHash: string;
+  sizeBytes: number;
+  totalLines: number;
+  binary: boolean;
+}
+
+/** Expected snapshot the writer must match (optimistic concurrency). */
+export interface WriteTextExpected {
+  mtimeMs?: number;
+  contentHash?: string;
+}
+
+export interface WriteTextResult {
+  mtimeMs: number;
+  contentHash: string;
+  totalLines: number;
+  sizeBytes: number;
+}
+
+/** Base64-encoded file payload for previews (images / pdf / text). */
+export interface WorkspaceBinaryResult {
+  mimeType: string;
+  data: string;
+  sizeBytes: number;
+  mtimeMs: number;
+}
+
+export interface MentionSearchEntry {
+  /** Path relative to the workspace root. */
+  path: string;
+  name: string;
+  kind: "dir" | "file";
+}
+
+export interface MentionSearchResult {
+  entries: MentionSearchEntry[];
+  truncated: boolean;
+}
+
+/** Fs bridge error codes surfaced to the renderer (see lib/fsErrors). */
+export type FsErrorCode =
+  | "STALE_FILE"
+  | "TOO_LARGE"
+  | "BINARY"
+  | "NOT_FOUND"
+  | "OUTSIDE_WORKSPACE";
+
+/** Debounced fs change batch pushed from the main process. */
+export interface WorkspaceChangedEvent {
+  cwd: string;
+  /** Paths relative to cwd; [""] means an unknown/root-level change. */
+  paths: string[];
+}
+
 export type ModelLoginEvent =
   | {
       type: "prompt";
@@ -662,6 +740,27 @@ export interface EPiApi {
   fs: {
     listDir(cwd: string, path: string): Promise<FileEntry[]>;
     readFile(cwd: string, path: string): Promise<FileContentResult>;
+    /** Versioned text read for the built-in editor. */
+    readEditableText(cwd: string, path: string): Promise<EditableTextResult>;
+    /** Versioned write; rejects with code STALE_FILE when the snapshot mismatches. */
+    writeText(
+      cwd: string,
+      path: string,
+      content: string,
+      expected?: WriteTextExpected,
+    ): Promise<WriteTextResult>;
+    /** Base64 payload for previews (images / pdf / text). */
+    readWorkspaceBinary(cwd: string, path: string, maxBytes?: number): Promise<WorkspaceBinaryResult>;
+    /** Substring search across the workspace (file tree search box). */
+    mentionSearch(cwd: string, query: string, limit?: number): Promise<MentionSearchResult>;
+  };
+  workspace: {
+    /** Start watching cwd for fs changes (idempotent per cwd). */
+    watchStart(cwd: string): Promise<void>;
+    /** Stop watching cwd. */
+    watchStop(cwd: string): Promise<void>;
+    /** Subscribe to debounced change batches; returns an unsubscribe function. */
+    onChanged(listener: (event: WorkspaceChangedEvent) => void): () => void;
   };
   sideTerminal: {
     spawn(cwd: string): Promise<string>;

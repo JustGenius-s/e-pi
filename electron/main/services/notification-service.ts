@@ -2,12 +2,13 @@ import { basename } from "node:path";
 
 import { Notification } from "electron";
 
+import type { PiRuntimeState, WaitingUserState } from "../../../src/types/contracts";
 import { loadPiAgent } from "./pi-agent-loader";
-
-import type { PiRuntimeState } from "../../../src/types/contracts";
 
 /** Session titles are free text; keep the banner body short. */
 const MAX_TITLE_LENGTH = 60;
+/** Notification detail lines (permission value / question) are truncated too. */
+const MAX_DETAIL_LENGTH = 90;
 
 function normalizeTitle(value: string): string {
   return value.replace(/\s+/g, " ").trim();
@@ -15,13 +16,20 @@ function normalizeTitle(value: string): string {
 
 /**
  * Tracks each session's last reported activity so a busy -> idle transition
- * (a task finishing) can raise a native notification. Notifications are only
- * sent for sessions that finished in the background: while the window is
- * focused on that session the terminal is already visible, so a banner would
- * just be noise.
+ * (a task finishing) can raise a native notification, and each session's
+ * waiting-on-human state so entering a permission prompt or ask_user question
+ * raises a "needs input" banner. Notifications are only sent for sessions that
+ * finished in the background: while the window is focused on that session the
+ * terminal is already visible, so a banner would just be noise.
+ *
+ * Waiting-for-input is NOT task completion: the agent turn stays busy and
+ * resumes once the user interacts, so it is reported as its own event type
+ * ("needs your approval" / "asks you a question").
  */
 export class TaskNotificationService {
   #lastActivity = new Map<string, "busy" | "idle">();
+  /** Last waiting state per session; undefined while the session is not blocked. */
+  #lastWait = new Map<string, WaitingUserState | undefined>();
 
   /** Called when the user clicks the banner (default: focus the window). */
   readonly #onActivate: (sessionPath: string) => void;
@@ -45,22 +53,39 @@ export class TaskNotificationService {
    * Feed every runtime state update. Returns true when a notification was
    * shown for this update.
    */
-  observe(
-    state: PiRuntimeState,
-    options: { activeSessionPath: string | undefined; windowFocused: boolean },
-  ): boolean {
-    if (state.activity !== "busy" && state.activity !== "idle") return false;
-    const previous = this.#lastActivity.get(state.sessionPath);
-    this.#lastActivity.set(state.sessionPath, state.activity);
-    if (previous !== "busy" || state.activity !== "idle") return false;
-    // Task finished. Skip when the user is already looking at this session.
-    if (options.activeSessionPath === state.sessionPath && options.windowFocused) return false;
-    void this.notify(state);
-    return true;
+  observe(state: PiRuntimeState, options: { activeSessionPath: string | undefined; windowFocused: boolean }): boolean {
+    let notified = false;
+    // The user is already looking at this session: no banner needed.
+    const visible = options.activeSessionPath === state.sessionPath && options.windowFocused;
+
+    // Task finished: busy -> idle on a background session.
+    if (state.activity === "busy" || state.activity === "idle") {
+      const previous = this.#lastActivity.get(state.sessionPath);
+      this.#lastActivity.set(state.sessionPath, state.activity);
+      if (previous === "busy" && state.activity === "idle" && !visible) {
+        void this.notify(state, "Task completed");
+        notified = true;
+      }
+    }
+
+    // Waiting on the human: a permission approval prompt or an ask_user
+    // question appeared. Not a task-completion event — the session resumes
+    // once the user interacts.
+    const waiting = state.waitingUser ?? undefined;
+    const previousWait = this.#lastWait.get(state.sessionPath);
+    this.#lastWait.set(state.sessionPath, waiting);
+    const enteredWait = waiting !== undefined && (previousWait === undefined || previousWait.kind !== waiting.kind);
+    if (enteredWait && !visible) {
+      void this.notify(state, waiting.kind === "permission" ? "Needs your approval" : "Asks you a question", {
+        detail: waiting.detail,
+      });
+      notified = true;
+    }
+    return notified;
   }
 
   /** Show the native banner. The first call triggers the OS permission prompt. */
-  async notify(state: PiRuntimeState): Promise<boolean> {
+  async notify(state: PiRuntimeState, body: string, options: { detail?: string } = {}): Promise<boolean> {
     if (!Notification.isSupported()) return false;
     try {
       // Prefer the session title (renamed name, else first message), then
@@ -79,7 +104,9 @@ export class TaskNotificationService {
       }
       const notification = new Notification({
         title: label,
-        body: "Task completed",
+        body: options.detail
+          ? `${body}: ${options.detail.length > MAX_DETAIL_LENGTH ? `${options.detail.slice(0, MAX_DETAIL_LENGTH)}…` : options.detail}`
+          : body,
       });
       notification.on("click", () => this.#onActivate(state.sessionPath));
       const release = () => {

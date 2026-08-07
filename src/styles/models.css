@@ -483,6 +483,46 @@
   margin-top: 16px;
 }
 
+/* Editor theme segmented control (Settings > Editor). */
+.editor-theme-segment {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--muted);
+}
+
+.editor-theme-segment-item {
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: var(--fs-body);
+  cursor: pointer;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.editor-theme-segment-item:hover {
+  color: var(--foreground);
+}
+
+.editor-theme-segment-item.active {
+  background: var(--background);
+  color: var(--foreground);
+  box-shadow: 0 1px 3px color-mix(in oklch, var(--foreground) 15%, transparent);
+  font-weight: 550;
+}
+
+.appearance-note {
+  color: var(--muted-foreground) !important;
+  font-size: var(--fs-small) !important;
+  white-space: normal !important;
+  line-height: 1.5;
+}
+
 /* --- Pi Agent (general tab) --- */
 
 .agent-section {

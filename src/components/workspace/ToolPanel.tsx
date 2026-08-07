@@ -43,6 +43,8 @@ interface ToolPanelProps {
   onOpenTab: (view: PanelView, forceNew?: boolean) => void;
   onCloseTab: (id: string) => void;
   onSelectTab: (id: string) => void;
+  /** Open a workspace file (preview/editor routing). */
+  onOpenFile?: (path: string, imagePaths?: string[]) => void;
 }
 
 const VIEW_META: Record<PanelView, { title: string; icon: LucideIcon }> = {
@@ -181,6 +183,7 @@ export const ToolPanel = memo(function ToolPanel({
   onOpenTab,
   onCloseTab,
   onSelectTab,
+  onOpenFile,
 }: ToolPanelProps) {
   // The review target follows the active session, but stays put when the user
   // picked a different repo from the switcher — until it no longer belongs to
@@ -214,7 +217,7 @@ export const ToolPanel = memo(function ToolPanel({
                   onSelectRepo={setReviewCwd}
                 />
               ) : null}
-              {tab.view === "files" ? <FileTreeView cwd={cwd} /> : null}
+              {tab.view === "files" ? <FileTreeView cwd={cwd} onOpenFile={onOpenFile} /> : null}
               {tab.view === "terminal" ? <SideTerminalView cwd={cwd} /> : null}
             </div>
           ))}

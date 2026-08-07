@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Folder, FolderOpen, RefreshCw } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -24,10 +24,15 @@ import { FileTypeIcon } from "@/components/workspace/FileTypeIcon";
 
 import { emitAttachFiles } from "../../lib/attachmentsBus";
 import { formatBytes } from "../../lib/format";
-import type { AppDescriptor, FileEntry } from "../../types/contracts";
+import { isWorkspacePreviewPath } from "../../lib/workspacePreviewKind";
+import type { AppDescriptor, FileEntry, MentionSearchEntry } from "../../types/contracts";
+
+const SEARCH_DEBOUNCE_MS = 180;
 
 interface FileTreeViewProps {
   cwd: string;
+  /** Open a workspace file through the preview/editor routing. */
+  onOpenFile?: (path: string, imagePaths?: string[]) => void;
 }
 
 interface TreeNode extends FileEntry {
@@ -41,8 +46,69 @@ function treeNode(entry: FileEntry): TreeNode {
   return { ...entry };
 }
 
-/** Lazy directory tree. */
-export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProps) {
+function isImagePath(path: string) {
+  return /\.(avif|bmp|gif|ico|jpeg|jpg|png|svg|webp)$/i.test(path);
+}
+
+/** Immutably update the node at `path`: expand/collapse and optionally set children/loading/error. */
+function expandPath(
+  node: TreeNode | undefined,
+  path: string,
+  expanded: boolean,
+  loading = false,
+  children?: TreeNode[],
+  error?: string,
+): TreeNode | undefined {
+  if (!node) return node;
+  if (node.path === path) {
+    return {
+      ...node,
+      expanded,
+      loading,
+      error: error ?? node.error,
+      children: children ?? node.children,
+    };
+  }
+  if (!node.children) return node;
+  return {
+    ...node,
+    children: node.children.flatMap((child) => {
+      const updated = expandPath(child, path, expanded, loading, children, error);
+      return updated ? [updated] : [];
+    }),
+  };
+}
+
+/** Immutably replace the children of the directory at `path` (watcher refresh). */
+function refreshDirChildren(node: TreeNode | undefined, path: string, children: TreeNode[]): TreeNode | undefined {
+  if (!node) return node;
+  if (node.path === path) {
+    return { ...node, children, loading: false, error: undefined };
+  }
+  if (!node.children) return node;
+  return {
+    ...node,
+    children: node.children.flatMap((child) => {
+      const updated = refreshDirChildren(child, path, children);
+      return updated ? [updated] : [];
+    }),
+  };
+}
+
+/** Find a node by absolute path. */
+function findNode(node: TreeNode | undefined, path: string): TreeNode | undefined {
+  if (!node) return undefined;
+  if (node.path === path) return node;
+  if (!node.children) return undefined;
+  for (const child of node.children) {
+    const found = findNode(child, path);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+/** Lazy directory tree with search, watcher-driven refresh and preview/editor opening. */
+export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: FileTreeViewProps) {
   const [root, setRoot] = useState<TreeNode>();
   const [rootError, setRootError] = useState<string>();
   const [apps, setApps] = useState<AppDescriptor[]>([]);
@@ -51,6 +117,12 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   const [platform, setPlatform] = useState<NodeJS.Platform>("darwin");
   /** Path of the last clicked/right-clicked row, kept highlighted. */
   const [selectedPath, setSelectedPath] = useState<string>();
+  /** Search box state. */
+  const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<MentionSearchEntry[]>([]);
+  const [searchTruncated, setSearchTruncated] = useState(false);
+  const [searchError, setSearchError] = useState<string>();
   const loadingPaths = useRef(new Set<string>());
 
   // Load the scanned apps, the persisted "open with" choice and the platform once.
@@ -77,7 +149,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   };
 
   /** Open a file with the persisted app; prompts the user when none is chosen. */
-  const openFile = async (path: string) => {
+  const openFile = useCallback(async (path: string) => {
     if (!openWithApp) {
       toast.info("No default app chosen; pick one from the app selector in the file tree");
       return;
@@ -87,7 +159,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : String(reason));
     }
-  };
+  }, [openWithApp]);
 
   const openFileWith = async (appPath: string, path: string) => {
     try {
@@ -125,6 +197,8 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
   useEffect(() => {
     setRoot(undefined);
     setRootError(undefined);
+    setQuery("");
+    setSearchResults([]);
     void loadDir(
       cwd,
       (entries) =>
@@ -156,6 +230,132 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
       (message) => setRoot((current) => expandPath(current, node.path, true, false, undefined, message)),
     );
   };
+
+  /** Reload the directory at `path`, keeping the rest of the tree intact. */
+  const reloadDir = useCallback(
+    (path: string) => {
+      setRoot((current) => {
+        if (!current) return current;
+        const node = findNode(current, path);
+        if (!node || node.type !== "dir" || node.expanded !== true) return current;
+        void loadDir(
+          path,
+          (entries) => setRoot((tree) => refreshDirChildren(tree, path, entries.map(treeNode))),
+          (_message) => setRoot((tree) => refreshDirChildren(tree, path, node.children ?? [])),
+        );
+        return current;
+      });
+    },
+    [loadDir],
+  );
+
+  // Watcher-driven refresh: reload expanded directories touched by changes.
+  useEffect(() => {
+    return window.ePi.workspace.onChanged((event) => {
+      if (event.cwd !== cwd) return;
+      const targets = new Set<string>();
+      for (const changed of event.paths) {
+        if (!changed) {
+          targets.add(cwd);
+          continue;
+        }
+        const parts = changed.split("/");
+        parts.pop(); // parent directory of the changed path
+        targets.add(parts.length > 0 ? `${cwd}/${parts.join("/")}` : cwd);
+      }
+      for (const target of targets) reloadDir(target);
+    });
+  }, [cwd, reloadDir]);
+
+  // Debounced search over the workspace.
+  useEffect(() => {
+    if (!query.trim() || !cwd) {
+      setSearchResults([]);
+      setSearchError(undefined);
+      setSearchTruncated(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setSearching(true);
+      void window.ePi.fs
+        .mentionSearch(cwd, query.trim())
+        .then((result) => {
+          if (cancelled) return;
+          setSearchResults(result.entries);
+          setSearchTruncated(result.truncated);
+          setSearchError(undefined);
+        })
+        .catch((reason: unknown) => {
+          if (cancelled) return;
+          setSearchResults([]);
+          setSearchError(reason instanceof Error ? reason.message : String(reason));
+        })
+        .finally(() => {
+          if (!cancelled) setSearching(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [cwd, query]);
+
+  /** Reveal a search result: expand ancestors, select and (for files) open. */
+  const revealResult = (entry: MentionSearchEntry) => {
+    const absPath = `${cwd}/${entry.path}`;
+    setQuery("");
+    setSearchResults([]);
+    setSelectedPath(absPath);
+    if (entry.kind === "file") {
+      if (onOpenFile) {
+        onOpenFile(absPath);
+        return;
+      }
+      void openFile(absPath);
+      return;
+    }
+    // Directory: expand the ancestor chain lazily.
+    const parts = entry.path.split("/");
+    const chain: string[] = [];
+    for (let index = 0; index < parts.length; index += 1) {
+      chain.push(`${cwd}/${parts.slice(0, index + 1).join("/")}`);
+    }
+    void (async () => {
+      for (const dir of chain) {
+        const node = findNode(root, dir);
+        if (node?.children) {
+          setRoot((current) => expandPath(current, dir, true));
+        } else {
+          setRoot((current) => expandPath(current, dir, true, true));
+          await loadDir(
+            dir,
+            (entries) => setRoot((current) => expandPath(current, dir, true, false, entries.map(treeNode))),
+            () => undefined,
+          );
+        }
+      }
+    })();
+  };
+
+  const handleOpenFile = useCallback(
+    (path: string) => {
+      if (!onOpenFile) {
+        void openFile(path);
+        return;
+      }
+      // Sibling image paths for prev/next navigation in the preview overlay.
+      const node = findNode(root, path);
+      const parentPath = path.slice(0, path.lastIndexOf("/"));
+      const parent = findNode(root, parentPath);
+      const siblingImages =
+        parent?.children?.filter((child) => child.type === "file" && isImagePath(child.path)).map((child) => child.path) ??
+        [];
+      onOpenFile(path, siblingImages.length > 0 ? siblingImages : undefined);
+      void node;
+    },
+    [onOpenFile, openFile, root],
+  );
 
   const selectedAppName = apps.find((app) => app.id === openWithApp)?.name;
   const selectedApp = apps.find((app) => app.id === openWithApp);
@@ -202,10 +402,13 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
         className={`tool-file-row${selectedPath === node.path ? " selected" : ""}`}
         style={{ paddingLeft: `${8 + depth * 12}px` }}
         onClick={() => toggle(node)}
+        onDoubleClick={() => {
+          if (!isDir) handleOpenFile(node.path);
+        }}
         onContextMenu={() => setSelectedPath(node.path)}
       >
         <span className="tool-file-chevron">
-          {isDir ? <ChevronRight size={11} className={expanded ? "rotated" : ""} /> : null}
+          {isDir ? <ChevronRight size={11} className={expanded ? "rotated" : undefined} /> : null}
         </span>
         {isDir ? (
           expanded ? (
@@ -225,6 +428,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
       </button>
     );
 
+    const canPreview = !isDir && isWorkspacePreviewPath(node.path);
     const content = isDir ? (
       <ContextMenu>
         <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
@@ -240,6 +444,11 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
       <ContextMenu>
         <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
         <ContextMenuContent>
+          {canPreview ? (
+            <ContextMenuItem onSelect={() => handleOpenFile(node.path)}>Preview</ContextMenuItem>
+          ) : (
+            <ContextMenuItem onSelect={() => handleOpenFile(node.path)}>Open in Editor</ContextMenuItem>
+          )}
           <ContextMenuItem onSelect={() => void openFile(node.path)}>
             Open
             {selectedAppName ? <span className="tool-file-open-app-hint">{selectedAppName}</span> : null}
@@ -279,9 +488,67 @@ export const FileTreeView = memo(function FileTreeView({ cwd }: FileTreeViewProp
     );
   };
 
+  const showSearch = query.trim().length > 0;
+
   return (
     <div className="git-panel-body">
       {rootError ? <div className="git-error">{rootError}</div> : null}
+
+      <div className="tool-file-search">
+        <Search size={12} className="tool-file-search-icon" />
+        <input
+          type="text"
+          className="tool-file-search-input"
+          placeholder="Search workspace…"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setQuery("");
+              setSearchResults([]);
+            }
+          }}
+        />
+        {searching ? (
+          <Loader2 size={12} className="tool-file-search-spinner spin" />
+        ) : query ? (
+          <button
+            type="button"
+            className="tool-file-search-clear"
+            aria-label="Clear search"
+            onClick={() => {
+              setQuery("");
+              setSearchResults([]);
+            }}
+          >
+            <X size={11} />
+          </button>
+        ) : null}
+      </div>
+
+      {showSearch ? (
+        <div className="tool-file-search-results">
+          {searchError ? (
+            <div className="tool-file-error">{searchError}</div>
+          ) : searchResults.length === 0 && !searching ? (
+            <div className="tool-file-search-empty">No matches</div>
+          ) : (
+            searchResults.map((entry) => (
+              <button
+                key={`${entry.kind}:${entry.path}`}
+                type="button"
+                className="tool-file-search-result"
+                title={entry.path}
+                onClick={() => revealResult(entry)}
+              >
+                {entry.kind === "dir" ? <Folder size={12} /> : <FileTypeIcon name={entry.name} />}
+                <span className="min-w-0 flex-1 truncate text-left">{entry.path}</span>
+              </button>
+            ))
+          )}
+          {searchTruncated ? <div className="tool-file-search-truncated">Results truncated</div> : null}
+        </div>
+      ) : null}
 
       {root ? (
         <div className="tool-file-tree">{renderTree(root, 0)}</div>
@@ -373,33 +640,4 @@ function OpenWithSubMenu({
       </ContextMenuSubContent>
     </>
   );
-}
-
-/** Immutably update the node at `path`: expand/collapse and optionally set children/loading/error. */
-function expandPath(
-  node: TreeNode | undefined,
-  path: string,
-  expanded: boolean,
-  loading = false,
-  children?: TreeNode[],
-  error?: string,
-): TreeNode | undefined {
-  if (!node) return node;
-  if (node.path === path) {
-    return {
-      ...node,
-      expanded,
-      loading,
-      error: error ?? node.error,
-      children: children ?? node.children,
-    };
-  }
-  if (!node.children) return node;
-  return {
-    ...node,
-    children: node.children.flatMap((child) => {
-      const updated = expandPath(child, path, expanded, loading, children, error);
-      return updated ? [updated] : [];
-    }),
-  };
 }

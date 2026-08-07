@@ -5,6 +5,7 @@ import { memo, useEffect, useRef, useState } from "react";
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
 import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
+import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 
 interface SideTerminalViewProps {
@@ -33,6 +34,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
     let fitTimer: number | undefined;
     let restoreGeneration = 0;
     let unsubscribeAppearance: (() => void) | undefined;
+    let eraseScrollbackGuard: { dispose(): void } | undefined;
 
     const start = async () => {
       if (!hostRef.current) return;
@@ -61,6 +63,10 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       terminal.loadAddon(fit);
       terminal.open(hostRef.current);
       terminalRef.current = terminal;
+      // Same parse-time `3J` suppression as the main terminal: `clear` (or any
+      // program emitting erase-scrollback) must not yank a scrolled-up
+      // viewport to the top.
+      eraseScrollbackGuard = guardEraseScrollback(terminal);
 
       const fitTerminal = () => {
         try {
@@ -128,6 +134,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       terminal?.dispose();
       terminalRef.current = null;
       unsubscribeAppearance?.();
+      eraseScrollbackGuard?.dispose();
     };
   }, [cwd, isDarkRef]);
 

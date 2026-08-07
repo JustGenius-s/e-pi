@@ -44,6 +44,7 @@ import { ProjectService } from "./services/project-service";
 import { SessionService } from "./services/session-service";
 import { SideTerminalService } from "./services/side-terminal-service";
 import { SkillService } from "./services/skill-service";
+import { WorkspaceWatcherService } from "./services/workspace-watcher-service";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 // Required for native notifications on Windows (toast activation identity;
@@ -59,6 +60,7 @@ const commands = new CommandService();
 const git = new GitService();
 const fileService = new FileService();
 const sideTerminals = new SideTerminalService();
+const workspaceWatcher = new WorkspaceWatcherService();
 let mainWindow: BrowserWindow | undefined;
 
 function sendToRenderer(channel: string, payload: unknown): void {
@@ -374,6 +376,37 @@ function registerHandlers(): void {
   ipcMain.handle("fs:read-file", async (_event, cwd: string, path: string) =>
     fileService.readFile(cwd || activeCwd(), path),
   );
+  ipcMain.handle("fs:read-editable-text", async (_event, cwd: string, path: string) =>
+    fileService.readEditableText(cwd || activeCwd(), path),
+  );
+  ipcMain.handle(
+    "fs:write-text",
+    async (
+      _event,
+      cwd: string,
+      path: string,
+      content: string,
+      expected?: { mtimeMs?: number; contentHash?: string },
+    ) => fileService.writeText(cwd || activeCwd(), path, content, expected),
+  );
+  ipcMain.handle(
+    "fs:read-workspace-binary",
+    async (_event, cwd: string, path: string, maxBytes?: number) =>
+      fileService.readWorkspaceBinary(cwd || activeCwd(), path, maxBytes),
+  );
+  ipcMain.handle(
+    "fs:mention-search",
+    async (_event, cwd: string, query: string, limit?: number) =>
+      fileService.mentionSearch(cwd || activeCwd(), query, limit),
+  );
+
+  ipcMain.handle("workspace:watch-start", (_event, cwd: string) => {
+    workspaceWatcher.watch(cwd || activeCwd());
+  });
+  ipcMain.handle("workspace:watch-stop", (_event, cwd: string) => {
+    workspaceWatcher.unwatch(cwd || activeCwd());
+  });
+  workspaceWatcher.onChanged((event) => sendToRenderer("workspace:changed", event));
 
   ipcMain.handle("side-terminal:spawn", async (_event, cwd: string) => sideTerminals.spawn(cwd || activeCwd()));
   ipcMain.on("side-terminal:write", (_event, id: string, data: string) => sideTerminals.write(id, data));
@@ -517,8 +550,10 @@ runtime.onSessionFileChanged(() => {
 });
 projects.onUpdated((next) => sendToRenderer("projects:updated", next));
 
-// Task-completion banners: busy -> idle on a session raises a native
-// notification when it finished in the background.
+// Task notifications: busy -> idle on a session raises a native banner when
+// it finished in the background; entering a permission approval prompt or an
+// ask_user question raises a "needs input" banner (the session is blocked on
+// the human, not finished).
 let notificationHintShown = false;
 const notifications = new TaskNotificationService(
   (sessionPath) => {
@@ -539,9 +574,9 @@ const notifications = new TaskNotificationService(
       .showMessageBox({
         type: "info",
         title: "Notifications are off",
-        message: "E-Pi wants to show a notification when a task finishes.",
+        message: "E-Pi wants to show a notification when a task finishes or needs your input.",
         detail: app.isPackaged
-          ? "Allow notifications for E-Pi in System Settings, then completed tasks will show a banner."
+          ? "Allow notifications for E-Pi in System Settings, then completed tasks and input requests will show a banner."
           : 'Allow notifications for "Electron" in System Settings (the dev build shares that app identity; the packaged E-Pi app has its own entry).',
         buttons: ["Open Notification Settings", "Not now"],
         defaultId: 0,
@@ -598,6 +633,7 @@ if (!hasLock) {
   app.on("before-quit", () => {
     void runtime.stop();
     sideTerminals.killAll();
+    workspaceWatcher.dispose();
   });
 
   app.on("window-all-closed", () => {
