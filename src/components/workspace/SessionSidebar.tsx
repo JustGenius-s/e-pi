@@ -795,13 +795,16 @@ export function SessionSidebar({
             </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
-        {/* Hover actions: replace the time with ⋯ (more) / pin / archive. */}
+        {/* Hover actions: replace the time with ⋯ (more) / pin / archive. The
+            tooltips must stay delay-free: a delayed open timer can fire after
+            the pointer has left the row (the bar turns pointer-events:none
+            mid-flight), leaving a tooltip stranded on screen. */}
         <div className="session-row-actions" data-open={moreMenuPath === session.path ? "true" : undefined}>
           <DropdownMenu
             open={moreMenuPath === session.path}
             onOpenChange={(open) => setMoreMenuPath(open ? session.path : undefined)}
           >
-            <Tooltip delayDuration={1200}>
+            <Tooltip disableHoverableContent>
               <TooltipTrigger asChild>
                 <DropdownMenuTrigger className="session-row-action" aria-label="More actions">
                   <MoreVertical size={13} />
@@ -824,7 +827,7 @@ export function SessionSidebar({
               <DropdownMenuItem onSelect={() => addToChat(session)}>Add to chat</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-          <Tooltip delayDuration={1200}>
+          <Tooltip disableHoverableContent>
             <TooltipTrigger asChild>
               <button
                 type="button"
@@ -837,7 +840,7 @@ export function SessionSidebar({
             </TooltipTrigger>
             <TooltipContent side="top">{pinned ? "Unpin chat" : "Pin chat"}</TooltipContent>
           </Tooltip>
-          <Tooltip delayDuration={1200}>
+          <Tooltip disableHoverableContent>
             <TooltipTrigger asChild>
               <button
                 type="button"

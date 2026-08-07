@@ -267,7 +267,13 @@
   background: color-mix(in oklch, var(--sidebar) 92%, var(--sidebar-foreground));
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  /* pointer-events flips to none only after the fade-out completes: the
+     instant flip would make the browser attribute the pointer-leave to the
+     element beneath the bar, so Radix tooltips on the action buttons never
+     see the leave and their open timer fires after the mouse is gone. */
+  transition:
+    opacity 120ms ease,
+    pointer-events 0s linear 120ms;
 }
 
 .session-menu-item:hover .session-row-actions,
@@ -279,6 +285,11 @@
 .session-row-actions[data-open] {
   opacity: 1;
   pointer-events: auto;
+  /* Re-engage hit-testing immediately when the bar shows; only the hide
+     direction waits for the fade (see the base rule above). */
+  transition:
+    opacity 120ms ease,
+    pointer-events 0s;
 }
 
 /* Hide the time while the actions are visible (hover or open menu), but keep
