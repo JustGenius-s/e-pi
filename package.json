@@ -17,6 +17,7 @@
     "build": "npm run typecheck && npm run test && electron-vite build",
     "fetch:node": "node scripts/fetch-node.mjs",
     "dist:mac": "npm run fetch:node && npm run build && electron-builder --mac",
+    "fix:notif": "bash scripts/fix-notification-permission.sh",
     "dist:win": "npm run fetch:node && npm run build && electron-builder --win",
     "postinstall": "install-electron --no && electron-builder install-app-deps",
     "lint": "oxlint",
@@ -111,6 +112,7 @@
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "build/icon.icns",
+      "identity": null,
       "target": [
         "dmg",
         "zip"

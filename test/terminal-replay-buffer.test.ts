@@ -68,4 +68,23 @@ describe("terminal replay buffer", () => {
     expect(append(undefined, "")).toMatchObject({ content: "", awaitingCheckpoint: false });
     expect(append(undefined, "new", 0)).toMatchObject({ content: "", awaitingCheckpoint: true });
   });
+
+  it("overflows without discarding a usable frame when pi never full-redraws", () => {
+    // pi's TUI first render is `fullRender(false)`: it writes every line from
+    // row 0 but emits NO clear sequence, so nothing is checkpointed until the
+    // pty resizes. A resume-history dump followed by the first frame can
+    // exceed the cap before any full redraw exists.
+    const firstFrame = `${SYNC_OPEN}line one\r\nline two\r\n${SYNC_CLOSE}`;
+    const dump = `${firstFrame}${SYNC_OPEN}${firstFrame}${SYNC_CLOSE}`.repeat(10);
+    const overflowed = append(undefined, dump, 100);
+    expect(overflowed).toMatchObject({ content: "", awaitingCheckpoint: true });
+
+    // The pty resize on a remount forces the TUI into a full redraw; that
+    // frame is the checkpoint the recovery shimmy relies on.
+    const recovered = append(overflowed, `${SYNC_OPEN}${FULL_REDRAW}current screen${SYNC_CLOSE}`, 100);
+    expect(recovered).toMatchObject({
+      content: `${SYNC_OPEN}${FULL_REDRAW}current screen${SYNC_CLOSE}`,
+      awaitingCheckpoint: false,
+    });
+  });
 });
