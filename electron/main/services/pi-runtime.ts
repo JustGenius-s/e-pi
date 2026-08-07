@@ -301,6 +301,10 @@ export class PiRuntime {
 
   async #launch(instance: Instance): Promise<void> {
     const { sessionPath, cwd } = instance;
+    const launchT0 = performance.now();
+    const launchMark = (label: string): void => {
+      debugLog(`[runtime] launch +${(performance.now() - launchT0).toFixed(0)}ms ${label}`, { sessionPath });
+    };
     instance.generation += 1;
     const generation = instance.generation;
     this.#setState(instance, { status: "starting", sessionPath, cwd, generation });
@@ -319,6 +323,7 @@ export class PiRuntime {
       const agentArgs = agentConfigToArgs(await getAgentConfig());
       args.push(...agentArgs);
       debugLog("[runtime] spawning pi", { nodeBinary, args, cwd, sessionPath });
+      launchMark("config resolved");
 
       const child = spawn(nodeBinary, args, {
         name: "xterm-256color",
@@ -333,17 +338,25 @@ export class PiRuntime {
           TERM: "xterm-256color",
           COLORTERM: "truecolor",
           E_PI: "true",
+          // Surface pi's own startup timings (stderr) when profiling startup.
+          ...(process.env.E_PI_DEBUG === "1" ? { PI_TIMING: "1" } : {}),
         },
       });
 
       instance.process = child;
+      launchMark("pty spawned");
       instance.stopPromise = new Promise<void>((resolve) => {
         instance.resolveStop = resolve;
       });
+      let firstOutput = false;
       child.onData((data) => {
         // A dying process must not paint into the terminal (e.g. pi prints a
         // "To resume this session" farewell on Ctrl-D).
         if (instance.dying) return;
+        if (!firstOutput) {
+          firstOutput = true;
+          launchMark("first pty output");
+        }
         for (const listener of this.#globalDataListeners) listener(sessionPath, data);
       });
       child.onExit(({ exitCode, signal }) => {
@@ -375,6 +388,7 @@ export class PiRuntime {
 
       this.#watchActivity(instance);
       await this.#waitUntilReady(instance, child);
+      launchMark("ready (activity sidecar)");
       this.#setState(instance, {
         ...instance.state,
         status: "running",
