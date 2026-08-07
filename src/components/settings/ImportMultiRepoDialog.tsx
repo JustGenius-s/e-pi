@@ -15,6 +15,8 @@ interface ImportMultiRepoDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Existing project to edit; undefined creates a new one. */
   editing?: Project;
+  /** Pre-filled folders for creating a project (promoting an existing folder group). */
+  initial?: { folders: string[]; primaryRepo: string };
   /** Resolves with the created project; the caller then creates the session. */
   onCreateProject: (request: { name?: string; folders: string[]; primaryRepo: string }) => Promise<void>;
   /** Persist edits to an existing project. */
@@ -31,6 +33,7 @@ export function ImportMultiRepoDialog({
   defaultPath,
   onOpenChange,
   editing,
+  initial,
   onCreateProject,
   onUpdateProject,
 }: ImportMultiRepoDialogProps) {
@@ -48,13 +51,13 @@ export function ImportMultiRepoDialog({
   // Reset the draft whenever the dialog opens (or the target project changes).
   useEffect(() => {
     if (!open) return;
-    setName(editing?.name ?? "");
-    setFolders(editing?.folders ?? []);
-    setPrimary(editing?.primaryRepo);
+    setName(editing?.name ?? (initial ? pathBaseName(initial.primaryRepo) : ""));
+    setFolders(editing?.folders ?? initial?.folders ?? []);
+    setPrimary(editing?.primaryRepo ?? initial?.primaryRepo);
     setAutoNamed(!editing);
     setError(undefined);
     setBusy(false);
-  }, [open, editing]);
+  }, [open, editing, initial]);
 
   const addFolders = async (): Promise<void> => {
     const picked = await window.ePi.app.chooseDirectories(defaultPath);
@@ -165,7 +168,7 @@ export function ImportMultiRepoDialog({
             Cancel
           </Button>
           <Button onClick={() => void submit()} disabled={!canCreate}>
-            {editing ? "Save changes" : "Create project & new session"}
+            {editing ? "Save changes" : initial ? "Create project" : "Create project & new session"}
           </Button>
         </DialogFooter>
       </DialogContent>

@@ -267,14 +267,29 @@
   background: color-mix(in oklch, var(--sidebar) 92%, var(--sidebar-foreground));
   opacity: 0;
   pointer-events: none;
-  transition: opacity 120ms ease;
+  /* pointer-events flips to none only after the fade-out completes: the
+     instant flip would make the browser attribute the pointer-leave to the
+     element beneath the bar, so Radix tooltips on the action buttons never
+     see the leave and their open timer fires after the mouse is gone. */
+  transition:
+    opacity 120ms ease,
+    pointer-events 0s linear 120ms;
 }
 
 .session-menu-item:hover .session-row-actions,
-.session-menu-item:focus-within .session-row-actions,
+/* Keyboard focus (tab) reveals the bar; mouse clicks must not — clicking a
+   row button leaves focus on it, and :focus-within would keep the bar
+   visible forever after the pointer leaves the row. :focus-visible only
+   matches keyboard-initiated focus, so the bar tracks the hover state. */
+.session-menu-item:has(:focus-visible) .session-row-actions,
 .session-row-actions[data-open] {
   opacity: 1;
   pointer-events: auto;
+  /* Re-engage hit-testing immediately when the bar shows; only the hide
+     direction waits for the fade (see the base rule above). */
+  transition:
+    opacity 120ms ease,
+    pointer-events 0s;
 }
 
 /* Hide the time while the actions are visible (hover or open menu), but keep
@@ -282,7 +297,7 @@
    track then naturally shrinks and ellipsizes before the bar, instead of the
    bar covering the title's tail. */
 .session-menu-item:hover .session-menu-button time,
-.session-menu-item:focus-within .session-menu-button time,
+.session-menu-item:has(:focus-visible) .session-menu-button time,
 .session-menu-item:has(.session-row-actions[data-open]) .session-menu-button time {
   visibility: hidden;
   min-width: 76px;
@@ -884,6 +899,21 @@
 
 .project-info-rename:hover {
   color: var(--foreground);
+}
+
+.project-info-remove {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px;
+}
+
+.project-info-remove:hover {
+  color: var(--destructive);
 }
 
 /* --- Collapsed sidebar: pinned rows are icon-only --- */

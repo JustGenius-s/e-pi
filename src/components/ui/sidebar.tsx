@@ -362,12 +362,16 @@ function SidebarMenuButton({
     />
   );
   if (!tooltip) return button;
+  // Only wrap in a Tooltip in collapsed (icon-rail) mode: in expanded mode the
+  // content would be invisible anyway, and mounting it hidden still opens a
+  // Radix grace area around the button — which suppresses the tooltips of
+  // whatever sits under the pointer next (e.g. the row's action-bar buttons)
+  // until the pointer leaves the grace area.
+  if (state !== "collapsed") return button;
   return (
     <Tooltip>
       <TooltipTrigger asChild>{button}</TooltipTrigger>
-      <TooltipContent side="right" hidden={state !== "collapsed"}>
-        {tooltip}
-      </TooltipContent>
+      <TooltipContent side="right">{tooltip}</TooltipContent>
     </Tooltip>
   );
 }
