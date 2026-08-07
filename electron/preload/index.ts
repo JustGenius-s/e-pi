@@ -14,6 +14,7 @@ import type {
   CatalogMetaRequest,
   FetchModelsRequest,
   ModelCatalogMeta,
+  EditableTextResult,
   EPiApi,
   FileContentResult,
   FileEntry,
@@ -21,6 +22,7 @@ import type {
   GitDiffResult,
   GitOperationResult,
   GitStatus,
+  MentionSearchResult,
   ModelLoginEvent,
   ModelLoginRequest,
   ModelLoginResponse,
@@ -50,6 +52,10 @@ import type {
   SkillMutation,
   SkillRecord,
   SkillSetEnabledRequest,
+  WorkspaceBinaryResult,
+  WorkspaceChangedEvent,
+  WriteTextExpected,
+  WriteTextResult,
 } from "../../src/types/contracts";
 
 function subscribe<T>(channel: string, listener: (payload: T) => void): () => void {
@@ -215,6 +221,24 @@ const api: EPiApi = {
     listDir: (cwd: string, path: string) => ipcRenderer.invoke("fs:list-dir", cwd, path) as Promise<FileEntry[]>,
     readFile: (cwd: string, path: string) =>
       ipcRenderer.invoke("fs:read-file", cwd, path) as Promise<FileContentResult>,
+    readEditableText: (cwd: string, path: string) =>
+      ipcRenderer.invoke("fs:read-editable-text", cwd, path) as Promise<EditableTextResult>,
+    writeText: (cwd: string, path: string, content: string, expected?: WriteTextExpected) =>
+      ipcRenderer.invoke("fs:write-text", cwd, path, content, expected) as Promise<WriteTextResult>,
+    readWorkspaceBinary: (cwd: string, path: string, maxBytes?: number) =>
+      ipcRenderer.invoke("fs:read-workspace-binary", cwd, path, maxBytes) as Promise<WorkspaceBinaryResult>,
+    mentionSearch: (cwd: string, query: string, limit?: number) =>
+      ipcRenderer.invoke("fs:mention-search", cwd, query, limit) as Promise<MentionSearchResult>,
+  },
+  workspace: {
+    watchStart: (cwd: string) => ipcRenderer.invoke("workspace:watch-start", cwd) as Promise<void>,
+    watchStop: (cwd: string) => ipcRenderer.invoke("workspace:watch-stop", cwd) as Promise<void>,
+    onChanged: (listener: (event: WorkspaceChangedEvent) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: WorkspaceChangedEvent): void =>
+        listener(payload);
+      ipcRenderer.on("workspace:changed", handler);
+      return () => ipcRenderer.removeListener("workspace:changed", handler);
+    },
   },
   sideTerminal: {
     spawn: (cwd: string) => ipcRenderer.invoke("side-terminal:spawn", cwd) as Promise<string>,

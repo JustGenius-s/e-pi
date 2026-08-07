@@ -14,9 +14,12 @@ import { SkillPanel } from "@/components/workspace/SkillPanel";
 import { clearTerminalBuffer, TerminalPanel } from "@/components/workspace/TerminalPanel";
 import { ToolPanel } from "@/components/workspace/ToolPanel";
 import type { PanelState, PanelTab, PanelView } from "@/components/workspace/ToolPanel";
+import { WorkspaceOverlayHost } from "@/components/workspace/WorkspaceOverlayHost";
 
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSessionRuntime } from "./hooks/useSessionRuntime";
+import { useWorkspaceOverlays } from "./hooks/useWorkspaceOverlays";
+import { isWorkspacePreviewPath } from "./lib/workspacePreviewKind";
 import type { Project, SessionSummary } from "./types/contracts";
 
 export function App() {
@@ -54,6 +57,7 @@ export function App() {
   const [editingProject, setEditingProject] = useState<Project>();
   /** Open tool-panel tabs plus the active one; review is a singleton. */
   const [panel, setPanel] = useState<PanelState>({ tabs: [], activeId: undefined });
+  const overlays = useWorkspaceOverlays();
 
   const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;
@@ -269,6 +273,62 @@ export function App() {
     setPanel((current) => (current.tabs.some((tab) => tab.id === id) ? { ...current, activeId: id } : current));
   }, []);
 
+  /** Open a workspace file through the preview/editor routing. */
+  const handleOpenWorkspaceFile = useCallback(
+    (path: string, imagePaths?: string[]) => {
+      if (!activeCwd) return;
+      if (isWorkspacePreviewPath(path)) {
+        overlays.openFilePreview({ cwd: activeCwd, path, imagePaths });
+      } else {
+        overlays.openEditorFile({ cwd: activeCwd, path });
+      }
+    },
+    [activeCwd, overlays],
+  );
+
+  /** Open a workspace path from inside previews (markdown links, images). */
+  const handleOpenWorkspacePath = useCallback(
+    (absPath: string) => {
+      handleOpenWorkspaceFile(absPath);
+    },
+    [handleOpenWorkspaceFile],
+  );
+
+  /** Open a workspace file link from the terminal (OSC 8), at a line. */
+  const handleOpenFileLink = useCallback(
+    (absPath: string, line?: number) => {
+      if (!activeCwd) {
+        void window.ePi.app.openPath(absPath);
+        return;
+      }
+      if (absPath.startsWith(activeCwd)) {
+        if (isWorkspacePreviewPath(absPath)) {
+          overlays.openFilePreview({ cwd: activeCwd, path: absPath });
+        } else {
+          overlays.openEditorFile({ cwd: activeCwd, path: absPath, line });
+        }
+        return;
+      }
+      void window.ePi.app.openPath(absPath);
+    },
+    [activeCwd, overlays],
+  );
+
+  // Workspace fs watching follows the active session cwd.
+  useEffect(() => {
+    if (!activeCwd) return;
+    void window.ePi.workspace.watchStart(activeCwd).catch(() => undefined);
+    return () => {
+      void window.ePi.workspace.watchStop(activeCwd).catch(() => undefined);
+    };
+  }, [activeCwd]);
+
+  // Session switch: close the overlays (dirty editor tabs ask for confirmation).
+  useEffect(() => {
+    overlays.requestEditorClose();
+    overlays.requestPreviewClose();
+  }, [activeCwd]); // eslint-disable-line react-hooks/exhaustive-deps
+
   useGlobalShortcuts({
     defaultCwd: appInfo?.defaultCwd,
     packageOpen,
@@ -375,6 +435,7 @@ export function App() {
                   sessionKey={activeSession.path}
                   autoFocus={activePath === justCreatedPath && runtimeState?.status === "starting"}
                   onFirstPaint={handleFirstPaint}
+                  onOpenFileLink={handleOpenFileLink}
                 />
               ) : (
                 <div className="workspace-empty">
@@ -424,6 +485,11 @@ export function App() {
               onSubmit={submit}
               onInterrupt={() => activePath && window.ePi.runtime.interrupt(activePath)}
             />
+            <WorkspaceOverlayHost
+              overlays={overlays}
+              cwd={activeCwd}
+              onOpenWorkspacePath={handleOpenWorkspacePath}
+            />
           </SidebarInset>
         </div>
 
@@ -445,6 +511,7 @@ export function App() {
               onOpenTab={openPanelTab}
               onCloseTab={closePanelTab}
               onSelectTab={selectPanelTab}
+              onOpenFile={handleOpenWorkspaceFile}
             />
           </Sidebar>
           <SidebarRail />

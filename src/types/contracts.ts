@@ -441,6 +441,65 @@ export interface FileContentResult {
   binary: boolean;
 }
 
+/** Versioned read for the built-in editor (mtime + content hash snapshot). */
+export interface EditableTextResult {
+  content: string;
+  mtimeMs: number;
+  /** sha256 of the utf8 content, hex. */
+  contentHash: string;
+  sizeBytes: number;
+  totalLines: number;
+  binary: boolean;
+}
+
+/** Expected snapshot the writer must match (optimistic concurrency). */
+export interface WriteTextExpected {
+  mtimeMs?: number;
+  contentHash?: string;
+}
+
+export interface WriteTextResult {
+  mtimeMs: number;
+  contentHash: string;
+  totalLines: number;
+  sizeBytes: number;
+}
+
+/** Base64-encoded file payload for previews (images / pdf / text). */
+export interface WorkspaceBinaryResult {
+  mimeType: string;
+  data: string;
+  sizeBytes: number;
+  mtimeMs: number;
+}
+
+export interface MentionSearchEntry {
+  /** Path relative to the workspace root. */
+  path: string;
+  name: string;
+  kind: "dir" | "file";
+}
+
+export interface MentionSearchResult {
+  entries: MentionSearchEntry[];
+  truncated: boolean;
+}
+
+/** Fs bridge error codes surfaced to the renderer (see lib/fsErrors). */
+export type FsErrorCode =
+  | "STALE_FILE"
+  | "TOO_LARGE"
+  | "BINARY"
+  | "NOT_FOUND"
+  | "OUTSIDE_WORKSPACE";
+
+/** Debounced fs change batch pushed from the main process. */
+export interface WorkspaceChangedEvent {
+  cwd: string;
+  /** Paths relative to cwd; [""] means an unknown/root-level change. */
+  paths: string[];
+}
+
 export type ModelLoginEvent =
   | {
       type: "prompt";
@@ -662,6 +721,27 @@ export interface EPiApi {
   fs: {
     listDir(cwd: string, path: string): Promise<FileEntry[]>;
     readFile(cwd: string, path: string): Promise<FileContentResult>;
+    /** Versioned text read for the built-in editor. */
+    readEditableText(cwd: string, path: string): Promise<EditableTextResult>;
+    /** Versioned write; rejects with code STALE_FILE when the snapshot mismatches. */
+    writeText(
+      cwd: string,
+      path: string,
+      content: string,
+      expected?: WriteTextExpected,
+    ): Promise<WriteTextResult>;
+    /** Base64 payload for previews (images / pdf / text). */
+    readWorkspaceBinary(cwd: string, path: string, maxBytes?: number): Promise<WorkspaceBinaryResult>;
+    /** Substring search across the workspace (file tree search box). */
+    mentionSearch(cwd: string, query: string, limit?: number): Promise<MentionSearchResult>;
+  };
+  workspace: {
+    /** Start watching cwd for fs changes (idempotent per cwd). */
+    watchStart(cwd: string): Promise<void>;
+    /** Stop watching cwd. */
+    watchStop(cwd: string): Promise<void>;
+    /** Subscribe to debounced change batches; returns an unsubscribe function. */
+    onChanged(listener: (event: WorkspaceChangedEvent) => void): () => void;
   };
   sideTerminal: {
     spawn(cwd: string): Promise<string>;

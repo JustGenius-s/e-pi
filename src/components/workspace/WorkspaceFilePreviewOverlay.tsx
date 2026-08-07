@@ -1,0 +1,524 @@
+import { ChevronLeft, ChevronRight, FilePenLine, FileText, Loader2, Minus, Plus, RefreshCw, RotateCwSquare, X } from "lucide-react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+
+import type {
+  WorkspaceEditorOpenRequest,
+  WorkspacePreviewOpenRequest,
+} from "../../hooks/useWorkspaceOverlays";
+import { cn } from "../../lib/utils";
+import {
+  getWorkspacePreviewKind,
+  isWorkspaceEditablePreviewPath,
+  type WorkspacePreviewKind,
+} from "../../lib/workspacePreviewKind";
+import { WorkspaceMarkdownPreview } from "./WorkspaceMarkdownPreview";
+
+const PREVIEW_ANIMATION_MS = 180;
+const IMAGE_MIN_SCALE = 0.25;
+const IMAGE_MAX_SCALE = 4;
+const IMAGE_SCALE_STEP = 0.25;
+const IMAGE_WHEEL_SCALE_STEP = 0.1;
+
+function basename(path: string) {
+  const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
+  const index = normalized.lastIndexOf("/");
+  return index >= 0 ? normalized.slice(index + 1) : normalized;
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function toMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message.trim()) return error.message;
+  const text = String(error ?? "").trim();
+  return text || fallback;
+}
+
+function base64ToBytes(data: string) {
+  const binary = window.atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function kindFromMimeType(mimeType: string): WorkspacePreviewKind | null {
+  const mime = mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
+  if (mime.startsWith("image/")) return "image";
+  if (mime === "application/pdf") return "pdf";
+  if (mime === "text/markdown" || mime === "text/x-markdown") return "markdown";
+  if (mime.startsWith("text/")) return "text";
+  return null;
+}
+
+function resolvePreviewKind(path: string, mimeType: string): WorkspacePreviewKind {
+  const mimeKind = kindFromMimeType(mimeType);
+  if (mimeKind === "markdown" || mimeKind === "text") return mimeKind;
+  return getWorkspacePreviewKind(path) ?? mimeKind ?? "text";
+}
+
+function decodePreviewText(bytes: Uint8Array) {
+  return new TextDecoder("utf-8").decode(bytes);
+}
+
+function clampImageScale(scale: number) {
+  return Math.min(Math.max(scale, IMAGE_MIN_SCALE), IMAGE_MAX_SCALE);
+}
+
+function normalizeRotation(degrees: number) {
+  const next = degrees % 360;
+  return next < 0 ? next + 360 : next;
+}
+
+function normalizeImagePaths(paths: string[] | undefined, activePath: string) {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const path of paths ?? []) {
+    if (!path || seen.has(path)) continue;
+    seen.add(path);
+    normalized.push(path);
+  }
+  if (activePath && !seen.has(activePath)) normalized.push(activePath);
+  return normalized;
+}
+
+type LoadedPreview = {
+  path: string;
+  mimeType: string;
+  sizeBytes: number;
+  blobUrl: string;
+  bytes: Uint8Array;
+  kind: WorkspacePreviewKind;
+  text: string | null;
+};
+
+interface WorkspaceFilePreviewOverlayProps {
+  openRequest: WorkspacePreviewOpenRequest | null;
+  isOpen: boolean;
+  cwd: string;
+  onOpenEditor: (request: Omit<WorkspaceEditorOpenRequest, "id">) => void;
+  onOpenWorkspacePath: (absPath: string) => void;
+  onRequestClose: () => void;
+  onClose: () => void;
+}
+
+/**
+ * Full-column preview overlay for workspace files (image / markdown / pdf /
+ * text). Slides in over the workspace column; the preview and the code
+ * editor are mutually exclusive (see useWorkspaceOverlays).
+ */
+export const WorkspaceFilePreviewOverlay = memo(function WorkspaceFilePreviewOverlay({
+  openRequest,
+  isOpen,
+  cwd,
+  onOpenEditor,
+  onOpenWorkspacePath,
+  onRequestClose,
+  onClose,
+}: WorkspaceFilePreviewOverlayProps) {
+  const closeAnimationTimeoutRef = useRef<number | null>(null);
+  const loadSequenceRef = useRef(0);
+  const previewBlobUrlRef = useRef<string | null>(null);
+  const previewRef = useRef<LoadedPreview | null>(null);
+  const [preview, setPreview] = useState<LoadedPreview | null>(null);
+  const [activeRequest, setActiveRequest] = useState<WorkspacePreviewOpenRequest | null>(null);
+  const [imageTransitionDirection, setImageTransitionDirection] = useState<-1 | 0 | 1>(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isVisible, setIsVisible] = useState(false);
+
+  const replacePreview = useCallback((next: LoadedPreview | null) => {
+    if (previewBlobUrlRef.current) URL.revokeObjectURL(previewBlobUrlRef.current);
+    previewBlobUrlRef.current = next?.blobUrl ?? null;
+    previewRef.current = next;
+    setPreview(next);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (previewBlobUrlRef.current) {
+        URL.revokeObjectURL(previewBlobUrlRef.current);
+        previewBlobUrlRef.current = null;
+      }
+      previewRef.current = null;
+    },
+    [],
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      if (closeAnimationTimeoutRef.current !== null) {
+        window.clearTimeout(closeAnimationTimeoutRef.current);
+        closeAnimationTimeoutRef.current = null;
+      }
+      const frame = window.requestAnimationFrame(() => setIsVisible(true));
+      return () => window.cancelAnimationFrame(frame);
+    }
+    setIsVisible(false);
+    closeAnimationTimeoutRef.current = window.setTimeout(() => {
+      closeAnimationTimeoutRef.current = null;
+      onClose();
+    }, PREVIEW_ANIMATION_MS);
+  }, [isOpen, onClose]);
+
+  useEffect(
+    () => () => {
+      if (closeAnimationTimeoutRef.current !== null) {
+        window.clearTimeout(closeAnimationTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  const loadPreview = useCallback(
+    async (request: WorkspacePreviewOpenRequest, transitionDirection: -1 | 0 | 1 = 0) => {
+      const sequence = loadSequenceRef.current + 1;
+      loadSequenceRef.current = sequence;
+      const keepCurrentImage =
+        transitionDirection !== 0 &&
+        previewRef.current?.kind === "image" &&
+        getWorkspacePreviewKind(request.path) === "image";
+      setImageTransitionDirection(transitionDirection);
+      setLoading(true);
+      setError(null);
+      setActiveRequest(request);
+      if (!keepCurrentImage) replacePreview(null);
+      try {
+        const response = await window.ePi.fs.readWorkspaceBinary(request.cwd, request.path);
+        if (loadSequenceRef.current !== sequence) return;
+        const bytes = base64ToBytes(response.data);
+        const kind = resolvePreviewKind(request.path, response.mimeType);
+        const text = kind === "markdown" || kind === "text" ? decodePreviewText(bytes) : null;
+        const blob = new Blob([bytes.slice().buffer], { type: response.mimeType });
+        const loaded: LoadedPreview = {
+          path: request.path,
+          mimeType: response.mimeType,
+          sizeBytes: response.sizeBytes,
+          blobUrl: URL.createObjectURL(blob),
+          bytes,
+          kind,
+          text,
+        };
+        replacePreview(loaded);
+      } catch (loadError) {
+        if (loadSequenceRef.current !== sequence) return;
+        if (!keepCurrentImage) replacePreview(null);
+        setError(toMessage(loadError, "Failed to open file"));
+      } finally {
+        if (loadSequenceRef.current === sequence) setLoading(false);
+      }
+    },
+    [replacePreview],
+  );
+
+  useEffect(() => {
+    if (!openRequest) {
+      setActiveRequest(null);
+      return;
+    }
+    void loadPreview(openRequest, 0);
+  }, [loadPreview, openRequest]);
+
+  const activePreviewRequest = activeRequest ?? openRequest;
+  const activePath = preview?.path ?? activePreviewRequest?.path ?? "";
+  const kind = preview?.kind ?? (activePath ? getWorkspacePreviewKind(activePath) : null) ?? "text";
+  const imagePaths = useMemo(
+    () => (kind === "image" ? normalizeImagePaths(activePreviewRequest?.imagePaths, activePath) : []),
+    [activePath, activePreviewRequest?.imagePaths, kind],
+  );
+  const canOpenEditor = Boolean(activePreviewRequest && isWorkspaceEditablePreviewPath(activePath));
+
+  const openImagePath = useCallback(
+    (path: string, transitionDirection: -1 | 0 | 1 = 0) => {
+      if (!activePreviewRequest || !path || path === activePath) return;
+      void loadPreview({ ...activePreviewRequest, path }, transitionDirection);
+    },
+    [activePath, activePreviewRequest, loadPreview],
+  );
+
+  return (
+    <div
+      className={cn(
+        "workspace-file-preview-overlay",
+        isVisible ? "visible" : "hidden",
+      )}
+    >
+      <div className="workspace-overlay-toolbar">
+        <FileText className="workspace-overlay-toolbar-icon" />
+        <div className="workspace-overlay-toolbar-titles">
+          <div className="workspace-overlay-toolbar-title">File preview</div>
+          <div className="workspace-overlay-toolbar-path">{activePath}</div>
+        </div>
+        <div className="workspace-overlay-toolbar-actions">
+          {canOpenEditor && activePreviewRequest ? (
+            <button
+              type="button"
+              className="workspace-overlay-tool-button"
+              title="Edit"
+              onClick={() =>
+                onOpenEditor({
+                  cwd: activePreviewRequest.cwd,
+                  path: activePath || activePreviewRequest.path,
+                })
+              }
+            >
+              <FilePenLine size={15} />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            className="workspace-overlay-tool-button"
+            title="Reload"
+            disabled={!activePreviewRequest || loading}
+            onClick={() => activePreviewRequest && void loadPreview(activePreviewRequest, 0)}
+          >
+            <RefreshCw size={15} className={loading ? "spin" : undefined} />
+          </button>
+          <button
+            type="button"
+            className="workspace-overlay-tool-button"
+            title="Close"
+            onClick={onRequestClose}
+          >
+            <X size={15} />
+          </button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="workspace-overlay-error">
+          <span className="truncate">{error}</span>
+        </div>
+      ) : null}
+
+      <div className="workspace-preview-body">
+        {preview ? (
+          <PreviewBody
+            preview={preview}
+            cwd={cwd}
+            activePath={activePath}
+            imagePaths={imagePaths}
+            transitionDirection={imageTransitionDirection}
+            isSwitchingImage={loading && preview.kind === "image"}
+            onOpenImagePath={openImagePath}
+            onOpenWorkspacePath={onOpenWorkspacePath}
+          />
+        ) : loading ? (
+          <div className="workspace-preview-empty">
+            <Loader2 size={24} className="spin" />
+          </div>
+        ) : (
+          <div className="workspace-preview-empty">
+            <FileText size={26} />
+          </div>
+        )}
+      </div>
+
+      <div className="workspace-overlay-statusbar">
+        <span className="truncate">{activePath}</span>
+        {preview ? (
+          <span className="shrink-0">
+            {preview.mimeType} · {formatBytes(preview.sizeBytes)}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+});
+
+function PreviewBody(props: {
+  preview: LoadedPreview;
+  cwd: string;
+  activePath: string;
+  imagePaths: string[];
+  transitionDirection: -1 | 0 | 1;
+  isSwitchingImage: boolean;
+  onOpenImagePath: (path: string, direction?: -1 | 0 | 1) => void;
+  onOpenWorkspacePath: (absPath: string) => void;
+}) {
+  const { preview, cwd, activePath, imagePaths, transitionDirection, isSwitchingImage, onOpenImagePath, onOpenWorkspacePath } = props;
+
+  if (preview.kind === "image") {
+    return (
+      <WorkspaceImagePreviewBody
+        key={`${preview.path}:${preview.mimeType}`}
+        activePath={activePath}
+        imagePaths={imagePaths}
+        transitionDirection={transitionDirection}
+        isSwitchingImage={isSwitchingImage}
+        preview={preview}
+        onOpenImagePath={onOpenImagePath}
+      />
+    );
+  }
+
+  if (preview.kind === "pdf") {
+    return (
+      <iframe
+        className="workspace-preview-iframe"
+        src={preview.blobUrl}
+        title={basename(preview.path)}
+      />
+    );
+  }
+
+  if (preview.kind === "markdown") {
+    return (
+      <div className="workspace-preview-scroll">
+        <WorkspaceMarkdownPreview
+          markdownPath={preview.path}
+          cwd={cwd}
+          content={preview.text ?? ""}
+          className="workspace-preview-markdown"
+          onOpenWorkspacePath={onOpenWorkspacePath}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="workspace-preview-scroll">
+      <pre className="workspace-preview-text">{preview.text ?? ""}</pre>
+    </div>
+  );
+}
+
+function ImageToolButton(props: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  const { label, disabled, onClick, children } = props;
+  return (
+    <button
+      type="button"
+      className="workspace-overlay-tool-button"
+      title={label}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+function WorkspaceImagePreviewBody(props: {
+  preview: LoadedPreview;
+  activePath: string;
+  imagePaths: string[];
+  transitionDirection: -1 | 0 | 1;
+  isSwitchingImage: boolean;
+  onOpenImagePath: (path: string, direction?: -1 | 0 | 1) => void;
+}) {
+  const { preview, activePath, imagePaths, transitionDirection, isSwitchingImage, onOpenImagePath } = props;
+  const [scale, setScale] = useState(1);
+  const [rotation, setRotation] = useState(0);
+  const [isEntering, setIsEntering] = useState(true);
+
+  const activeImageIndex = imagePaths.indexOf(activePath);
+  const imageCount = Math.max(imagePaths.length, 1);
+  const imageNumber = activeImageIndex >= 0 ? activeImageIndex + 1 : 1;
+  const canOpenPrevious = activeImageIndex > 0;
+  const canOpenNext = activeImageIndex >= 0 && activeImageIndex < imagePaths.length - 1;
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setIsEntering(false));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
+  const openImageAt = (index: number) => {
+    const path = imagePaths[index];
+    if (!path) return;
+    onOpenImagePath(path, index > activeImageIndex ? 1 : -1);
+  };
+
+  return (
+    <div className="workspace-image-preview-body">
+      <div className="workspace-image-preview-toolbar">
+        <div className="flex items-center gap-1">
+          <ImageToolButton
+            label="Previous image"
+            disabled={!canOpenPrevious || isSwitchingImage}
+            onClick={() => openImageAt(activeImageIndex - 1)}
+          >
+            <ChevronLeft size={15} />
+          </ImageToolButton>
+          <ImageToolButton
+            label="Next image"
+            disabled={!canOpenNext || isSwitchingImage}
+            onClick={() => openImageAt(activeImageIndex + 1)}
+          >
+            <ChevronRight size={15} />
+          </ImageToolButton>
+          <span className="workspace-image-counter">
+            {imageNumber}/{imageCount}
+          </span>
+        </div>
+        <div className="flex items-center gap-1">
+          <ImageToolButton
+            label="Zoom out"
+            disabled={scale <= IMAGE_MIN_SCALE}
+            onClick={() => setScale((current) => clampImageScale(current - IMAGE_SCALE_STEP))}
+          >
+            <Minus size={15} />
+          </ImageToolButton>
+          <span className="workspace-image-zoom">{Math.round(scale * 100)}%</span>
+          <ImageToolButton
+            label="Zoom in"
+            disabled={scale >= IMAGE_MAX_SCALE}
+            onClick={() => setScale((current) => clampImageScale(current + IMAGE_SCALE_STEP))}
+          >
+            <Plus size={15} />
+          </ImageToolButton>
+          <ImageToolButton label="Rotate" onClick={() => setRotation((current) => normalizeRotation(current + 90))}>
+            <RotateCwSquare size={15} />
+          </ImageToolButton>
+        </div>
+      </div>
+      <div
+        className="workspace-image-canvas"
+        onWheel={(event) => {
+          if (event.deltaY === 0) return;
+          event.preventDefault();
+          const direction = event.deltaY < 0 ? 1 : -1;
+          setScale((current) => clampImageScale(current + direction * IMAGE_WHEEL_SCALE_STEP));
+        }}
+      >
+        {isSwitchingImage ? (
+          <div className="workspace-image-switching">
+            <Loader2 size={16} className="spin" />
+          </div>
+        ) : null}
+        <div
+          className="workspace-image-stage"
+          style={{
+            opacity: isEntering ? 0 : 1,
+            transform: isEntering
+              ? `translateX(${transitionDirection > 0 ? 18 : transitionDirection < 0 ? -18 : 0}px)`
+              : "translateX(0)",
+          }}
+        >
+          <div
+            className="workspace-image-zoom-box"
+            style={{ height: `${scale * 100}%`, width: `${scale * 100}%` }}
+          >
+            <img
+              className="workspace-image-img"
+              src={preview.blobUrl}
+              alt={basename(preview.path)}
+              draggable={false}
+              style={{ transform: `rotate(${rotation}deg)` }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

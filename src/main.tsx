@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import "@xterm/xterm/css/xterm.css";
 import "./styles/app.css";
 import "./styles/git.css";
+import "./styles/workspace-files.css";
 import { App } from "./App";
 import { Toaster } from "./components/ui/sonner";
 import { TooltipProvider } from "./components/ui/tooltip";

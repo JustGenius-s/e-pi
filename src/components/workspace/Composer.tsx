@@ -33,6 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useComposerCommands, type CommandPopupItem } from "../../hooks/useComposerCommands";
 import { useImeComposition } from "../../hooks/useImeComposition";
 import { onAttachFiles } from "../../lib/attachmentsBus";
+import { onInsertComposerText } from "../../lib/composerBus";
 import type {
   AgentThinkingLevel,
   CommandArgumentOption,
@@ -265,6 +266,23 @@ export function Composer({
   // Panels outside the composer tree (file tree context menu) can attach
   // files/folders through the attachments bus.
   useEffect(() => onAttachFiles(attachFiles), [attachFiles]);
+
+  // The built-in editor pushes code references here; insert at the caret.
+  useEffect(() => {
+    return onInsertComposerText((incoming) => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const start = ta.selectionStart ?? ta.value.length;
+      const end = ta.selectionEnd ?? start;
+      const next = `${ta.value.slice(0, start)}${incoming}${ta.value.slice(end)}`;
+      setText(next);
+      const nextCaret = start + incoming.length;
+      requestAnimationFrame(() => {
+        ta.focus();
+        ta.setSelectionRange(nextCaret, nextCaret);
+      });
+    });
+  }, []);
 
   const chooseFiles = async () => {
     attachFiles(await window.ePi.app.chooseFiles());
