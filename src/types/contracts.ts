@@ -622,6 +622,8 @@ export interface EPiApi {
     copyText(text: string): Promise<void>;
     /** Keep native chrome (titlebar, scrollbars) in step with the app theme. */
     setTheme(theme: "light" | "dark"): Promise<void>;
+    /** Dock badge (macOS): number of unseen run-completion dots; 0 clears it. */
+    setDockBadge(count: number): Promise<void>;
     log(message: string): void;
   };
   sessions: {
