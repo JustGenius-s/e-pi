@@ -76,6 +76,10 @@ interface SessionSidebarProps {
   onImportProject: () => void;
   /** Open the import dialog in edit mode for an existing project. */
   onEditProject: (project: Project) => void;
+  /** Open the import dialog pre-filled with a folder group (non-multi-repo → multi-repo). */
+  onPromoteProject: (cwd: string) => void;
+  /** Remove a project group and move all its sessions to the Trash. */
+  onRemoveProject: (target: { project?: Project; cwd: string; sessions: SessionSummary[] }) => void;
   onRename: (session: SessionSummary) => void;
   onRemove: (session: SessionSummary) => void;
   onOpenFolder: (cwd: string) => void;
@@ -379,6 +383,8 @@ export function SessionSidebar({
   onCreateProject,
   onImportProject,
   onEditProject,
+  onPromoteProject,
+  onRemoveProject,
   onRename,
   onRemove,
   onOpenFolder,
@@ -595,6 +601,10 @@ export function SessionSidebar({
                 <ContextMenuItem onSelect={() => onEditProject(project.project!)}>Edit project</ContextMenuItem>
               </>
             ) : null}
+            <ContextMenuSeparator />
+            <ContextMenuItem variant="destructive" onSelect={() => onRemoveProject(project)}>
+              Remove project
+            </ContextMenuItem>
           </ContextMenuContent>
         </ContextMenu>
         <HoverCardContent side="right" sideOffset={8} align="start" className="project-info-card">
@@ -604,14 +614,30 @@ export function SessionSidebar({
             <button
               type="button"
               className="project-info-rename"
-              title="Rename project"
-              aria-label="Rename project"
+              title={project.primaryRepo ? "Rename project" : "Convert to multi-repo project"}
+              aria-label={project.primaryRepo ? "Rename project" : "Convert to multi-repo project"}
               onClick={(event) => {
                 event.stopPropagation();
+                // Multi-folder projects open the edit dialog; implicit folder
+                // groups (no persisted project) pre-fill the import dialog so
+                // they can be promoted to a multi-repo project.
                 if (project.project) onEditProject(project.project);
+                else onPromoteProject(project.cwd);
               }}
             >
               <Pencil size={11} />
+            </button>
+            <button
+              type="button"
+              className="project-info-remove"
+              title="Remove project"
+              aria-label="Remove project"
+              onClick={(event) => {
+                event.stopPropagation();
+                onRemoveProject(project);
+              }}
+            >
+              <Archive size={11} />
             </button>
             {project.primaryRepo ? <Star size={12} className="project-info-primary" aria-hidden="true" /> : null}
           </div>
@@ -912,12 +938,7 @@ export function SessionSidebar({
                             <Pin size={14} fill="currentColor" />
                           </SidebarMenuButton>
                         </HoverCardTrigger>
-                        <HoverCardContent
-                          side="right"
-                          sideOffset={10}
-                          align="start"
-                          className="project-flyout"
-                        >
+                        <HoverCardContent side="right" sideOffset={10} align="start" className="project-flyout">
                           <div className="project-flyout-header">
                             <span className="project-flyout-title">
                               Pinned chat{pinnedSessionList.length === 1 ? "" : "s"}
@@ -934,12 +955,8 @@ export function SessionSidebar({
                                     onClick={() => onSelect(session)}
                                   >
                                     <ActivityIndicator runtime={runtimeStates?.[session.path]} />
-                                    <span className="project-flyout-session-label">
-                                      {sessionTitle(session)}
-                                    </span>
-                                    <time dateTime={session.modifiedAt}>
-                                      {relativeTime(session.modifiedAt)}
-                                    </time>
+                                    <span className="project-flyout-session-label">{sessionTitle(session)}</span>
+                                    <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
                                   </button>
                                 </li>
                               );

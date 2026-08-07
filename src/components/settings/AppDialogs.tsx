@@ -1,5 +1,5 @@
-import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
+import { useEffect } from "react";
 
 import {
   AlertDialog,
@@ -24,8 +24,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useImeComposition } from "../../hooks/useImeComposition";
-import { sessionTitle } from "../../lib/format";
-import type { AppInfo, SessionSummary } from "../../types/contracts";
+import { pathBaseName, sessionTitle } from "../../lib/format";
+import type { AppInfo, Project, SessionSummary } from "../../types/contracts";
 import { CommonSettings } from "./CommonSettings";
 import { FontSettings } from "./FontSettings";
 import { ModelSettings } from "./ModelSettings";
@@ -73,6 +73,10 @@ interface AppDialogsProps {
   removeTarget?: SessionSummary;
   onConfirmRemove: () => void;
   onCloseRemove: () => void;
+  /** Project group (multi-folder or implicit) pending removal; its sessions go to the Trash. */
+  removeProjectTarget?: { project?: Project; cwd: string; sessions: SessionSummary[] };
+  onConfirmRemoveProject: () => void;
+  onCloseRemoveProject: () => void;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
   appInfo?: AppInfo;
@@ -89,6 +93,9 @@ export function AppDialogs({
   removeTarget,
   onConfirmRemove,
   onCloseRemove,
+  removeProjectTarget,
+  onConfirmRemoveProject,
+  onCloseRemoveProject,
   settingsOpen,
   onSettingsOpenChange,
   appInfo,
@@ -107,6 +114,17 @@ export function AppDialogs({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [settingsOpen, onSettingsOpenChange]);
+
+  /** Removal message for the pending project group; empty when nothing pending. */
+  const removeProjectMessage = (() => {
+    if (!removeProjectTarget) return "";
+    const count = removeProjectTarget.sessions.length;
+    const name = removeProjectTarget.project?.name ?? pathBaseName(removeProjectTarget.cwd);
+    return removeProjectTarget.project
+      ? `${name} and its ${count} session${count === 1 ? "" : "s"} will be moved to the system Trash.`
+      : `${count} session${count === 1 ? "" : "s"} in ${name} will be moved to the system Trash.`;
+  })();
+
   return (
     <>
       <Dialog open={Boolean(renameTarget)} onOpenChange={(open) => !open && onCloseRename()}>
@@ -138,6 +156,19 @@ export function AppDialogs({
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction onClick={onConfirmRemove}>Archive</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={Boolean(removeProjectTarget)} onOpenChange={(open) => !open && onCloseRemoveProject()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove project?</AlertDialogTitle>
+            <AlertDialogDescription>{removeProjectMessage}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={onConfirmRemoveProject}>Remove</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

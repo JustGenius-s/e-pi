@@ -52,6 +52,19 @@ export function App() {
   const [importOpen, setImportOpen] = useState(false);
   /** Project currently being edited in the import dialog. */
   const [editingProject, setEditingProject] = useState<Project>();
+  /** Folder group being promoted to a multi-repo project (import dialog pre-fill). */
+  const [promoteCwd, setPromoteCwd] = useState<string>();
+  /** Stable pre-fill for the import dialog; identity must not change while open. */
+  const promoteInitial = useMemo(
+    () => (promoteCwd ? { folders: [promoteCwd], primaryRepo: promoteCwd } : undefined),
+    [promoteCwd],
+  );
+  /** Project group pending removal (multi-folder or implicit); its sessions go to the Trash. */
+  const [removeProjectTarget, setRemoveProjectTarget] = useState<{
+    project?: Project;
+    cwd: string;
+    sessions: SessionSummary[];
+  }>();
   /** Open tool-panel tabs plus the active one; review is a singleton. */
   const [panel, setPanel] = useState<PanelState>({ tabs: [], activeId: undefined });
 
@@ -160,8 +173,60 @@ export function App() {
   };
 
   const openEditProject = (project: Project) => {
+    setPromoteCwd(undefined);
     setEditingProject(project);
     setImportOpen(true);
+  };
+
+  /** Non-multi-repo folder group: pre-fill the import dialog to promote it to a multi-repo project. */
+  const openPromoteProject = (cwd: string) => {
+    setEditingProject(undefined);
+    setPromoteCwd(cwd);
+    setImportOpen(true);
+  };
+
+  /** Create the project record only (no new session) when promoting a folder group. */
+  const handlePromoteProject = async (request: {
+    name?: string;
+    folders: string[];
+    primaryRepo: string;
+  }): Promise<void> => {
+    setError(undefined);
+    try {
+      const next = await window.ePi.projects.create(request);
+      setProjects(next);
+      window.ePi.app.log(`[app] promote project folders=${request.folders.length} primary=${request.primaryRepo}`);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      throw reason;
+    }
+  };
+
+  const removeProject = (target: { project?: Project; cwd: string; sessions: SessionSummary[] }) => {
+    setRemoveProjectTarget(target);
+  };
+
+  /** Trash the project's sessions, then drop the project record (multi-folder only). */
+  const confirmRemoveProject = async () => {
+    if (!removeProjectTarget) return;
+    try {
+      const { project, sessions: projectSessions } = removeProjectTarget;
+      // Trash each session file; different sessions share no state, so they
+      // can be trashed in parallel.
+      await Promise.all(projectSessions.map((session) => window.ePi.sessions.remove(session.path)));
+      if (project) {
+        setProjects(await window.ePi.projects.remove(project.id));
+      }
+      await refreshSessions();
+      if (activePath && projectSessions.some((session) => session.path === activePath)) setActivePath(undefined);
+      setRemoveProjectTarget(undefined);
+      toast.success("Project removed");
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Failed to remove project: ${message}`);
+    }
   };
 
   const selectSession = (session: SessionSummary) => {
@@ -317,7 +382,13 @@ export function App() {
   // swallow clicks on their top area. Disable the topbar drag region while
   // any modal layer is open.
   const modalOpen =
-    packageOpen || skillOpen || settingsOpen || importOpen || renameTarget !== undefined || removeTarget !== undefined;
+    packageOpen ||
+    skillOpen ||
+    settingsOpen ||
+    importOpen ||
+    renameTarget !== undefined ||
+    removeTarget !== undefined ||
+    removeProjectTarget !== undefined;
 
   // Load multi-folder projects and keep them in sync with the main process.
   useEffect(() => {
@@ -352,6 +423,8 @@ export function App() {
             setImportOpen(true);
           }}
           onEditProject={openEditProject}
+          onPromoteProject={openPromoteProject}
+          onRemoveProject={removeProject}
           onRename={(session) => void renameSession(session)}
           onRemove={(session) => void removeSession(session)}
           onOpenFolder={(cwd) => void window.ePi.app.openPath(cwd)}
@@ -460,6 +533,9 @@ export function App() {
         removeTarget={removeTarget}
         onConfirmRemove={() => void confirmRemoveSession()}
         onCloseRemove={() => setRemoveTarget(undefined)}
+        removeProjectTarget={removeProjectTarget}
+        onConfirmRemoveProject={() => void confirmRemoveProject()}
+        onCloseRemoveProject={() => setRemoveProjectTarget(undefined)}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         appInfo={appInfo}
@@ -472,11 +548,16 @@ export function App() {
         open={importOpen}
         defaultPath={appInfo?.defaultCwd}
         editing={editingProject}
+        // Stable object so the dialog draft is only reset on open, not every render.
+        initial={promoteInitial}
         onOpenChange={(open) => {
           setImportOpen(open);
-          if (!open) setEditingProject(undefined);
+          if (!open) {
+            setEditingProject(undefined);
+            setPromoteCwd(undefined);
+          }
         }}
-        onCreateProject={handleImportProject}
+        onCreateProject={promoteCwd ? handlePromoteProject : handleImportProject}
         onUpdateProject={handleUpdateProject}
       />
     </div>

@@ -271,7 +271,11 @@
 }
 
 .session-menu-item:hover .session-row-actions,
-.session-menu-item:focus-within .session-row-actions,
+/* Keyboard focus (tab) reveals the bar; mouse clicks must not — clicking a
+   row button leaves focus on it, and :focus-within would keep the bar
+   visible forever after the pointer leaves the row. :focus-visible only
+   matches keyboard-initiated focus, so the bar tracks the hover state. */
+.session-menu-item:has(:focus-visible) .session-row-actions,
 .session-row-actions[data-open] {
   opacity: 1;
   pointer-events: auto;
@@ -282,7 +286,7 @@
    track then naturally shrinks and ellipsizes before the bar, instead of the
    bar covering the title's tail. */
 .session-menu-item:hover .session-menu-button time,
-.session-menu-item:focus-within .session-menu-button time,
+.session-menu-item:has(:focus-visible) .session-menu-button time,
 .session-menu-item:has(.session-row-actions[data-open]) .session-menu-button time {
   visibility: hidden;
   min-width: 76px;
@@ -884,6 +888,21 @@
 
 .project-info-rename:hover {
   color: var(--foreground);
+}
+
+.project-info-remove {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px;
+}
+
+.project-info-remove:hover {
+  color: var(--destructive);
 }
 
 /* --- Collapsed sidebar: pinned rows are icon-only --- */
