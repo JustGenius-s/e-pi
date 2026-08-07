@@ -220,6 +220,12 @@
   color: #8db9e8;
 }
 
+/* Blocked on the human (permission prompt / ask-user): amber “?”. The turn
+   is NOT finished — the agent paused and resumes once the user interacts. */
+.session-activity.waiting {
+  color: var(--warning, #eab308);
+}
+
 .session-activity.done {
   color: #74d6a5;
 }
@@ -292,15 +298,40 @@
     pointer-events 0s;
 }
 
-/* Hide the time while the actions are visible (hover or open menu), but keep
-   its grid slot and widen it to the actions bar's footprint — the title
-   track then naturally shrinks and ellipsizes before the bar, instead of the
-   bar covering the title's tail. */
+/* Hide the time (or the run-finished dot) while the actions are visible
+   (hover or open menu), but keep its grid slot and widen it to the actions
+   bar's footprint — the title track then naturally shrinks and ellipsizes
+   before the bar, instead of the bar covering the title's tail. */
 .session-menu-item:hover .session-menu-button time,
+.session-menu-item:hover .session-menu-button .session-run-dot,
 .session-menu-item:has(:focus-visible) .session-menu-button time,
-.session-menu-item:has(.session-row-actions[data-open]) .session-menu-button time {
+.session-menu-item:has(:focus-visible) .session-menu-button .session-run-dot,
+.session-menu-item:has(.session-row-actions[data-open]) .session-menu-button time,
+.session-menu-item:has(.session-row-actions[data-open]) .session-menu-button .session-run-dot {
   visibility: hidden;
   min-width: 76px;
+}
+
+/* Blue nav dot: a background run finished while this session wasn't
+   focused. Replaces the relative time so the cue can't be missed; clicking
+   the row (or opening the session) consumes it. */
+.session-run-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--primary);
+  animation: session-run-dot-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes session-run-dot-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--primary) 22%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 5px color-mix(in oklch, var(--primary) 10%, transparent);
+  }
 }
 
 .session-row-action {

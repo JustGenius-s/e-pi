@@ -54,6 +54,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
+import { useUnseenRunCompletions } from "../../hooks/useUnseenRunCompletions";
 import { emitAttachFiles } from "../../lib/attachmentsBus";
 import { compactPath, pathBaseName, relativeTime, sessionTitle } from "../../lib/format";
 import { useTheme } from "../../lib/theme";
@@ -151,6 +152,8 @@ function braillePattern(character: string): boolean[] {
 }
 
 const ALL_DOTS_ON = Array.from({ length: 9 }, () => true);
+/** 3x3 “?” — the waiting-for-human glyph (permission / ask-user). */
+const QUESTION_PATTERN = [false, true, false, true, false, true, false, false, true];
 /** Fixed grid positions so keys are stable and independent of array indices. */
 const DOT_POSITIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -185,6 +188,8 @@ interface ActivityIndicatorProps {
 
 /**
  * Per-session status glyph shown before the session title:
+ * - waiting (process running, blocked on a human: permission or ask-user):
+ * amber “?” — the turn is NOT finished, the agent is paused on input
  * - working (process running, agent busy): blue braille spinner
  * - done (process running, agent settled): green dot-matrix square
  * - error: red dot-matrix square
@@ -196,10 +201,22 @@ interface ActivityIndicatorProps {
  * 1fr track, where a long title squeezes it to zero width.
  */
 function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
-  const working = runtime?.status === "running" && runtime.activity === "busy";
+  const waiting = runtime?.status === "running" && runtime.waitingUser !== undefined && runtime.waitingUser !== null;
+  const working = !waiting && runtime?.status === "running" && runtime.activity === "busy";
   const done = runtime?.status === "running" && runtime.activity === "idle";
   const failed = runtime?.status === "error";
 
+  if (waiting) {
+    return (
+      <span
+        className="session-activity waiting"
+        title={`Waiting for your input${runtime.waitingUser?.detail ? `: ${runtime.waitingUser.detail}` : ""}`}
+        aria-label="Waiting for your input"
+      >
+        <DotMatrix pattern={QUESTION_PATTERN} />
+      </span>
+    );
+  }
   if (working) {
     return <ActivitySpinner />;
   }
@@ -224,14 +241,24 @@ interface SessionItemContentProps {
   session: SessionSummary;
   runtime?: PiRuntimeState;
   labelClassName: string;
+  /** A background run finished while this session wasn't focused: show the nav dot. */
+  completedRun?: boolean;
 }
 
-function SessionItemContent({ session, runtime, labelClassName }: SessionItemContentProps) {
+function SessionItemContent({ session, runtime, labelClassName, completedRun }: SessionItemContentProps) {
   return (
     <>
       <ActivityIndicator runtime={runtime} />
       <span className={labelClassName}>{sessionTitle(session)}</span>
-      <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+      {completedRun ? (
+        <span
+          className="session-run-dot"
+          title="Run finished — click to view"
+          aria-label="Run finished — click to view"
+        />
+      ) : (
+        <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+      )}
     </>
   );
 }
@@ -242,6 +269,8 @@ interface CollapsedProjectFlyoutProps {
   /** Marks the current session inside the flyout list. */
   activeSessionPath?: string;
   runtimeStates?: Record<string, PiRuntimeState>;
+  /** Sessions whose background run finished; shown with a nav dot. */
+  unseenRuns?: ReadonlySet<string>;
   onSelect: (session: SessionSummary) => void;
   onExpand: () => void;
   /** Create a new session in this project. */
@@ -308,6 +337,7 @@ function CollapsedProjectFlyout({
   label,
   activeSessionPath,
   runtimeStates,
+  unseenRuns,
   onSelect,
   onExpand,
   onCreate,
@@ -360,6 +390,7 @@ function CollapsedProjectFlyout({
                     session={session}
                     runtime={runtimeStates?.[session.path]}
                     labelClassName="project-flyout-session-label"
+                    completedRun={unseenRuns?.has(session.path)}
                   />
                 </button>
               </li>
@@ -408,6 +439,8 @@ export function SessionSidebar({
    */
   const [expandedSessionProjects, setExpandedSessionProjects] = useState<ReadonlySet<string>>(new Set());
   const { state, setOpen } = useSidebar();
+  /** Sessions whose background run finished while not focused; blue nav dot. */
+  const unseenRuns = useUnseenRunCompletions(runtimeStates ?? {}, activePath);
   const { theme, toggleTheme } = useTheme();
 
   /** Reference a session by attaching its JSONL file to the composer. */
@@ -769,7 +802,12 @@ export function SessionSidebar({
               title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
               onClick={() => onSelect(session)}
             >
-              <SessionItemContent session={session} runtime={runtime} labelClassName="session-label" />
+              <SessionItemContent
+                session={session}
+                runtime={runtime}
+                labelClassName="session-label"
+                completedRun={unseenRuns.has(session.path)}
+              />
             </SidebarMenuButton>
           </ContextMenuTrigger>
           <ContextMenuContent>
@@ -959,7 +997,15 @@ export function SessionSidebar({
                                   >
                                     <ActivityIndicator runtime={runtimeStates?.[session.path]} />
                                     <span className="project-flyout-session-label">{sessionTitle(session)}</span>
-                                    <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+                                    {unseenRuns.has(session.path) ? (
+                                      <span
+                                        className="session-run-dot"
+                                        title="Run finished — click to view"
+                                        aria-label="Run finished — click to view"
+                                      />
+                                    ) : (
+                                      <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+                                    )}
                                   </button>
                                 </li>
                               );
@@ -976,6 +1022,7 @@ export function SessionSidebar({
                         label={projectLabel(project)}
                         activeSessionPath={activePath}
                         runtimeStates={runtimeStates}
+                        unseenRuns={unseenRuns}
                         onSelect={onSelect}
                         onExpand={() => expandToProject(project.cwd)}
                         onCreate={onCreate}
@@ -1002,6 +1049,7 @@ export function SessionSidebar({
                       label={projectLabel(project)}
                       activeSessionPath={activePath}
                       runtimeStates={runtimeStates}
+                      unseenRuns={unseenRuns}
                       onSelect={onSelect}
                       onExpand={() => expandToProject(project.cwd)}
                       onCreate={onCreate}
