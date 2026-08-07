@@ -1,6 +1,6 @@
 import { FolderOpen, GitPullRequest, Plus, SquareTerminal, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 
 import { ReviewView } from "@/components/panels/ReviewView";
 import {
@@ -32,6 +32,10 @@ export interface PanelState {
 
 interface ToolPanelProps {
   cwd: string;
+  /** Git repos of the current project; drives the review repo switcher. */
+  repos?: string[];
+  /** The project's primary repo (starred in the switcher). */
+  primaryRepo?: string;
   tabs: PanelTab[];
   activeTabId: string | undefined;
   platform?: NodeJS.Platform;
@@ -169,6 +173,8 @@ function TabBar({ tabs, activeTabId, onOpenTab, onCloseTab, onSelectTab }: TabBa
  */
 export const ToolPanel = memo(function ToolPanel({
   cwd,
+  repos,
+  primaryRepo,
   tabs,
   activeTabId,
   platform,
@@ -176,6 +182,13 @@ export const ToolPanel = memo(function ToolPanel({
   onCloseTab,
   onSelectTab,
 }: ToolPanelProps) {
+  // The review target follows the active session, but stays put when the user
+  // picked a different repo from the switcher — until it no longer belongs to
+  // the current project's repo set.
+  const [reviewCwd, setReviewCwd] = useState<string | undefined>();
+  useEffect(() => {
+    setReviewCwd((current) => (current && repos?.includes(current) ? current : cwd));
+  }, [cwd, repos]);
   return (
     <div className="tool-panel-body">
       {tabs.length > 0 ? (
@@ -193,7 +206,14 @@ export const ToolPanel = memo(function ToolPanel({
         <div className="tool-panel-stack">
           {tabs.map((tab) => (
             <div key={tab.id} className={`tool-panel-view${tab.id === activeTabId ? " active" : ""}`}>
-              {tab.view === "review" ? <ReviewView cwd={cwd} /> : null}
+              {tab.view === "review" ? (
+                <ReviewView
+                  cwd={reviewCwd ?? cwd}
+                  repos={repos}
+                  primaryRepo={primaryRepo}
+                  onSelectRepo={setReviewCwd}
+                />
+              ) : null}
               {tab.view === "files" ? <FileTreeView cwd={cwd} /> : null}
               {tab.view === "terminal" ? <SideTerminalView cwd={cwd} /> : null}
             </div>

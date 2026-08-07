@@ -34,6 +34,9 @@ import type {
   PiUpdateInfo,
   PiUpdateResult,
   PiRuntimeState,
+  CreateProjectRequest,
+  Project,
+  UpdateProjectRequest,
   RemotePackageInfo,
   RenameSessionRequest,
   ResizeTerminalRequest,
@@ -60,6 +63,8 @@ const api: EPiApi = {
     applyPiUpdate: () => ipcRenderer.invoke("app:apply-pi-update") as Promise<PiUpdateResult>,
     chooseDirectory: (defaultPath?: string) =>
       ipcRenderer.invoke("app:choose-directory", defaultPath) as Promise<string | undefined>,
+    chooseDirectories: (defaultPath?: string) =>
+      ipcRenderer.invoke("app:choose-directories", defaultPath) as Promise<string[]>,
     chooseFiles: () => ipcRenderer.invoke("app:choose-files") as Promise<string[]>,
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
     pasteImage: () => ipcRenderer.invoke("app:paste-image") as Promise<string | null>,
@@ -91,6 +96,21 @@ const api: EPiApi = {
       const listener = (_event: Electron.IpcRendererEvent, sessions: SessionSummary[]) => callback(sessions);
       ipcRenderer.on("sessions:updated", listener);
       return () => ipcRenderer.removeListener("sessions:updated", listener);
+    },
+  },
+  projects: {
+    list: () => ipcRenderer.invoke("projects:list") as Promise<Project[]>,
+    create: (request: CreateProjectRequest) =>
+      ipcRenderer.invoke("projects:create", request) as Promise<Project[]>,
+    update: (request: UpdateProjectRequest) =>
+      ipcRenderer.invoke("projects:update", request) as Promise<Project[]>,
+    remove: (id: string) => ipcRenderer.invoke("projects:remove", id) as Promise<Project[]>,
+    resolve: (cwd: string) => ipcRenderer.invoke("projects:resolve", cwd) as Promise<Project | undefined>,
+    gitRepos: (folders: string[]) => ipcRenderer.invoke("projects:git-repos", folders) as Promise<string[]>,
+    onUpdated: (callback: (projects: Project[]) => void) => {
+      const listener = (_event: Electron.IpcRendererEvent, projects: Project[]) => callback(projects);
+      ipcRenderer.on("projects:updated", listener);
+      return () => ipcRenderer.removeListener("projects:updated", listener);
     },
   },
   runtime: {

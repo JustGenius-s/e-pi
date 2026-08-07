@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { clearTerminalBuffer } from "@/components/workspace/TerminalPanel";
+import { setHomeDir } from "../lib/format";
 
 import type { AppInfo, PiRuntimeState, SessionSummary } from "../types/contracts";
 
@@ -28,7 +29,9 @@ export function useSessionRuntime() {
 
   const refreshAppInfo = useCallback(async () => {
     try {
-      setAppInfo(await window.ePi.app.getInfo());
+      const info = await window.ePi.app.getInfo();
+      setHomeDir(info.homeDir);
+      setAppInfo(info);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
@@ -48,6 +51,7 @@ export function useSessionRuntime() {
     Promise.all([window.ePi.app.getInfo(), window.ePi.sessions.list(), window.ePi.runtime.getStates()])
       .then(([info, nextSessions, states]) => {
         if (!mounted) return;
+        setHomeDir(info.homeDir);
         setAppInfo(info);
         setSessions(nextSessions);
         setRuntimeStates(states);
@@ -82,7 +86,6 @@ export function useSessionRuntime() {
       stopSessionsUpdated();
     };
   }, []);
-
   return {
     appInfo,
     sessions,

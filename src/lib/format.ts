@@ -1,9 +1,24 @@
 import type { PiProcessStatus, SessionSummary } from "../types/contracts";
 
+/** User home dir for `~` rendering; set once from app info. */
+let homeDir: string | undefined;
+
+export function setHomeDir(path: string): void {
+  homeDir = path.replace(/\/+$/, "");
+}
+
+/** Render the home directory as `~` (e.g. `/Users/me/proj` → `~/proj`). */
+function homePrefixed(path: string): string {
+  if (!homeDir || !path.startsWith(homeDir)) return path;
+  const rest = path.slice(homeDir.length);
+  return rest === "" || rest.startsWith("/") ? `~${rest}` : path;
+}
+
 export function compactPath(path: string, max = 38): string {
-  if (path.length <= max) return path;
-  const parts = path.split("/").filter(Boolean);
-  if (parts.length < 3) return `...${path.slice(-max + 3)}`;
+  const display = homePrefixed(path);
+  if (display.length <= max) return display;
+  const parts = display.split("/").filter(Boolean);
+  if (parts.length < 3) return `...${display.slice(-max + 3)}`;
   return `/${parts[0]}/.../${parts.slice(-2).join("/")}`;
 }
 
