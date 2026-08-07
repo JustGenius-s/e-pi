@@ -7,9 +7,10 @@
 const IMAGE_EXTENSIONS = new Set(["avif", "bmp", "gif", "ico", "jpeg", "jpg", "png", "svg", "webp"]);
 const MARKDOWN_EXTENSIONS = new Set(["md", "mdx"]);
 const PDF_EXTENSIONS = new Set(["pdf"]);
+const HTML_EXTENSIONS = new Set(["html", "htm"]);
 const TEXT_EXTENSIONS = new Set(["log", "txt"]);
 
-export type WorkspacePreviewKind = "image" | "markdown" | "pdf" | "text";
+export type WorkspacePreviewKind = "image" | "markdown" | "pdf" | "html" | "text";
 
 export function workspacePathExtension(path: string) {
   const normalized = path.trim().replace(/\\/g, "/");
@@ -25,6 +26,7 @@ export function getWorkspacePreviewKind(path: string): WorkspacePreviewKind | nu
   if (IMAGE_EXTENSIONS.has(extension)) return "image";
   if (PDF_EXTENSIONS.has(extension)) return "pdf";
   if (MARKDOWN_EXTENSIONS.has(extension)) return "markdown";
+  if (HTML_EXTENSIONS.has(extension)) return "html";
   if (TEXT_EXTENSIONS.has(extension)) return "text";
   return null;
 }

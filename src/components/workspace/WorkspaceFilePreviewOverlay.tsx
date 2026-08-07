@@ -16,8 +16,8 @@ import { WorkspaceMarkdownPreview } from "./WorkspaceMarkdownPreview";
 const PREVIEW_ANIMATION_MS = 180;
 const IMAGE_MIN_SCALE = 0.25;
 const IMAGE_MAX_SCALE = 4;
-const IMAGE_SCALE_STEP = 0.25;
-const IMAGE_WHEEL_SCALE_STEP = 0.1;
+const IMAGE_SCALE_STEP = 0.15;
+const IMAGE_WHEEL_SCALE_STEP = 0.05;
 
 function basename(path: string) {
   const normalized = path.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -51,6 +51,7 @@ function kindFromMimeType(mimeType: string): WorkspacePreviewKind | null {
   const mime = mimeType.split(";")[0]?.trim().toLowerCase() ?? "";
   if (mime.startsWith("image/")) return "image";
   if (mime === "application/pdf") return "pdf";
+  if (mime === "text/html") return "html";
   if (mime === "text/markdown" || mime === "text/x-markdown") return "markdown";
   if (mime.startsWith("text/")) return "text";
   return null;
@@ -58,12 +59,71 @@ function kindFromMimeType(mimeType: string): WorkspacePreviewKind | null {
 
 function resolvePreviewKind(path: string, mimeType: string): WorkspacePreviewKind {
   const mimeKind = kindFromMimeType(mimeType);
-  if (mimeKind === "markdown" || mimeKind === "text") return mimeKind;
+  if (mimeKind === "markdown" || mimeKind === "html" || mimeKind === "text") return mimeKind;
   return getWorkspacePreviewKind(path) ?? mimeKind ?? "text";
 }
 
 function decodePreviewText(bytes: Uint8Array) {
   return new TextDecoder("utf-8").decode(bytes);
+}
+
+function isTextPreviewKind(kind: WorkspacePreviewKind) {
+  return kind === "html" || kind === "markdown" || kind === "text";
+}
+
+/**
+ * Sandboxed HTML preview: the iframe has no allow-same-origin, so any
+ * localStorage/sessionStorage access by the page throws. Install a shim
+ * storage before the page scripts run so simple pages keep working.
+ */
+const SANDBOXED_HTML_PREVIEW_BOOTSTRAP = [
+  "<script data-e-pi-html-preview-bootstrap>",
+  "(() => {",
+  "  function createStorage() {",
+  "    const values = new Map();",
+  "    const storage = {",
+  "      get length() { return values.size; },",
+  "      key(index) { return Array.from(values.keys())[Number(index)] ?? null; },",
+  "      getItem(key) { key = String(key); return values.has(key) ? values.get(key) : null; },",
+  "      setItem(key, value) { values.set(String(key), String(value)); },",
+  "      removeItem(key) { values.delete(String(key)); },",
+  "      clear() { values.clear(); },",
+  "    };",
+  "    return new Proxy(storage, {",
+  "      get(target, key, receiver) {",
+  "        if (typeof key !== 'string' || key in target) return Reflect.get(target, key, receiver);",
+  "        return target.getItem(key);",
+  "      },",
+  "      set(target, key, value, receiver) {",
+  "        if (typeof key !== 'string' || key in target) return Reflect.set(target, key, value, receiver);",
+  "        target.setItem(key, value);",
+  "        return true;",
+  "      },",
+  "      deleteProperty(target, key) {",
+  "        if (typeof key === 'string') { target.removeItem(key); return true; }",
+  "        return Reflect.deleteProperty(target, key);",
+  "      },",
+  "    });",
+  "  }",
+  "  for (const name of ['localStorage', 'sessionStorage']) {",
+  "    try {",
+  "      Object.defineProperty(window, name, { value: createStorage(), configurable: true });",
+  "    } catch {}",
+  "  }",
+  "})();",
+  "<\\/script>",
+].join("");
+
+function buildSandboxedHtmlPreviewSource(html: string) {
+  const source = html.startsWith("\uFEFF") ? html.slice(1) : html;
+  const headMatch = /<head(?:\s[^>]*)?>/i.exec(source);
+  if (headMatch) {
+    const insertionIndex = headMatch.index + headMatch[0].length;
+    return `${source.slice(0, insertionIndex)}${SANDBOXED_HTML_PREVIEW_BOOTSTRAP}${source.slice(insertionIndex)}`;
+  }
+  const doctypeMatch = /^\s*<!doctype[^>]*>\s*/i.exec(source);
+  const insertionIndex = doctypeMatch ? doctypeMatch[0].length : 0;
+  return `${source.slice(0, insertionIndex)}${SANDBOXED_HTML_PREVIEW_BOOTSTRAP}${source.slice(insertionIndex)}`;
 }
 
 function clampImageScale(scale: number) {
@@ -193,8 +253,12 @@ export const WorkspaceFilePreviewOverlay = memo(function WorkspaceFilePreviewOve
         if (loadSequenceRef.current !== sequence) return;
         const bytes = base64ToBytes(response.data);
         const kind = resolvePreviewKind(request.path, response.mimeType);
-        const text = kind === "markdown" || kind === "text" ? decodePreviewText(bytes) : null;
-        const blob = new Blob([bytes.slice().buffer], { type: response.mimeType });
+        const text = isTextPreviewKind(kind) ? decodePreviewText(bytes) : null;
+        const blobBytes =
+          kind === "html" && text !== null
+            ? new TextEncoder().encode(buildSandboxedHtmlPreviewSource(text))
+            : bytes;
+        const blob = new Blob([blobBytes.slice().buffer], { type: response.mimeType });
         const loaded: LoadedPreview = {
           path: request.path,
           mimeType: response.mimeType,
@@ -361,6 +425,18 @@ function PreviewBody(props: {
     return (
       <iframe
         className="workspace-preview-iframe"
+        sandbox=""
+        src={preview.blobUrl}
+        title={basename(preview.path)}
+      />
+    );
+  }
+
+  if (preview.kind === "html") {
+    return (
+      <iframe
+        className="workspace-preview-iframe"
+        sandbox="allow-scripts allow-forms allow-modals allow-pointer-lock allow-popups"
         src={preview.blobUrl}
         title={basename(preview.path)}
       />

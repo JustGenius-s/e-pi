@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Eye, FilePenLine, Folder, FolderOpen, Loader2, RefreshCw, Search, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw, Search, X } from "lucide-react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -149,7 +149,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
   };
 
   /** Open a file with the persisted app; prompts the user when none is chosen. */
-  const openFile = async (path: string) => {
+  const openFile = useCallback(async (path: string) => {
     if (!openWithApp) {
       toast.info("No default app chosen; pick one from the app selector in the file tree");
       return;
@@ -159,7 +159,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
     } catch (reason) {
       toast.error(reason instanceof Error ? reason.message : String(reason));
     }
-  };
+  }, [openWithApp]);
 
   const openFileWith = async (appPath: string, path: string) => {
     try {
@@ -354,7 +354,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
       onOpenFile(path, siblingImages.length > 0 ? siblingImages : undefined);
       void node;
     },
-    [onOpenFile, root],
+    [onOpenFile, openFile, root],
   );
 
   const selectedAppName = apps.find((app) => app.id === openWithApp)?.name;
@@ -445,15 +445,9 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
         <ContextMenuTrigger asChild>{row}</ContextMenuTrigger>
         <ContextMenuContent>
           {canPreview ? (
-            <ContextMenuItem onSelect={() => handleOpenFile(node.path)}>
-              <Eye size={13} />
-              Preview
-            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => handleOpenFile(node.path)}>Preview</ContextMenuItem>
           ) : (
-            <ContextMenuItem onSelect={() => handleOpenFile(node.path)}>
-              <FilePenLine size={13} />
-              Open in Editor
-            </ContextMenuItem>
+            <ContextMenuItem onSelect={() => handleOpenFile(node.path)}>Open in Editor</ContextMenuItem>
           )}
           <ContextMenuItem onSelect={() => void openFile(node.path)}>
             Open

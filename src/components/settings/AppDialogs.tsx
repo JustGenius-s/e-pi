@@ -27,6 +27,7 @@ import { useImeComposition } from "../../hooks/useImeComposition";
 import { sessionTitle } from "../../lib/format";
 import type { AppInfo, SessionSummary } from "../../types/contracts";
 import { CommonSettings } from "./CommonSettings";
+import { EditorSettings } from "./EditorSettings";
 import { FontSettings } from "./FontSettings";
 import { ModelSettings } from "./ModelSettings";
 import { PiAgentSettings } from "./PiAgentSettings";
@@ -167,12 +168,16 @@ export function AppDialogs({
               <TabsTrigger value="models">Models</TabsTrigger>
               <TabsTrigger value="general">General</TabsTrigger>
               <TabsTrigger value="appearance">Font</TabsTrigger>
+              <TabsTrigger value="editor">Editor</TabsTrigger>
             </TabsList>
             <TabsContent value="models">
               <ModelSettings active={settingsOpen} />
             </TabsContent>
             <TabsContent value="appearance">
               <FontSettings />
+            </TabsContent>
+            <TabsContent value="editor">
+              <EditorSettings />
             </TabsContent>
             <TabsContent value="general">
               <PiAgentSettings active={settingsOpen} piVersion={appInfo?.piVersion} onUpdated={onAppInfoChange} />

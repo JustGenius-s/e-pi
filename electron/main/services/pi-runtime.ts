@@ -15,6 +15,7 @@ import type {
   PiRuntimeState,
   ResizeTerminalRequest,
   SessionUsageState,
+  WaitingUserState,
 } from "../../../src/types/contracts";
 import { agentConfigToArgs, getAgentConfig } from "./agent-config-service";
 import { debugLog } from "./debug-log";
@@ -80,6 +81,10 @@ function resolveNodeBinary(): string {
 
 function copyState(state: PiRuntimeState): PiRuntimeState {
   return { ...state };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }
 
 /**
@@ -492,6 +497,7 @@ export class PiRuntime {
             };
             cacheHitRate?: unknown;
             speed?: unknown;
+            waitingUser?: unknown;
           };
           const activity =
             parsed.status === "busy" || parsed.status === "idle" ? (parsed.status as PiActivityStatus) : undefined;
@@ -538,6 +544,18 @@ export class PiRuntime {
               : undefined;
           const cacheHitRate = typeof parsed.cacheHitRate === "number" ? parsed.cacheHitRate : undefined;
           const speed = typeof parsed.speed === "number" && Number.isFinite(parsed.speed) ? parsed.speed : undefined;
+          // waitingUser: null in the sidecar clears the wait, an absent field
+          // keeps the last known value (mid-session rewrite), an object sets it.
+          const rawWaiting = parsed.waitingUser;
+          const waitingUser: WaitingUserState | undefined =
+            rawWaiting === null
+              ? undefined
+              : isRecord(rawWaiting) && (rawWaiting.kind === "permission" || rawWaiting.kind === "ask_user")
+                ? {
+                    kind: rawWaiting.kind,
+                    detail: typeof rawWaiting.detail === "string" ? rawWaiting.detail : undefined,
+                  }
+                : (instance.state.waitingUser ?? undefined);
           const signature = JSON.stringify({
             activity,
             model,
@@ -547,6 +565,7 @@ export class PiRuntime {
             usage,
             cacheHitRate,
             speed,
+            waitingUser,
           });
           const previous = JSON.stringify({
             activity: instance.state.activity,
@@ -557,6 +576,7 @@ export class PiRuntime {
             usage: instance.state.usage,
             cacheHitRate: instance.state.cacheHitRate,
             speed: instance.state.speed,
+            waitingUser: instance.state.waitingUser ?? undefined,
           });
           if (signature !== previous) {
             // Keep the last known value when the sidecar lacks one (e.g. during
@@ -571,6 +591,7 @@ export class PiRuntime {
               usage: usage ?? instance.state.usage,
               cacheHitRate: cacheHitRate ?? instance.state.cacheHitRate,
               speed: speed ?? instance.state.speed,
+              waitingUser,
             });
           }
         })

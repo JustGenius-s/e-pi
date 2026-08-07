@@ -8,8 +8,21 @@ import {
   undo,
 } from "@codemirror/commands";
 import { bracketMatching, defaultHighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
-import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
-import { EditorState } from "@codemirror/state";
+import {
+  SearchQuery,
+  closeSearchPanel,
+  findNext,
+  findPrevious,
+  getSearchQuery,
+  openSearchPanel,
+  replaceAll,
+  replaceNext,
+  search,
+  searchKeymap,
+  setSearchQuery,
+} from "@codemirror/search";
+import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { oneDarkHighlightStyle } from "@codemirror/theme-one-dark";
 import {
   EditorView,
   drawSelection,
@@ -18,6 +31,7 @@ import {
   highlightActiveLineGutter,
   keymap,
   lineNumbers,
+  type Panel,
 } from "@codemirror/view";
 import {
   AlertTriangle,
@@ -29,7 +43,6 @@ import {
   Redo2,
   RefreshCw,
   Replace,
-  Save,
   Scissors,
   Search,
   TextSelect,
@@ -49,11 +62,13 @@ import {
 
 import type { WorkspaceEditorOpenRequest, WorkspacePreviewOpenRequest } from "../../hooks/useWorkspaceOverlays";
 import { emitInsertComposerText } from "../../lib/composerBus";
+import { useEditorSettings } from "../../lib/editorSettings";
 import { isFsError, toFsErrorMessage } from "../../lib/fsErrors";
 import { languageForPath, languageLabel } from "../../lib/codeEditorLanguages";
 import { formatCodeMentionToken } from "../../lib/mentionReferences";
 import { cn } from "../../lib/utils";
 import { isWorkspacePreviewPath } from "../../lib/workspacePreviewKind";
+import { useIsDark } from "../../hooks/useIsDark";
 
 import { autocompletion } from "@codemirror/autocomplete";
 
@@ -117,7 +132,263 @@ function formatBytes(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function editorExtensions(readOnly: boolean, language: ReturnType<typeof languageForPath>) {
+/** Debounced helper for search input → query updates. */
+function debounce(fn: () => void, ms: number) {
+  let timer: number | undefined;
+  const wrapped = () => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(fn, ms);
+  };
+  wrapped.cancel = () => window.clearTimeout(timer);
+  return wrapped;
+}
+
+/**
+ * Custom find/replace panel for the CodeMirror search extension, styled to
+ * match the app theme (light) and the editor theme (dark via the
+ * `data-editor-theme` attribute on the overlay root). Replaces CM6's default
+ * search panel UI entirely.
+ */
+function createSearchPanel(view: EditorView): Panel {
+  const dom = document.createElement("div");
+  dom.className = "workspace-find-bar";
+
+  const findInput = document.createElement("input");
+  findInput.className = "workspace-find-input";
+  findInput.placeholder = "Find";
+  findInput.setAttribute("main-field", "true");
+  findInput.setAttribute("spellcheck", "false");
+
+  const countEl = document.createElement("span");
+  countEl.className = "workspace-find-count";
+
+  let caseSensitive = false;
+  let replaceOpen = false;
+
+  const makeButton = (label: string, title: string, wide = false): HTMLButtonElement => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = `workspace-find-btn${wide ? " wide" : ""}`;
+    button.textContent = label;
+    button.title = title;
+    button.setAttribute("aria-label", title);
+    return button;
+  };
+
+  const prevButton = makeButton("↑", "Previous match (Shift+Enter)");
+  const nextButton = makeButton("↓", "Next match (Enter)");
+  const caseButton = makeButton("Aa", "Match case");
+  const toggleReplaceButton = makeButton("⇄", "Toggle replace");
+  const closeButton = makeButton("✕", "Close (Esc)");
+
+  const findRow = document.createElement("div");
+  findRow.className = "workspace-find-row";
+  findRow.append(findInput, countEl, prevButton, nextButton, caseButton, toggleReplaceButton, closeButton);
+  dom.appendChild(findRow);
+
+  const replaceInput = document.createElement("input");
+  replaceInput.className = "workspace-find-input";
+  replaceInput.placeholder = "Replace";
+  replaceInput.setAttribute("spellcheck", "false");
+  const replaceOneButton = makeButton("Replace", "Replace next (Enter)", true);
+  const replaceAllButton = makeButton("All", "Replace all", true);
+  const replaceRow = document.createElement("div");
+  replaceRow.className = "workspace-find-row workspace-find-replace-row";
+  replaceRow.append(replaceInput, replaceOneButton, replaceAllButton);
+  dom.appendChild(replaceRow);
+
+  const applyQuery = () => {
+    const query = new SearchQuery({
+      search: findInput.value,
+      caseSensitive,
+      replace: replaceInput.value,
+    });
+    view.dispatch({ effects: setSearchQuery.of(query) });
+    if (findInput.value) {
+      view.focus();
+      findNext(view);
+    }
+  };
+
+  const debouncedQuery = debounce(applyQuery, 150);
+
+  const updateCount = () => {
+    const query = getSearchQuery(view.state);
+    if (!query.search) {
+      countEl.textContent = "";
+      return;
+    }
+    const doc = view.state.doc;
+    // Counting every match is linear; cap the doc size to keep typing snappy.
+    if (doc.length > 500_000) {
+      countEl.textContent = "…";
+      return;
+    }
+    const haystack = query.caseSensitive ? doc.toString() : doc.toString().toLowerCase();
+    const needle = query.caseSensitive ? query.search : query.search.toLowerCase();
+    const head = view.state.selection.main.head;
+    let total = 0;
+    let current = 0;
+    let index = 0;
+    while ((index = haystack.indexOf(needle, index)) !== -1) {
+      total += 1;
+      if (current === 0 && index + needle.length >= head) current = total;
+      index += Math.max(needle.length, 1);
+    }
+    countEl.textContent = total === 0 ? "0" : `${current || total}/${total}`;
+  };
+
+  const debouncedCount = debounce(updateCount, 100);
+
+  findInput.addEventListener("input", () => {
+    debouncedQuery();
+    debouncedCount();
+  });
+  findInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (event.shiftKey) {
+        findPrevious(view);
+      } else {
+        findNext(view);
+      }
+      debouncedCount();
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeSearchPanel(view);
+    }
+  });
+
+  prevButton.addEventListener("click", () => {
+    view.focus();
+    findPrevious(view);
+    debouncedCount();
+  });
+  nextButton.addEventListener("click", () => {
+    view.focus();
+    findNext(view);
+    debouncedCount();
+  });
+
+  caseButton.addEventListener("click", () => {
+    caseSensitive = !caseSensitive;
+    caseButton.classList.toggle("active", caseSensitive);
+    applyQuery();
+    debouncedCount();
+  });
+
+  toggleReplaceButton.addEventListener("click", () => {
+    replaceOpen = !replaceOpen;
+    dom.classList.toggle("replace-open", replaceOpen);
+    if (replaceOpen) replaceInput.focus();
+  });
+
+  closeButton.addEventListener("click", () => closeSearchPanel(view));
+
+  const runReplace = (all: boolean) => {
+    if (!findInput.value) return;
+    // The replace text travels inside the search query state.
+    applyQuery();
+    if (all) {
+      replaceAll(view);
+    } else {
+      view.focus();
+      replaceNext(view);
+    }
+    debouncedCount();
+  };
+  replaceInput.addEventListener("input", debouncedQuery);
+  replaceInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      runReplace(false);
+    } else if (event.key === "Escape") {
+      event.preventDefault();
+      closeSearchPanel(view);
+    }
+  });
+  replaceOneButton.addEventListener("click", () => runReplace(false));
+  replaceAllButton.addEventListener("click", () => runReplace(true));
+
+  return {
+    top: true,
+    dom,
+    update(update) {
+      const queryChanged = update.transactions.some((t) =>
+        t.effects.some((e) => e.is(setSearchQuery)),
+      );
+      if (!update.docChanged && !update.selectionSet && !queryChanged) return;
+      const query = getSearchQuery(update.state);
+      if (query.search !== findInput.value) findInput.value = query.search;
+      if (query.caseSensitive !== caseSensitive) {
+        caseSensitive = query.caseSensitive;
+        caseButton.classList.toggle("active", caseSensitive);
+      }
+      if (findInput.value) debouncedCount();
+    },
+    destroy() {
+      debouncedQuery.cancel();
+      debouncedCount.cancel();
+    },
+  };
+}
+
+/**
+ * Theme extensions for the editor compartment: syntax highlight style plus
+ * the editor chrome (colors, font size). Dark mode uses a fixed VS Code-ish
+ * palette so the code area stays readable even when the app theme differs;
+ * light mode follows the app CSS variables.
+ */
+function buildEditorTheme(dark: boolean, fontSize: number): Extension[] {
+  const highlight = dark ? oneDarkHighlightStyle : defaultHighlightStyle;
+  const scroller = {
+    fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", monospace',
+  };
+  const theme: { [selector: string]: Record<string, string> } = dark
+    ? {
+        "&": { height: "100%", fontSize: `${fontSize}px`, backgroundColor: "#1e1e1e", color: "#d4d4d4" },
+        ".cm-scroller": scroller,
+        ".cm-gutters": { backgroundColor: "#1e1e1e", color: "#858585", borderRight: "1px solid #2f2f2f" },
+        ".cm-activeLine": { backgroundColor: "#2a2d2e" },
+        ".cm-activeLineGutter": { backgroundColor: "#2a2d2e", color: "#c6c6c6" },
+        ".cm-cursor": { borderLeftColor: "#aeafad" },
+        ".cm-selectionBackground": { backgroundColor: "#264f78 !important" },
+        "&.cm-focused .cm-selectionBackground": { backgroundColor: "#264f78 !important" },
+        ".cm-searchMatch": { backgroundColor: "#613214" },
+        ".cm-searchMatch-selected": { backgroundColor: "#6c3c19" },
+        ".cm-panels": { backgroundColor: "#252526", color: "#d4d4d4", borderBottom: "1px solid #333333" },
+      }
+    : {
+        "&": { height: "100%", fontSize: `${fontSize}px`, backgroundColor: "var(--background)", color: "var(--foreground)" },
+        ".cm-scroller": scroller,
+        ".cm-gutters": {
+          backgroundColor: "var(--background-stronger, var(--background))",
+          color: "var(--muted-foreground)",
+          borderRight: "1px solid var(--border)",
+        },
+        ".cm-activeLine": { backgroundColor: "color-mix(in oklch, var(--muted) 60%, transparent)" },
+        ".cm-activeLineGutter": { backgroundColor: "color-mix(in oklch, var(--muted) 60%, transparent)" },
+        ".cm-cursor": { borderLeftColor: "var(--foreground)" },
+        ".cm-selectionBackground": {
+          backgroundColor: "color-mix(in oklch, var(--primary) 20%, transparent) !important",
+        },
+        "&.cm-focused .cm-selectionBackground": {
+          backgroundColor: "color-mix(in oklch, var(--primary) 25%, transparent) !important",
+        },
+        ".cm-searchMatch": { backgroundColor: "color-mix(in oklch, var(--primary) 25%, transparent)" },
+        ".cm-searchMatch-selected": { backgroundColor: "color-mix(in oklch, var(--primary) 40%, transparent)" },
+        ".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)", borderBottom: "1px solid var(--border)" },
+      };
+  return [syntaxHighlighting(highlight, { fallback: true }), EditorView.theme(theme, { dark })];
+}
+
+function editorExtensions(
+  readOnly: boolean,
+  language: ReturnType<typeof languageForPath>,
+  themeExtensions: Extension,
+  extraExtensions: Extension[] = [],
+) {
+  const theme = Array.isArray(themeExtensions) ? themeExtensions : [themeExtensions];
   return [
     lineNumbers(),
     highlightActiveLineGutter(),
@@ -126,15 +397,15 @@ function editorExtensions(readOnly: boolean, language: ReturnType<typeof languag
     dropCursor(),
     EditorState.allowMultipleSelections.of(true),
     indentOnInput(),
-    syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
     bracketMatching(),
     autocompletion(),
-    search({ top: true }),
+    search({ top: true, createPanel: createSearchPanel }),
     highlightActiveLine(),
     keymap.of([indentWithTab, ...searchKeymap, ...historyKeymap, ...defaultKeymap]),
     ...(language ? [language] : []),
     ...(readOnly ? [EditorState.readOnly.of(true)] : []),
-    editorAppTheme(),
+    ...theme,
+    ...extraExtensions,
   ];
 }
 
@@ -175,6 +446,26 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
   const dirtyTabs = useMemo(() => tabs.filter((tab) => tab.content !== tab.savedContent), [tabs]);
   const hasDirtyTabs = dirtyTabs.length > 0;
   const isOpening = openingPaths.length > 0;
+
+  // Document-change listener. It must be part of *every* EditorState: tab
+  // switches rebuild the state via setState, so a listener registered only
+  // at editor creation would silently stop firing and edits would never mark
+  // tabs dirty. A single stable instance is reused across rebuilds.
+  const docUpdateListenerRef = useRef<Extension | null>(null);
+  if (docUpdateListenerRef.current === null) {
+    docUpdateListenerRef.current = EditorView.updateListener.of((update) => {
+      if (!update.docChanged) return;
+      const key = editorModelKeyRef.current;
+      if (!key) return;
+      const value = update.state.doc.toString();
+      const lineCount = update.state.doc.lines;
+      setTabs((current) =>
+        current.map((tab) =>
+          tab.key === key ? { ...tab, content: value, totalLines: lineCount, error: null } : tab,
+        ),
+      );
+    });
+  }
 
   useEffect(() => {
     openAnimationFrameRef.current = window.requestAnimationFrame(() => {
@@ -542,6 +833,28 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
     activeKeyRef.current = activeTab?.key ?? "";
   }, [activeTab?.key]);
 
+  // Editor settings → resolved code theme (light/dark).
+  const { settings } = useEditorSettings();
+  const appDark = useIsDark();
+  const resolvedDark = settings.theme === "system" ? appDark : settings.theme === "dark";
+  const themeCompartmentRef = useRef(new Compartment());
+  const themeConfigRef = useRef<Extension[]>(buildEditorTheme(resolvedDark, settings.fontSize));
+  themeConfigRef.current = buildEditorTheme(resolvedDark, settings.fontSize);
+
+  // Live theme/font reconfiguration without losing document or undo history.
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.dispatch({
+      effects: themeCompartmentRef.current.reconfigure(themeConfigRef.current),
+    });
+  }, [resolvedDark, settings.fontSize]);
+
+  // Drive the find-bar dark styling from the resolved editor theme.
+  useEffect(() => {
+    overlayRef.current?.setAttribute("data-editor-theme", resolvedDark ? "dark" : "light");
+  }, [resolvedDark]);
+
   // Editor lifecycle: create once, bind/unbind models per active tab.
   useEffect(() => {
     const container = containerRef.current;
@@ -550,29 +863,12 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
       parent: container,
       state: EditorState.create({
         doc: "",
-        extensions: [
-          ...editorExtensions(true, null),
-          EditorView.theme(
-            {
-              "&": { height: "100%", fontSize: "13px" },
-              ".cm-scroller": { fontFamily: 'ui-monospace, "SF Mono", "Cascadia Code", monospace' },
-            },
-            { dark: false },
-          ),
-          editorAppTheme(),
-          EditorView.updateListener.of((update) => {
-            if (!update.docChanged) return;
-            const key = editorModelKeyRef.current;
-            if (!key) return;
-            const value = update.state.doc.toString();
-            const lineCount = update.state.doc.lines;
-            setTabs((current) =>
-              current.map((tab) =>
-                tab.key === key ? { ...tab, content: value, totalLines: lineCount, error: null } : tab,
-              ),
-            );
-          }),
-        ],
+        extensions: editorExtensions(
+          true,
+          null,
+          themeCompartmentRef.current.of(themeConfigRef.current),
+          [docUpdateListenerRef.current ?? []],
+        ),
       }),
     });
     editorRef.current = view;
@@ -587,7 +883,14 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
     const editor = editorRef.current;
     if (!editor || !activeTab) {
       if (editor) {
-        editor.setState(EditorState.create({ doc: "", extensions: editorExtensions(true, null) }));
+        editor.setState(
+          EditorState.create({
+            doc: "",
+            extensions: editorExtensions(true, null, themeCompartmentRef.current.of(themeConfigRef.current), [
+              docUpdateListenerRef.current ?? [],
+            ]),
+          }),
+        );
         editorModelKeyRef.current = "";
       }
       return;
@@ -600,7 +903,12 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
     }
     if (previousKey !== activeTab.key) {
       const language = languageForPath(activeTab.path);
-      const extensions = editorExtensions(activeTab.readOnly, language);
+      const extensions = editorExtensions(
+        activeTab.readOnly,
+        language,
+        themeCompartmentRef.current.of(themeConfigRef.current),
+        [docUpdateListenerRef.current ?? []],
+      );
       editor.setState(
         EditorState.create({
           doc: activeTab.content,
@@ -688,22 +996,6 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
           <div className="workspace-overlay-toolbar-path">{activeTab ? activeTab.path : ""}</div>
         </div>
         <div className="workspace-overlay-toolbar-actions">
-          <ToolbarButton
-            label="Save"
-            disabled={
-              !activeTab ||
-              activeTab.content === activeTab.savedContent ||
-              activeTab.status === "saving" ||
-              activeTab.status === "conflict"
-            }
-            onClick={() => activeTab && void saveTab(activeTab.key)}
-          >
-            {activeTab?.status === "saving" ? (
-              <Loader2 size={15} className="spin" />
-            ) : (
-              <Save size={15} />
-            )}
-          </ToolbarButton>
           <ToolbarButton label="Find" disabled={!activeTab} onClick={showFind}>
             <Search size={15} />
           </ToolbarButton>
@@ -739,7 +1031,11 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
           return (
             <div
               key={tab.key}
-              className={cn("workspace-editor-tab", tab.key === activeKey && "active")}
+              className={cn(
+                "workspace-editor-tab",
+                tab.key === activeKey && "active",
+                dirty && "dirty",
+              )}
               title={tab.path}
             >
               <button
@@ -753,19 +1049,19 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
                   <FilePenLine size={12} />
                 )}
                 <span className="truncate">{basename(tab.path)}</span>
-                {dirty ? <span className="workspace-editor-tab-dirty" /> : null}
               </button>
               <button
                 type="button"
                 className="workspace-editor-tab-close"
-                title="Close file"
+                title={dirty ? "Close (unsaved changes)" : "Close file"}
                 aria-label="Close file"
                 onClick={(event) => {
                   event.stopPropagation();
                   requestCloseTab(tab.key);
                 }}
               >
-                <X size={11} />
+                <span className="workspace-editor-tab-dirty-dot" />
+                <X size={11} className="workspace-editor-tab-close-icon" />
               </button>
             </div>
           );
@@ -917,36 +1213,6 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
     </div>
   );
 });
-
-/** Companion theme: align CM6 colors with the app theme via CSS variables. */
-function editorAppTheme() {
-  return EditorView.theme(
-    {
-      "&": { backgroundColor: "var(--background)", color: "var(--foreground)" },
-      ".cm-gutters": {
-        backgroundColor: "var(--background-stronger, var(--background))",
-        color: "var(--muted-foreground)",
-        borderRight: "1px solid var(--border)",
-      },
-      ".cm-activeLine": { backgroundColor: "color-mix(in oklch, var(--muted) 60%, transparent)" },
-      ".cm-activeLineGutter": {
-        backgroundColor: "color-mix(in oklch, var(--muted) 60%, transparent)",
-      },
-      ".cm-selectionBackground": {
-        backgroundColor: "color-mix(in oklch, var(--primary) 20%, transparent) !important",
-      },
-      "&.cm-focused .cm-selectionBackground": {
-        backgroundColor: "color-mix(in oklch, var(--primary) 25%, transparent) !important",
-      },
-      ".cm-cursor": { borderLeftColor: "var(--foreground)" },
-      ".cm-searchMatch": { backgroundColor: "color-mix(in oklch, var(--primary) 25%, transparent)" },
-      ".cm-searchMatch-selected": {
-        backgroundColor: "color-mix(in oklch, var(--primary) 40%, transparent)",
-      },
-    },
-    { dark: false },
-  );
-}
 
 function ToolbarButton(props: {
   label: string;

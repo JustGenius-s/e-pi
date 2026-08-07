@@ -58,6 +58,13 @@ interface BridgeUsage {
   cost: number;
 }
 
+/** Why a session is blocked waiting for the human (mirrors WaitingUserState). */
+interface BridgeWaitingUser {
+  kind: "permission" | "ask_user";
+  /** Short display text for the notification (permission value or the question). */
+  detail?: string;
+}
+
 interface BridgeState {
   status: "busy" | "idle";
   model?: { provider: string; id: string };
@@ -71,6 +78,12 @@ interface BridgeState {
   cacheHitRate?: number;
   /** Output speed of the latest assistant response in tokens/sec. */
   speed?: number;
+  /**
+   * Set while the agent waits on the human: a permission approval prompt
+   * (pi-permission-system) or an ask_user_question (e.g. rpiv-ask-user-question).
+   * The turn is NOT finished — it resumes once the user interacts.
+   */
+  waitingUser?: BridgeWaitingUser | null;
 }
 
 function emptyUsage(): BridgeUsage {
@@ -224,6 +237,73 @@ async function clearActivity(ctx: ExtensionContext): Promise<void> {
   await rm(target, { force: true }).catch(() => undefined);
 }
 
+// ── Waiting-on-human detection ──────────────────────────────────────────────
+//
+// Both kinds of "pi is blocked on the human" prompts broadcast on pi's shared
+// extension event bus, so the bridge can mirror them into the activity sidecar
+// without importing either package:
+//
+//  - pi-permission-system (@gotgenes/pi-permission-system) emits
+//    `permissions:ui_prompt` immediately before its approval UI shows, and
+//    `permissions:decision` after the gate resolves.
+//  - @juicesharp/rpiv-ask-user-question emits `rpiv:ask-user:prompt` while the
+//    questionnaire is awaiting input, and `rpiv:ask-user:blocked` with
+//    `{ active: false }` when the wait ends.
+//
+// The generic `ask_user_question` tool_call/tool_result hooks below cover any
+// other package that registers the same tool name. These events are NOT task
+// completion: the session stays busy and continues once the user interacts.
+
+/** Channel of pi-permission-system's UI-prompt broadcast. */
+const PERMISSIONS_UI_PROMPT_CHANNEL = "permissions:ui_prompt";
+/** Channel of pi-permission-system's gate-resolution broadcast. */
+const PERMISSIONS_DECISION_CHANNEL = "permissions:decision";
+/** Channel of rpiv-ask-user-question's awaiting-input broadcast. */
+const ASK_USER_PROMPT_CHANNEL = "rpiv:ask-user:prompt";
+/** Channel of rpiv-ask-user-question's wait-ended broadcast. */
+const ASK_USER_BLOCKED_CHANNEL = "rpiv:ask-user:blocked";
+
+/** The canonical name every ask_user_question package registers. */
+const ASK_USER_TOOL_NAME = "ask_user_question";
+
+/** Collapse whitespace and cap the notification detail line. */
+function shortDetail(value: unknown, maxLength = 80): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const collapsed = value.replace(/\s+/g, " ").trim();
+  if (!collapsed) return undefined;
+  return collapsed.length > maxLength ? `${collapsed.slice(0, maxLength)}…` : collapsed;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+/** First question text from an ask_user_question payload, when present. */
+function questionDetail(input: unknown): string | undefined {
+  if (!isRecord(input)) return undefined;
+  const questions = input.questions;
+  if (Array.isArray(questions)) {
+    for (const entry of questions) {
+      if (isRecord(entry) && typeof entry.question === "string" && entry.question.trim()) {
+        return shortDetail(entry.question);
+      }
+    }
+  }
+  return shortDetail(input.question);
+}
+
+/** The extension context of the live session; undefined between sessions. */
+let activeCtx: ExtensionContext | undefined;
+
+/**
+ * ReportState for event-bus listeners, which receive no ExtensionContext.
+ * No-ops outside a session (the sidecar belongs to a session file).
+ */
+function reportStateFromActive(patch: Partial<BridgeState>): void {
+  if (!activeCtx) return;
+  reportState(activeCtx, patch);
+}
+
 class EmptyComponent implements Component {
   render(): string[] {
     return [];
@@ -287,6 +367,7 @@ export default function ePiBridge(pi: ExtensionAPI): void {
   });
 
   pi.on("session_start", (_event, ctx) => {
+    activeCtx = ctx;
     ctx.ui.setHeader(() => new EmptyComponent());
     ctx.ui.setFooter(() => new EmptyComponent());
     ctx.ui.setEditorComponent((tui, theme, keybindings) => new DesktopEditor(tui, theme, keybindings));
@@ -294,7 +375,8 @@ export default function ePiBridge(pi: ExtensionAPI): void {
     sessionUsage = computeUsageFromEntries(ctx);
     sessionCacheHitRate = latestCacheHitRate(ctx);
     // Seed the sidecar with the session's restored model, thinking level,
-    // supported levels, usage, and idle state.
+    // supported levels, usage, and idle state. waitingUser starts null so a
+    // stale value from a previous run never bleeds into the fresh session.
     reportState(ctx, {
       status: "idle",
       model: ctx.model ? { provider: ctx.model.provider, id: ctx.model.id } : undefined,
@@ -303,6 +385,7 @@ export default function ePiBridge(pi: ExtensionAPI): void {
       context: contextUsageOf(ctx),
       usage: sessionUsage,
       cacheHitRate: sessionCacheHitRate,
+      waitingUser: null,
     });
   });
 
@@ -338,6 +421,43 @@ export default function ePiBridge(pi: ExtensionAPI): void {
       usage: sessionUsage,
       cacheHitRate: sessionCacheHitRate,
     });
+  });
+
+  // A permission gate (pi-permission-system) is about to show its approval
+  // UI: the turn is blocked on the human, not finished.
+  pi.events.on(PERMISSIONS_UI_PROMPT_CHANNEL, (data) => {
+    const event = isRecord(data) ? data : undefined;
+    const detail = shortDetail(event?.value) ?? shortDetail(event?.message);
+    reportStateFromActive({ waitingUser: { kind: "permission", detail } });
+  });
+  // The gate resolved (approved, denied, session grant, …): the wait is over.
+  pi.events.on(PERMISSIONS_DECISION_CHANNEL, () => {
+    reportStateFromActive({ waitingUser: null });
+  });
+  // rpiv-ask-user-question: the questionnaire is awaiting input. The blocked
+  // broadcast carries no content, so keep the detail from the prompt event.
+  pi.events.on(ASK_USER_PROMPT_CHANNEL, (data) => {
+    const detail = questionDetail(data);
+    reportStateFromActive({ waitingUser: { kind: "ask_user", detail } });
+  });
+  pi.events.on(ASK_USER_BLOCKED_CHANNEL, (data) => {
+    if (isRecord(data) && data.active === true) {
+      reportStateFromActive({ waitingUser: { kind: "ask_user", detail: currentState.waitingUser?.detail } });
+    } else {
+      reportStateFromActive({ waitingUser: null });
+    }
+  });
+  // Fallback for any other ask_user_question implementation: the tool call
+  // blocks the turn until the human answers, so mirror the wait on the call
+  // and clear it on the result.
+  pi.on("tool_call", (event, ctx) => {
+    if (event.toolName !== ASK_USER_TOOL_NAME) return;
+    reportState(ctx, { waitingUser: { kind: "ask_user", detail: questionDetail(event.input) } });
+  });
+  pi.on("tool_result", (event, ctx) => {
+    if (event.toolName !== ASK_USER_TOOL_NAME) return;
+    if (currentState.waitingUser?.kind !== "ask_user") return;
+    reportState(ctx, { waitingUser: null });
   });
 
   pi.on("message_start", (event, _ctx) => {
@@ -393,6 +513,7 @@ export default function ePiBridge(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", (_event, ctx) => {
     stopWorkingTimer();
+    activeCtx = undefined;
     void clearActivity(ctx);
   });
 }

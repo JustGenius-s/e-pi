@@ -3,6 +3,19 @@ export type PiProcessStatus = "idle" | "starting" | "running" | "stopping" | "ex
 /** Agent activity inside a running pi process (reported by the bridge extension). */
 export type PiActivityStatus = "busy" | "idle";
 
+/**
+ * Why a session is blocked waiting for the human. Neither is task completion:
+ * the agent turn stays busy and resumes once the user interacts.
+ */
+export type WaitingUserKind = "permission" | "ask_user";
+
+/** The session is blocked on a human interaction inside the pi process. */
+export interface WaitingUserState {
+  kind: WaitingUserKind;
+  /** Short display text (permission surface/command or the question), when available. */
+  detail?: string;
+}
+
 export interface ModelRef {
   provider: string;
   id: string;
@@ -115,6 +128,12 @@ export interface PiRuntimeState {
   generation: number;
   /** Agent activity while the process is running: "busy" (streaming/working) or "idle". */
   activity?: PiActivityStatus;
+  /**
+   * Set while the session waits on a human: a permission approval prompt
+   * (pi-permission-system) or an ask_user_question (e.g. rpiv-ask-user-question).
+   * The turn is NOT finished — it continues once the user interacts.
+   */
+  waitingUser?: WaitingUserState | null;
   /** Model currently selected inside this session's Pi process. */
   model?: ModelRef;
   /** Current thinking level inside this session's Pi process (after model clamping). */

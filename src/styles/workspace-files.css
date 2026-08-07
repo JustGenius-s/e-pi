@@ -494,12 +494,32 @@
   gap: 6px;
 }
 
-.workspace-editor-tab-dirty {
-  width: 6px;
-  height: 6px;
+/* VS Code-style dirty marker: the close slot shows a dot while unsaved,
+   swapping back to ✕ on hover (and once saved). */
+.workspace-editor-tab-dirty-dot {
+  display: none;
+  width: 8px;
+  height: 8px;
   flex: 0 0 auto;
   border-radius: 999px;
-  background: var(--primary);
+  background: var(--foreground);
+  opacity: 0.75;
+}
+
+.workspace-editor-tab.dirty .workspace-editor-tab-dirty-dot {
+  display: inline-block;
+}
+
+.workspace-editor-tab.dirty .workspace-editor-tab-close-icon {
+  display: none;
+}
+
+.workspace-editor-tab.dirty:hover .workspace-editor-tab-dirty-dot {
+  display: none;
+}
+
+.workspace-editor-tab.dirty:hover .workspace-editor-tab-close-icon {
+  display: inline-block;
 }
 
 .workspace-editor-tab-close {
@@ -613,4 +633,140 @@
 .workspace-editor-main .cm-panel.cm-search input,
 .workspace-editor-main .cm-panel.cm-search button {
   font-size: 12px;
+}
+
+/* ── Custom find/replace bar (replaces the CM6 default search panel) ── */
+
+.workspace-find-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+}
+
+.workspace-find-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-find-input {
+  min-width: 0;
+  height: 24px;
+  flex: 1 1 auto;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--muted);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+  transition: border-color 120ms ease-out, background 120ms ease-out;
+}
+
+.workspace-find-input:focus {
+  border-color: color-mix(in oklch, var(--foreground) 30%, transparent);
+  background: var(--background);
+}
+
+.workspace-find-input::placeholder {
+  color: var(--muted-foreground);
+}
+
+.workspace-find-count {
+  min-width: 38px;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.workspace-find-btn {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted-foreground);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background 100ms ease-out, color 100ms ease-out;
+}
+
+.workspace-find-btn.wide {
+  width: auto;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.workspace-find-btn:hover {
+  background: var(--accent);
+  color: var(--foreground);
+}
+
+.workspace-find-btn.active {
+  background: color-mix(in oklch, var(--primary) 18%, transparent);
+  color: var(--foreground);
+}
+
+.workspace-find-replace-row {
+  display: none;
+}
+
+.workspace-find-bar.replace-open .workspace-find-replace-row {
+  display: flex;
+}
+
+/* Dark editor theme (overlay root carries data-editor-theme="dark"). */
+[data-editor-theme="dark"] .workspace-find-bar {
+  border-bottom-color: #333333;
+}
+
+[data-editor-theme="dark"] .workspace-find-input {
+  border-color: #3c3c3c;
+  background: #3c3c3c;
+  color: #cccccc;
+}
+
+[data-editor-theme="dark"] .workspace-find-input:focus {
+  border-color: #0e639c;
+  background: #3c3c3c;
+}
+
+[data-editor-theme="dark"] .workspace-find-input::placeholder {
+  color: #858585;
+}
+
+[data-editor-theme="dark"] .workspace-find-count {
+  color: #858585;
+}
+
+[data-editor-theme="dark"] .workspace-find-btn {
+  color: #cccccc;
+}
+
+[data-editor-theme="dark"] .workspace-find-btn:hover {
+  background: #2a2d2e;
+  color: #ffffff;
+}
+
+[data-editor-theme="dark"] .workspace-find-btn.active {
+  background: #37373d;
+  color: #ffffff;
+}
+
+[data-editor-theme="dark"] .workspace-find-btn.wide {
+  border-color: #3c3c3c;
 }

@@ -18,7 +18,10 @@ import { WorkspaceOverlayHost } from "@/components/workspace/WorkspaceOverlayHos
 
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSessionRuntime } from "./hooks/useSessionRuntime";
-import { useWorkspaceOverlays } from "./hooks/useWorkspaceOverlays";
+import {
+  restoreWorkspaceOverlays,
+  useWorkspaceOverlays,
+} from "./hooks/useWorkspaceOverlays";
 import { isWorkspacePreviewPath } from "./lib/workspacePreviewKind";
 import type { Project, SessionSummary } from "./types/contracts";
 
@@ -58,6 +61,12 @@ export function App() {
   /** Open tool-panel tabs plus the active one; review is a singleton. */
   const [panel, setPanel] = useState<PanelState>({ tabs: [], activeId: undefined });
   const overlays = useWorkspaceOverlays();
+
+  // Dev hot-reload restores the open editor/preview overlays.
+  useEffect(() => {
+    restoreWorkspaceOverlays(overlays);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;

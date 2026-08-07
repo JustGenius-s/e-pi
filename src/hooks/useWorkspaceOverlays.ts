@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * Overlay state machine for the workspace code editor and file preview
@@ -12,7 +12,50 @@ import { useCallback, useRef, useState } from "react";
  * - closeRequestId: monotonically id'ed request to *really* close (runs the
  *   dirty-save confirmation when needed); closing runs the slide-out
  *   animation, then onClose unmounts.
+ *
+ * Session persistence: the dev server fully reloads the page when workspace
+ * source files are edited/saved; the open requests are mirrored to
+ * sessionStorage so `restoreWorkspaceOverlays` can bring the overlays back
+ * on boot. sessionStorage (not localStorage) keeps this restore-on-reload
+ * only, never across app restarts.
  */
+
+const EDITOR_STATE_KEY = "e-pi-workspace-editor-state";
+const PREVIEW_STATE_KEY = "e-pi-workspace-preview-state";
+
+type EditorStateSnapshot = {
+  cwd: string;
+  path: string;
+  line?: number;
+  endLine?: number;
+};
+
+type PreviewStateSnapshot = {
+  cwd: string;
+  path: string;
+  imagePaths?: string[];
+};
+
+function writeSnapshot(key: string, snapshot: unknown): void {
+  try {
+    if (snapshot === null) {
+      window.sessionStorage.removeItem(key);
+    } else {
+      window.sessionStorage.setItem(key, JSON.stringify(snapshot));
+    }
+  } catch {
+    // Storage unavailable — restore-on-reload just won't happen.
+  }
+}
+
+function readSnapshot<T>(key: string): T | null {
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface WorkspaceEditorOpenRequest {
   id: number;
@@ -92,6 +135,7 @@ export function useWorkspaceOverlays(): UseWorkspaceOverlaysResult {
     setEditorOpen(false);
     setEditorMounted(false);
     setEditorOpenRequest(null);
+    writeSnapshot(EDITOR_STATE_KEY, null);
   }, []);
 
   const requestPreviewClose = useCallback(() => {
@@ -102,7 +146,37 @@ export function useWorkspaceOverlays(): UseWorkspaceOverlaysResult {
     setPreviewOpen(false);
     setPreviewMounted(false);
     setPreviewOpenRequest(null);
+    writeSnapshot(PREVIEW_STATE_KEY, null);
   }, []);
+
+  // Keep the session snapshots in step with the open overlays (open → write,
+  // close → clear) so a page reload can restore them.
+  useEffect(() => {
+    writeSnapshot(
+      EDITOR_STATE_KEY,
+      editorMounted && editorOpenRequest
+        ? {
+            cwd: editorOpenRequest.cwd,
+            path: editorOpenRequest.path,
+            line: editorOpenRequest.line,
+            endLine: editorOpenRequest.endLine,
+          }
+        : null,
+    );
+  }, [editorMounted, editorOpenRequest]);
+
+  useEffect(() => {
+    writeSnapshot(
+      PREVIEW_STATE_KEY,
+      previewMounted && previewOpenRequest
+        ? {
+            cwd: previewOpenRequest.cwd,
+            path: previewOpenRequest.path,
+            imagePaths: previewOpenRequest.imagePaths,
+          }
+        : null,
+    );
+  }, [previewMounted, previewOpenRequest]);
 
   return {
     editorMounted,
@@ -121,4 +195,25 @@ export function useWorkspaceOverlays(): UseWorkspaceOverlaysResult {
     requestPreviewClose,
     handlePreviewClosed,
   };
+}
+
+/** Restore the overlays persisted before a page reload (dev hot-reload). */
+export function restoreWorkspaceOverlays(overlays: UseWorkspaceOverlaysResult): void {
+  const editorSnapshot = readSnapshot<EditorStateSnapshot>(EDITOR_STATE_KEY);
+  if (editorSnapshot?.cwd && editorSnapshot.path) {
+    overlays.openEditorFile({
+      cwd: editorSnapshot.cwd,
+      path: editorSnapshot.path,
+      line: editorSnapshot.line,
+      endLine: editorSnapshot.endLine,
+    });
+  }
+  const previewSnapshot = readSnapshot<PreviewStateSnapshot>(PREVIEW_STATE_KEY);
+  if (previewSnapshot?.cwd && previewSnapshot.path) {
+    overlays.openFilePreview({
+      cwd: previewSnapshot.cwd,
+      path: previewSnapshot.path,
+      imagePaths: previewSnapshot.imagePaths,
+    });
+  }
 }
