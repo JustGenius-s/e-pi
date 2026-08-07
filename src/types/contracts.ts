@@ -489,6 +489,24 @@ export interface AgentConfigSaveRequest {
   config: PiAgentConfig;
 }
 
+/**
+ * Pi TUI settings, read from / merged into pi's own `~/.pi/agent/settings.json`
+ * (honoring `PI_CODING_AGENT_DIR`). Unlike `PiAgentConfig` — which is stored by
+ * E-Pi and passed as CLI args — these are plain pi settings consumed by the
+ * interactive TUI that runs inside E-Pi's terminal. Changes apply to sessions
+ * started after the save; running sessions keep their current values.
+ */
+export interface PiTuiSettings {
+  /** Hide the startup header (pi `quietStartup`). */
+  quietStartup: boolean;
+  /** Hide thinking blocks in the transcript (pi `hideThinkingBlock`). */
+  hideThinkingBlock: boolean;
+}
+
+export interface PiTuiSettingsSaveRequest {
+  settings: PiTuiSettings;
+}
+
 export interface EPiApi {
   app: {
     getInfo(): Promise<AppInfo>;
@@ -599,6 +617,13 @@ export interface EPiApi {
     getConfig(): Promise<PiAgentConfig>;
     /** Persist the config and restart every live session so it takes effect. */
     saveConfig(request: AgentConfigSaveRequest): Promise<PiAgentConfig>;
+    /** Read pi TUI settings from pi's own settings.json. */
+    getTuiSettings(): Promise<PiTuiSettings>;
+    /**
+     * Merge pi TUI settings into pi's own settings.json, preserving every
+     * other key. Takes effect for sessions started after the save.
+     */
+    saveTuiSettings(request: PiTuiSettingsSaveRequest): Promise<PiTuiSettings>;
   };
   commands: {
     /** Slash commands available in the composer: pi built-ins + prompt templates. */

@@ -17,6 +17,7 @@ import type {
   ModelLoginResponse,
   PackageMutation,
   PackageUpdateRequest,
+  PiTuiSettingsSaveRequest,
   ResizeTerminalRequest,
   SetDefaultModelRequest,
   SkillAddPathRequest,
@@ -37,6 +38,7 @@ import { ModelService } from "./services/model-service";
 import { TaskNotificationService } from "./services/notification-service";
 import { PackageService } from "./services/package-service";
 import { PiRuntime } from "./services/pi-runtime";
+import { getPiTuiSettings, savePiTuiSettings } from "./services/pi-settings-service";
 import { applyPiUpdate, checkPiUpdate, readInstalledPiVersion } from "./services/pi-update-service";
 import { ProjectService } from "./services/project-service";
 import { SessionService } from "./services/session-service";
@@ -432,6 +434,13 @@ function registerHandlers(): void {
     if (launchArgsChanged) await reloadActiveRuntime();
     return next;
   });
+
+  // Pi TUI settings live in pi's own settings.json; pi reads them at startup,
+  // so changes apply to the next session without interrupting live ones.
+  ipcMain.handle("agent:get-tui-settings", () => getPiTuiSettings());
+  ipcMain.handle("agent:save-tui-settings", (_event, request: PiTuiSettingsSaveRequest) =>
+    savePiTuiSettings(request.settings),
+  );
 }
 
 function createWindow(): void {

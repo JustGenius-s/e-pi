@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 
-import type { AgentThinkingLevel, PiAgentConfig, PiUpdateInfo } from "../../types/contracts";
+import type { AgentThinkingLevel, PiAgentConfig, PiTuiSettings, PiUpdateInfo } from "../../types/contracts";
 
 const THINKING_OPTIONS: Array<{ value: AgentThinkingLevel; label: string }> = [
   { value: "", label: "Not set" },
@@ -36,6 +36,7 @@ interface PiAgentSettingsProps {
  */
 export function PiAgentSettings({ active, piVersion, onUpdated }: PiAgentSettingsProps) {
   const [config, setConfig] = useState<PiAgentConfig>();
+  const [tui, setTui] = useState<PiTuiSettings>();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>();
@@ -59,6 +60,14 @@ export function PiAgentSettings({ active, piVersion, onUpdated }: PiAgentSetting
       .catch((reason: unknown) => {
         if (mounted) setError(reason instanceof Error ? reason.message : String(reason));
       });
+    window.ePi.agent
+      .getTuiSettings()
+      .then((next) => {
+        if (mounted) setTui(next);
+      })
+      .catch((reason: unknown) => {
+        if (mounted) setError(reason instanceof Error ? reason.message : String(reason));
+      });
     return () => {
       mounted = false;
     };
@@ -67,6 +76,18 @@ export function PiAgentSettings({ active, piVersion, onUpdated }: PiAgentSetting
   const patch = (partial: Partial<PiAgentConfig>) => {
     setConfig((current) => (current ? { ...current, ...partial } : current));
     setSaved(false);
+  };
+
+  const patchTui = (partial: Partial<PiTuiSettings>) => {
+    setTui((current) => (current ? { ...current, ...partial } : current));
+  };
+
+  const saveTuiSettings = async (next: PiTuiSettings) => {
+    try {
+      setTui(await window.ePi.agent.saveTuiSettings({ settings: next }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
   };
 
   const save = async () => {
@@ -122,6 +143,42 @@ export function PiAgentSettings({ active, piVersion, onUpdated }: PiAgentSetting
     <section className="agent-section">
       <div className="agent-group-title">Pi Agent</div>
 
+      {tui ? (
+        <>
+          <div className="agent-row">
+            <div className="agent-row-label">
+              <span>Quiet startup</span>
+              <small>Hide Pi&rsquo;s startup header. Applies to new sessions.</small>
+            </div>
+            <Switch
+              checked={tui.quietStartup}
+              onCheckedChange={(checked) => {
+                const next = { ...tui, quietStartup: checked };
+                patchTui({ quietStartup: checked });
+                void saveTuiSettings(next);
+              }}
+              aria-label="Quiet startup"
+            />
+          </div>
+
+          <div className="agent-row">
+            <div className="agent-row-label">
+              <span>Hide thinking blocks</span>
+              <small>Collapse thinking output in the transcript. Applies to new sessions.</small>
+            </div>
+            <Switch
+              checked={tui.hideThinkingBlock}
+              onCheckedChange={(checked) => {
+                const next = { ...tui, hideThinkingBlock: checked };
+                patchTui({ hideThinkingBlock: checked });
+                void saveTuiSettings(next);
+              }}
+              aria-label="Hide thinking blocks"
+            />
+          </div>
+        </>
+      ) : null}
+
       {config ? (
         <>
           <div className="agent-row">
@@ -140,13 +197,25 @@ export function PiAgentSettings({ active, piVersion, onUpdated }: PiAgentSetting
                 </span>
               ) : null}
               {checking || !update?.latest ? (
-                <Button variant="ghost" size="sm" className="agent-update-btn" onClick={() => void checkUpdate()} disabled={checking || updating}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="agent-update-btn"
+                  onClick={() => void checkUpdate()}
+                  disabled={checking || updating}
+                >
                   <RefreshCw size={13} />
                   {checking ? "Checking…" : "Check updates"}
                 </Button>
               ) : null}
               {update?.latest ? (
-                <Button variant="default" size="sm" className="agent-update-btn" onClick={() => void applyUpdate()} disabled={updating}>
+                <Button
+                  variant="default"
+                  size="sm"
+                  className="agent-update-btn"
+                  onClick={() => void applyUpdate()}
+                  disabled={updating}
+                >
                   {updating ? <LoaderCircle className="spin" size={13} /> : <Download size={13} />}
                   {updating ? "Updating…" : `Update to ${update.latest}`}
                 </Button>

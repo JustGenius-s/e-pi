@@ -32,6 +32,8 @@ import type {
   PackageUpdateInfo,
   PackageUpdateRequest,
   PiAgentConfig,
+  PiTuiSettings,
+  PiTuiSettingsSaveRequest,
   PiUpdateInfo,
   PiUpdateResult,
   PiRuntimeState,
@@ -169,6 +171,9 @@ const api: EPiApi = {
     getConfig: () => ipcRenderer.invoke("agent:get-config") as Promise<PiAgentConfig>,
     saveConfig: (request: AgentConfigSaveRequest) =>
       ipcRenderer.invoke("agent:save-config", request) as Promise<PiAgentConfig>,
+    getTuiSettings: () => ipcRenderer.invoke("agent:get-tui-settings") as Promise<PiTuiSettings>,
+    saveTuiSettings: (request: PiTuiSettingsSaveRequest) =>
+      ipcRenderer.invoke("agent:save-tui-settings", request) as Promise<PiTuiSettings>,
   },
   commands: {
     list: (cwd: string) => ipcRenderer.invoke("commands:list", cwd) as Promise<CommandRecord[]>,
