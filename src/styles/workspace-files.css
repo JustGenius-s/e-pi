@@ -93,7 +93,9 @@
   justify-content: center;
   border-radius: 7px;
   color: var(--muted-foreground);
-  transition: background 120ms ease-out, color 120ms ease-out;
+  transition:
+    background 120ms ease-out,
+    color 120ms ease-out;
 }
 
 .workspace-overlay-tool-button:hover:not(:disabled) {
@@ -391,6 +393,31 @@
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: var(--muted-foreground);
+  /* Clickable reset-to-100% control. */
+  padding: 3px 0;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+}
+
+.workspace-image-zoom:hover:not(:disabled) {
+  color: var(--foreground);
+  background: color-mix(in oklch, var(--foreground) 8%, transparent);
+}
+
+.workspace-image-zoom:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+/* Drag-to-pan cursor while zoomed in; grab → grabbing during a drag. */
+.workspace-image-canvas[data-pannable] {
+  cursor: grab;
+}
+
+.workspace-image-canvas[data-dragging] {
+  cursor: grabbing;
 }
 
 .workspace-image-canvas {
@@ -426,7 +453,9 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  transition: opacity 200ms ease-out, transform 200ms ease-out;
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms ease-out;
 }
 
 .workspace-image-zoom-box {
@@ -664,7 +693,9 @@
   font: inherit;
   font-size: 12px;
   outline: none;
-  transition: border-color 120ms ease-out, background 120ms ease-out;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out;
 }
 
 .workspace-find-input:focus {
@@ -700,7 +731,9 @@
   font: inherit;
   font-size: 11px;
   cursor: pointer;
-  transition: background 100ms ease-out, color 100ms ease-out;
+  transition:
+    background 100ms ease-out,
+    color 100ms ease-out;
 }
 
 .workspace-find-btn.wide {

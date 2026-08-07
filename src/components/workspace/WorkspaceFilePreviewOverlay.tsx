@@ -1,10 +1,18 @@
-import { ChevronLeft, ChevronRight, FilePenLine, FileText, Loader2, Minus, Plus, RefreshCw, RotateCwSquare, X } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  FilePenLine,
+  FileText,
+  Loader2,
+  Minus,
+  Plus,
+  RefreshCw,
+  RotateCwSquare,
+  X,
+} from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
-import type {
-  WorkspaceEditorOpenRequest,
-  WorkspacePreviewOpenRequest,
-} from "../../hooks/useWorkspaceOverlays";
+import type { WorkspaceEditorOpenRequest, WorkspacePreviewOpenRequest } from "../../hooks/useWorkspaceOverlays";
 import { cn } from "../../lib/utils";
 import {
   getWorkspacePreviewKind,
@@ -255,9 +263,7 @@ export const WorkspaceFilePreviewOverlay = memo(function WorkspaceFilePreviewOve
         const kind = resolvePreviewKind(request.path, response.mimeType);
         const text = isTextPreviewKind(kind) ? decodePreviewText(bytes) : null;
         const blobBytes =
-          kind === "html" && text !== null
-            ? new TextEncoder().encode(buildSandboxedHtmlPreviewSource(text))
-            : bytes;
+          kind === "html" && text !== null ? new TextEncoder().encode(buildSandboxedHtmlPreviewSource(text)) : bytes;
         const blob = new Blob([blobBytes.slice().buffer], { type: response.mimeType });
         const loaded: LoadedPreview = {
           path: request.path,
@@ -306,12 +312,7 @@ export const WorkspaceFilePreviewOverlay = memo(function WorkspaceFilePreviewOve
   );
 
   return (
-    <div
-      className={cn(
-        "workspace-file-preview-overlay",
-        isVisible ? "visible" : "hidden",
-      )}
-    >
+    <div className={cn("workspace-file-preview-overlay", isVisible ? "visible" : "hidden")}>
       <div className="workspace-overlay-toolbar">
         <FileText className="workspace-overlay-toolbar-icon" />
         <div className="workspace-overlay-toolbar-titles">
@@ -343,12 +344,7 @@ export const WorkspaceFilePreviewOverlay = memo(function WorkspaceFilePreviewOve
           >
             <RefreshCw size={15} className={loading ? "spin" : undefined} />
           </button>
-          <button
-            type="button"
-            className="workspace-overlay-tool-button"
-            title="Close"
-            onClick={onRequestClose}
-          >
+          <button type="button" className="workspace-overlay-tool-button" title="Close" onClick={onRequestClose}>
             <X size={15} />
           </button>
         </div>
@@ -405,7 +401,16 @@ function PreviewBody(props: {
   onOpenImagePath: (path: string, direction?: -1 | 0 | 1) => void;
   onOpenWorkspacePath: (absPath: string) => void;
 }) {
-  const { preview, cwd, activePath, imagePaths, transitionDirection, isSwitchingImage, onOpenImagePath, onOpenWorkspacePath } = props;
+  const {
+    preview,
+    cwd,
+    activePath,
+    imagePaths,
+    transitionDirection,
+    isSwitchingImage,
+    onOpenImagePath,
+    onOpenWorkspacePath,
+  } = props;
 
   if (preview.kind === "image") {
     return (
@@ -423,12 +428,7 @@ function PreviewBody(props: {
 
   if (preview.kind === "pdf") {
     return (
-      <iframe
-        className="workspace-preview-iframe"
-        sandbox=""
-        src={preview.blobUrl}
-        title={basename(preview.path)}
-      />
+      <iframe className="workspace-preview-iframe" sandbox="" src={preview.blobUrl} title={basename(preview.path)} />
     );
   }
 
@@ -464,12 +464,7 @@ function PreviewBody(props: {
   );
 }
 
-function ImageToolButton(props: {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
+function ImageToolButton(props: { label: string; disabled?: boolean; onClick: () => void; children: ReactNode }) {
   const { label, disabled, onClick, children } = props;
   return (
     <button
@@ -497,6 +492,15 @@ function WorkspaceImagePreviewBody(props: {
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [isEntering, setIsEntering] = useState(true);
+  /** Drag-to-pan offset of the zoom box; only meaningful while scale > 1. */
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [dragging, setDragging] = useState(false);
+  const canvasRef = useRef<HTMLDivElement>(null);
+  const zoomBoxRef = useRef<HTMLDivElement>(null);
+  /** Active pointer-drag session: start position + the pan captured at pointerdown. */
+  const dragRef = useRef<{ pointerId: number; startX: number; startY: number; panX: number; panY: number } | undefined>(
+    undefined,
+  );
 
   const activeImageIndex = imagePaths.indexOf(activePath);
   const imageCount = Math.max(imagePaths.length, 1);
@@ -513,6 +517,60 @@ function WorkspaceImagePreviewBody(props: {
     const path = imagePaths[index];
     if (!path) return;
     onOpenImagePath(path, index > activeImageIndex ? 1 : -1);
+  };
+
+  /**
+   * Bound the pan so the zoomed box always covers the viewport center; the
+   * image can never be dragged fully out of sight (and at scale ≤ 1 the box
+   * fits, so the pan is forced back to 0 — centered).
+   */
+  const clampPan = useCallback((x: number, y: number): { x: number; y: number } => {
+    const canvas = canvasRef.current;
+    const box = zoomBoxRef.current;
+    if (!canvas || !box) return { x: 0, y: 0 };
+    const maxX = Math.max(0, (box.offsetWidth - canvas.clientWidth) / 2);
+    const maxY = Math.max(0, (box.offsetHeight - canvas.clientHeight) / 2);
+    return {
+      x: Math.min(Math.max(x, -maxX), maxX),
+      y: Math.min(Math.max(y, -maxY), maxY),
+    };
+  }, []);
+
+  // Re-clamp after every zoom change (buttons or wheel): zooming back toward
+  // 100% smoothly re-centers the image instead of leaving it off-screen.
+  useEffect(() => {
+    setPan((current) => clampPan(current.x, current.y));
+  }, [scale, clampPan]);
+
+  const resetZoom = () => {
+    setScale(1);
+    setPan({ x: 0, y: 0 });
+  };
+
+  const startDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    // Pan only while zoomed in; at 100% or below the image fits centered.
+    if (scale <= 1 || event.button !== 0) return;
+    canvasRef.current?.setPointerCapture(event.pointerId);
+    dragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: pan.x,
+      panY: pan.y,
+    };
+    setDragging(true);
+  };
+
+  const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    setPan(clampPan(drag.panX + (event.clientX - drag.startX), drag.panY + (event.clientY - drag.startY)));
+  };
+
+  const endDrag = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (dragRef.current?.pointerId !== event.pointerId) return;
+    dragRef.current = undefined;
+    setDragging(false);
   };
 
   return (
@@ -545,7 +603,15 @@ function WorkspaceImagePreviewBody(props: {
           >
             <Minus size={15} />
           </ImageToolButton>
-          <span className="workspace-image-zoom">{Math.round(scale * 100)}%</span>
+          <button
+            type="button"
+            className="workspace-image-zoom"
+            title="Reset zoom to 100%"
+            disabled={scale === 1}
+            onClick={resetZoom}
+          >
+            {Math.round(scale * 100)}%
+          </button>
           <ImageToolButton
             label="Zoom in"
             disabled={scale >= IMAGE_MAX_SCALE}
@@ -559,7 +625,14 @@ function WorkspaceImagePreviewBody(props: {
         </div>
       </div>
       <div
+        ref={canvasRef}
         className="workspace-image-canvas"
+        data-pannable={scale > 1 ? "true" : undefined}
+        data-dragging={dragging ? "true" : undefined}
+        onPointerDown={startDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
         onWheel={(event) => {
           if (event.deltaY === 0) return;
           event.preventDefault();
@@ -582,8 +655,13 @@ function WorkspaceImagePreviewBody(props: {
           }}
         >
           <div
+            ref={zoomBoxRef}
             className="workspace-image-zoom-box"
-            style={{ height: `${scale * 100}%`, width: `${scale * 100}%` }}
+            style={{
+              height: `${scale * 100}%`,
+              width: `${scale * 100}%`,
+              transform: `translate(${pan.x}px, ${pan.y}px)`,
+            }}
           >
             <img
               className="workspace-image-img"
