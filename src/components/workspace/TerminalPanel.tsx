@@ -129,6 +129,8 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
      */
     let disposed = false;
     let painted = false;
+    /** Pending second half of the checkpoint-recovery height shimmy. */
+    let shimmyTimer: number | undefined = undefined;
     const markPainted = (): void => {
       if (painted || disposed) return;
       painted = true;
@@ -200,6 +202,26 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
         // refit() is coalesced (see fitTerminal below), so this is at most
         // once per resize pause — one PTY resize, one TUI re-layout.
         window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
+        // The replay checkpoint buffer can be invalidated by overflow: a long
+        // resume-history dump or an output-heavy run can exceed the cap before
+        // the TUI's next full redraw, and pi's TUI only re-emits a full frame
+        // when the pty size changes. On a remount the resize above is usually a
+        // no-op (the pty already has this size), so nothing would ever repaint
+        // the replayed (empty) terminal. Shimmy the height and restore it to
+        // force the TUI into a full redraw: the live frame repaints the current
+        // screen and plants a fresh checkpoint in the replay buffer. The two
+        // resizes must straddle a TUI render tick (MIN_RENDER_INTERVAL_MS is
+        // 16ms) or the intermediate size is never observed and the redraw is
+        // skipped.
+        if (buffers.get(sessionKey)?.awaitingCheckpoint) {
+          const { cols, rows } = terminal;
+          window.ePi.runtime.resize(sessionKey, { cols, rows: rows + 1 });
+          window.clearTimeout(shimmyTimer);
+          shimmyTimer = window.setTimeout(() => {
+            if (disposed) return;
+            window.ePi.runtime.resize(sessionKey, { cols, rows });
+          }, 60);
+        }
         // xterm's resize schedules its own viewport sync on a refresh callback
         // (viewport.queueSync -> _sync on rAF) that can run AFTER a fixed-delay
         // restore and clamp the viewport back to the top of the scrollback.
@@ -283,6 +305,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
 
     return () => {
       disposed = true;
+      window.clearTimeout(shimmyTimer);
       cancelPendingRestore();
       unsubscribeAppearance();
       stopData();
