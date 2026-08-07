@@ -31,6 +31,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 
 import { useComposerCommands, type CommandPopupItem } from "../../hooks/useComposerCommands";
+import { useComposerHistory } from "../../hooks/useComposerHistory";
 import { useImeComposition } from "../../hooks/useImeComposition";
 import { onAttachFiles } from "../../lib/attachmentsBus";
 import type {
@@ -131,6 +132,8 @@ export function Composer({
   const [dragging, setDragging] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const { onCompositionStart, onCompositionEnd, isComposing } = useImeComposition();
+  // Sent-message history, recalled with ArrowUp/ArrowDown (per project).
+  const { push: pushHistory, stepUp: historyStepUp, stepDown: historyStepDown } = useComposerHistory(cwd);
   const busy = status === "starting" || status === "stopping" || submitting;
   const hasContent = Boolean(text.trim() || files.length > 0 || selectedSkill);
   // Session loading: runtime not reported yet, or the pi process is still
@@ -309,6 +312,8 @@ export function Composer({
     setSubmitting(true);
     const submitted = await onSubmit(messages).finally(() => setSubmitting(false));
     if (!submitted) return;
+    // Keep the raw input (minus attachments/skill wrappers) for ArrowUp recall.
+    pushHistory(text);
     // Normal send behavior: clear the input. Keep the focus in the box so
     // the user can immediately type the next message (empty input while a
     // task runs also flips the button back to Stop).
@@ -487,6 +492,35 @@ export function Composer({
             if (event.key === "Enter" && !event.shiftKey && !composing) {
               event.preventDefault();
               acceptSelected();
+              return;
+            }
+          }
+          // ArrowUp/ArrowDown recall previously sent messages. Guarded against
+          // IME composition (the popup above already owns the arrows while
+          // open); step* return undefined when the key should behave normally.
+          if (event.key === "ArrowUp" && !composing) {
+            const entry = historyStepUp(text);
+            if (entry !== undefined) {
+              event.preventDefault();
+              setText(entry);
+              setCaret(entry.length);
+              requestAnimationFrame(() => {
+                const element = textareaRef.current;
+                if (element) element.setSelectionRange(entry.length, entry.length);
+              });
+              return;
+            }
+          }
+          if (event.key === "ArrowDown" && !composing) {
+            const entry = historyStepDown();
+            if (entry !== undefined) {
+              event.preventDefault();
+              setText(entry);
+              setCaret(entry.length);
+              requestAnimationFrame(() => {
+                const element = textareaRef.current;
+                if (element) element.setSelectionRange(entry.length, entry.length);
+              });
               return;
             }
           }
