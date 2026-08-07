@@ -259,6 +259,18 @@ export interface CommandRecord {
   source: CommandSource;
 }
 
+/**
+ * A value option for a slash command's argument, e.g. the model list for
+ * "/model <provider/model>". Mirrors pi-tui's `AutocompleteItem` for
+ * `getArgumentCompletions`. `value` is what gets inserted into the composer;
+ * `label` and `description` are what the popup displays.
+ */
+export interface CommandArgumentOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
 export type SkillScope = "user" | "project";
 
 export type SkillSource = "user" | "project" | "path";
@@ -591,6 +603,12 @@ export interface EPiApi {
   commands: {
     /** Slash commands available in the composer: pi built-ins + prompt templates. */
     list(cwd: string): Promise<CommandRecord[]>;
+    /**
+     * Argument completions for a slash command's argument (pi's
+     * `getArgumentCompletions`). Returns null when the command has no
+     * argument suggestions.
+     */
+    argumentCompletions(cwd: string, command: string, argumentPrefix: string): Promise<CommandArgumentOption[] | null>;
   };
   skills: {
     list(cwd: string): Promise<SkillRecord[]>;

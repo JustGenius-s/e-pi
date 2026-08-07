@@ -1,13 +1,13 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, extname, join, resolve } from "node:path";
 
-import type { CommandRecord } from "../../../src/types/contracts";
+import type { CommandArgumentOption, CommandRecord } from "../../../src/types/contracts";
 import { loadPiAgent, type PiAgent } from "./pi-agent-loader";
 
 type ParseFrontmatter = PiAgent["parseFrontmatter"];
 
-/** How long resolved plugin commands are kept before re-discovering. */
-const PLUGIN_CACHE_TTL_MS = 30_000;
+/** How long cached discoveries (plugin commands, the ModelRuntime) stay fresh. */
+const CACHE_TTL_MS = 30_000;
 
 /**
  * Mirrors pi's built-in interactive slash commands (dist/core/slash-commands.js)
@@ -104,9 +104,25 @@ function loadTemplatesFromDir(
  * paths), and extension commands from packages, the global agent extensions
  * dir, project extensions dir, and configured extension paths.
  */
+
+/** Minimal structural subset of ModelRuntime we call for completions. */
+type ModelRuntimeLike = {
+  refresh(options: { allowNetwork?: boolean }): Promise<unknown>;
+  getAvailable(): Promise<readonly { id: string; provider: string; name: string }[]>;
+  getAvailableSnapshot(): readonly { id: string; provider: string; name: string }[];
+  getProviders(): readonly { id: string; name: string; auth?: { oauth?: unknown; apiKey?: unknown } }[];
+};
+
 export class CommandService {
   /** Extension commands are expensive (jiti compile + factory run); cache per cwd. */
   #pluginCache = new Map<string, { at: number; records: CommandRecord[] }>();
+  /**
+   * Extensions' `getArgumentCompletions` callbacks, keyed by command name.
+   * Filled by the same discovery pass as #loadPluginCommands; cleared with it.
+   */
+  #pluginArgumentCompletions = new Map<string, (prefix: string) => unknown>();
+  /** Cached ModelRuntime for argument completions; recreated when it goes stale. */
+  #modelRuntime?: { at: number; runtime: ModelRuntimeLike };
 
   async list(cwd: string): Promise<CommandRecord[]> {
     const records: CommandRecord[] = [];
@@ -121,6 +137,99 @@ export class CommandService {
   }
 
   /**
+   * Argument completions for a slash command, mirroring pi's
+   * `CombinedAutocompleteProvider`: `/model` completes the scoped model list,
+   * `/login` completes provider ids, and extension commands can register their
+   * own `getArgumentCompletions`. Returns null when the command has none.
+   */
+  async argumentCompletions(cwd: string, command: string, argumentPrefix: string): Promise<CommandArgumentOption[] | null> {
+    if (command === "model") return this.#modelCompletions(argumentPrefix);
+    if (command === "login") return this.#loginCompletions(argumentPrefix);
+    const handler = (await this.#pluginArgumentCompletionsFor(cwd)).get(command);
+    if (!handler) return null;
+    try {
+      const options = await handler(argumentPrefix);
+      return normalizeArgumentOptions(options);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fuzzy model list for `/model`: the full available model list (pi's
+   * per-session scoped models aren't reachable from here). The available
+   * snapshot is refreshed (offline) so newly logged-in providers show up;
+   * the runtime itself is cached briefly to keep typing snappy.
+   */
+  async #modelCompletions(prefix: string): Promise<CommandArgumentOption[] | null> {
+    try {
+      const runtime = await this.#modelRuntimeFor();
+      await runtime.refresh({ allowNetwork: false });
+      const snapshot = runtime.getAvailableSnapshot();
+      const models = snapshot.length > 0 ? snapshot : await runtime.getAvailable();
+      const items = models.map((model) => ({
+        id: model.id,
+        provider: model.provider,
+        name: model.name ?? "",
+        label: `${model.provider}/${model.id}`,
+      }));
+      const options = fuzzyFilter(items, prefix, (item) => `${item.provider}/${item.id} ${item.name}`);
+      return options.map((item) => ({
+        value: item.label,
+        label: item.id,
+        description: item.provider,
+      }));
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Provider ids for `/login`, mirroring pi's `getLoginProviderCompletionOptions`
+   * (providers with oauth and/or api_key auth, deduped by id, sorted by name).
+   */
+  async #loginCompletions(prefix: string): Promise<CommandArgumentOption[] | null> {
+    try {
+      const runtime = await this.#modelRuntimeFor();
+      const byId = new Map<string, { id: string; name: string }>();
+      for (const provider of runtime.getProviders()) {
+        if (!provider.auth?.oauth && !provider.auth?.apiKey) continue;
+        if (!byId.has(provider.id)) byId.set(provider.id, { id: provider.id, name: provider.name });
+      }
+      const providers = Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+      const options = fuzzyFilter(providers, prefix, (provider) => provider.id);
+      return options.map((provider) => ({ value: provider.id, label: provider.id }));
+    } catch {
+      return null;
+    }
+  }
+
+  /** Cached ModelRuntime bound to the agent dir, recreated when stale. */
+  async #modelRuntimeFor(): Promise<ModelRuntimeLike> {
+    const { ModelRuntime } = await loadPiAgent();
+    if (this.#modelRuntime && Date.now() - this.#modelRuntime.at < CACHE_TTL_MS) {
+      return this.#modelRuntime.runtime;
+    }
+    // Defaults already point at the agent dir (models.json, auth.json).
+    const runtime = (await ModelRuntime.create({})) as ModelRuntimeLike;
+    this.#modelRuntime = { at: Date.now(), runtime };
+    return runtime;
+  }
+
+  /**
+   * Loads extension argument-completion callbacks (jiti compile + factory run
+   * per cwd, cached briefly like the command list).
+   */
+  async #pluginArgumentCompletionsFor(cwd: string): Promise<Map<string, (prefix: string) => unknown>> {
+    if (this.#pluginCache.has(cwd)) {
+      const cached = this.#pluginCache.get(cwd)!;
+      if (Date.now() - cached.at < CACHE_TTL_MS) return this.#pluginArgumentCompletions;
+    }
+    await this.#loadPluginCommands(cwd);
+    return this.#pluginArgumentCompletions;
+  }
+
+  /**
    * Extension commands registered via `pi.registerCommand` at factory time,
    * discovered the same way pi's resource loader does: configured packages
    * (via DefaultPackageManager) + explicit settings `extensions` paths, plus
@@ -128,9 +237,10 @@ export class CommandService {
    */
   async #loadPluginCommands(cwd: string): Promise<CommandRecord[]> {
     const cached = this.#pluginCache.get(cwd);
-    if (cached && Date.now() - cached.at < PLUGIN_CACHE_TTL_MS) return cached.records;
+    if (cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.records;
 
     const records: CommandRecord[] = [];
+    const argumentCompletions = new Map<string, (prefix: string) => unknown>();
     try {
       const { DefaultPackageManager, SettingsManager, discoverAndLoadExtensions, getAgentDir } = await loadPiAgent();
       const agentDir = getAgentDir();
@@ -149,6 +259,9 @@ export class CommandService {
           if (seen.has(command.name)) continue;
           seen.add(command.name);
           records.push({ name: command.name, description: command.description, source: "plugin" });
+          if (command.getArgumentCompletions) {
+            argumentCompletions.set(command.name, command.getArgumentCompletions);
+          }
         }
       }
     } catch {
@@ -157,6 +270,7 @@ export class CommandService {
     }
 
     this.#pluginCache.set(cwd, { at: Date.now(), records });
+    this.#pluginArgumentCompletions = argumentCompletions;
     return records;
   }
 
@@ -199,4 +313,34 @@ export class CommandService {
     }
     return templates;
   }
+}
+
+/**
+ * Minimal fuzzy filter: case-insensitive substring match on the search text,
+ * keeping the items' original order (no scoring, unlike pi-tui's fuzzyFilter).
+ */
+function fuzzyFilter<T>(items: T[], query: string, getSearchText: (item: T) => string): T[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return items;
+  return items.filter((item) => getSearchText(item).toLowerCase().includes(needle));
+}
+
+/**
+ * Normalizes a pi extension's `getArgumentCompletions` result (either
+ * `AutocompleteItem[]` or null) into e-pi's CommandArgumentOption[].
+ */
+function normalizeArgumentOptions(options: unknown): CommandArgumentOption[] | null {
+  if (!Array.isArray(options) || options.length === 0) return null;
+  const normalized: CommandArgumentOption[] = [];
+  for (const option of options) {
+    if (typeof option !== "object" || option === null) continue;
+    const { value, label, description } = option as Record<string, unknown>;
+    if (typeof value !== "string" || !value) continue;
+    normalized.push({
+      value,
+      label: typeof label === "string" && label ? label : value,
+      ...(typeof description === "string" && description ? { description } : {}),
+    });
+  }
+  return normalized.length > 0 ? normalized : null;
 }

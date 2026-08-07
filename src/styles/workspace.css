@@ -377,13 +377,19 @@
 .composer-command-name {
   flex: 0 0 auto;
   font-family: var(--font-mono);
-  font-size: var(--fs-title);
+  font-size: var(--fs-body);
   font-weight: 600;
+}
+
+/* Argument-option rows (second-level completion, e.g. "/model <provider/model>"). */
+.composer-command-arg-name {
+  font-weight: 500;
+  opacity: 0.9;
 }
 
 .composer-command-hint {
   flex: 0 0 auto;
-  font-size: var(--fs-medium);
+  font-size: var(--fs-body);
   opacity: 0.65;
 }
 
@@ -391,7 +397,7 @@
   max-width: 55%;
   margin-left: auto;
   overflow: hidden;
-  font-size: var(--fs-medium);
+  font-size: var(--fs-mini);
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;

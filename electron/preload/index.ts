@@ -4,6 +4,7 @@ import type {
   AgentConfigSaveRequest,
   AppDescriptor,
   AppInfo,
+  CommandArgumentOption,
   CommandRecord,
   CreateSessionRequest,
   CustomProviderConfig,
@@ -171,6 +172,10 @@ const api: EPiApi = {
   },
   commands: {
     list: (cwd: string) => ipcRenderer.invoke("commands:list", cwd) as Promise<CommandRecord[]>,
+    argumentCompletions: (cwd: string, command: string, argumentPrefix: string) =>
+      ipcRenderer.invoke("commands:argument-completions", cwd, command, argumentPrefix) as Promise<
+        CommandArgumentOption[] | null
+      >,
   },
   skills: {
     list: (cwd: string) => ipcRenderer.invoke("skills:list", cwd) as Promise<SkillRecord[]>,

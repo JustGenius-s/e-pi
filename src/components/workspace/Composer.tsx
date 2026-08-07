@@ -30,11 +30,12 @@ import {
 } from "@/components/ui/menubar";
 import { Textarea } from "@/components/ui/textarea";
 
-import { useComposerCommands } from "../../hooks/useComposerCommands";
+import { useComposerCommands, type CommandPopupItem } from "../../hooks/useComposerCommands";
 import { useImeComposition } from "../../hooks/useImeComposition";
 import { onAttachFiles } from "../../lib/attachmentsBus";
 import type {
   AgentThinkingLevel,
+  CommandArgumentOption,
   CommandRecord,
   ContextUsageState,
   ModelManagementState,
@@ -187,8 +188,9 @@ export function Composer({
       ? THINKING_LEVELS.filter((level) => supportedThinkingLevels.includes(level.value))
       : THINKING_LEVELS;
   const {
-    commandGroups,
-    filteredCommands,
+    activeItems,
+    activeGroups,
+    argumentLoading,
     popupOpen,
     clampedIndex,
     popupAnchor,
@@ -196,7 +198,7 @@ export function Composer({
     caret,
     setCaret,
     setInputFocused,
-    setPopupDismissed,
+    dismissPopup,
     setSelectedIndex,
     syncCaret,
   } = useComposerCommands({ cwd, text, skills, textareaRef });
@@ -348,13 +350,44 @@ export function Composer({
     const start = text.lastIndexOf("\n", at - 1) + 1;
     const next = `${text.slice(0, start)}/${command.name} ${text.slice(at)}`;
     setText(next);
-    setPopupDismissed(true);
     const nextCaret = start + command.name.length + 2;
     setCaret(nextCaret);
     requestAnimationFrame(() => {
       const element = textareaRef.current;
       if (element) element.setSelectionRange(nextCaret, nextCaret);
     });
+  };
+
+  /** Replace the argument prefix with the selected option (TUI-style). */
+  const acceptArgument = (option: CommandArgumentOption): void => {
+    const ta = textareaRef.current;
+    const at = ta ? ta.selectionStart : caret;
+    const lineStart = text.lastIndexOf("\n", at - 1) + 1;
+    const line = text.slice(lineStart, at);
+    const spaceIndex = line.indexOf(" ");
+    if (spaceIndex === -1) return;
+    const argumentStart = lineStart + spaceIndex + 1;
+    // Trailing space so the user can keep typing after the accepted value.
+    const next = `${text.slice(0, argumentStart)}${option.value} ${text.slice(at)}`;
+    setText(next);
+    const nextCaret = argumentStart + option.value.length + 1;
+    setCaret(nextCaret);
+    requestAnimationFrame(() => {
+      const element = textareaRef.current;
+      if (element) element.setSelectionRange(nextCaret, nextCaret);
+    });
+  };
+
+  /** Accept a popup item: command or argument. */
+  const acceptItem = (item: CommandPopupItem): void => {
+    if (item.kind === "command") acceptCommand(item.command);
+    else acceptArgument(item.option);
+  };
+
+  /** Accept whatever is selected in the popup. */
+  const acceptSelected = (): void => {
+    const item = activeItems[clampedIndex];
+    if (item) acceptItem(item);
   };
 
   return (
@@ -400,7 +433,6 @@ export function Composer({
         onChange={(event) => {
           setText(event.target.value);
           syncCaret(event.target);
-          setPopupDismissed(false);
         }}
         onSelect={(event) => syncCaret(event.currentTarget)}
         onClick={(event) => syncCaret(event.currentTarget)}
@@ -434,27 +466,27 @@ export function Composer({
           if (popupOpen) {
             if (event.key === "ArrowDown") {
               event.preventDefault();
-              setSelectedIndex((index) => (index + 1) % filteredCommands.length);
+              setSelectedIndex((index) => (index + 1) % activeItems.length);
               return;
             }
             if (event.key === "ArrowUp") {
               event.preventDefault();
-              setSelectedIndex((index) => (index - 1 + filteredCommands.length) % filteredCommands.length);
+              setSelectedIndex((index) => (index - 1 + activeItems.length) % activeItems.length);
               return;
             }
             if (event.key === "Tab") {
               event.preventDefault();
-              acceptCommand(filteredCommands[clampedIndex]!);
+              acceptSelected();
               return;
             }
             if (event.key === "Escape") {
               event.preventDefault();
-              setPopupDismissed(true);
+              dismissPopup();
               return;
             }
             if (event.key === "Enter" && !event.shiftKey && !composing) {
               event.preventDefault();
-              acceptCommand(filteredCommands[clampedIndex]!);
+              acceptSelected();
               return;
             }
           }
@@ -469,12 +501,12 @@ export function Composer({
       />
       {popupOpen ? (
         <ComposerCommandPopup
-          commands={filteredCommands}
-          groups={commandGroups}
+          groups={activeGroups}
           selectedIndex={clampedIndex}
           anchor={popupAnchor}
           listRef={popupListRef}
-          onAccept={acceptCommand}
+          loading={argumentLoading}
+          onAccept={acceptItem}
         />
       ) : null}
       <div className="composer-toolbar">

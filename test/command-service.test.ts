@@ -150,4 +150,35 @@ describe("CommandService", () => {
     const records = await service.list(cwd);
     expect(records.some((record) => record.name === "model")).toBe(true);
   });
+
+  it("returns null for commands without argument completions", async () => {
+    const options = await service.argumentCompletions(cwd, "compact", "");
+    expect(options).toBeNull();
+  });
+
+  it("returns model options for /model", async () => {
+    const options = await service.argumentCompletions(cwd, "model", "");
+    expect(Array.isArray(options)).toBe(true);
+    for (const option of options ?? []) {
+      expect(option.value).toMatch(/\S+\//);
+      expect(option.label).toBeTruthy();
+    }
+  });
+
+  it("filters model options by prefix", async () => {
+    const options = await service.argumentCompletions(cwd, "model", "openai");
+    expect(Array.isArray(options)).toBe(true);
+    for (const option of options ?? []) {
+      expect(option.value.toLowerCase()).toContain("openai");
+    }
+  });
+
+  it("returns provider options for /login", async () => {
+    const options = await service.argumentCompletions(cwd, "login", "");
+    expect(Array.isArray(options)).toBe(true);
+    for (const option of options ?? []) {
+      expect(option.value).toBe(option.label);
+      expect(option.description).toBeUndefined();
+    }
+  });
 });

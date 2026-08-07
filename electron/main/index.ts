@@ -324,6 +324,9 @@ function registerHandlers(): void {
   ipcMain.handle("packages:update", (_event, request: PackageUpdateRequest) => packages.update(request));
 
   ipcMain.handle("commands:list", (_event, cwd: string) => commands.list(cwd || activeCwd()));
+  ipcMain.handle("commands:argument-completions", (_event, cwd: string, command: string, argumentPrefix: string) =>
+    commands.argumentCompletions(cwd || activeCwd(), command, argumentPrefix),
+  );
 
   ipcMain.handle("skills:list", (_event, cwd: string) => skills.list(cwd || activeCwd()));
   ipcMain.handle("skills:read", (_event, cwd: string, filePath: string) => skills.read(cwd || activeCwd(), filePath));
