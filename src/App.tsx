@@ -4,6 +4,7 @@ import { toast } from "sonner";
 
 import { PackagePanel } from "@/components/panels/PackagePanel";
 import { AppDialogs } from "@/components/settings/AppDialogs";
+import { ImportMultiRepoDialog } from "@/components/settings/ImportMultiRepoDialog";
 import { IconButton } from "@/components/ui/IconButton";
 import { SidebarInset, SidebarProvider, SidebarRail, Sidebar } from "@/components/ui/sidebar";
 import { AppHeader } from "@/components/workspace/AppHeader";
@@ -16,7 +17,7 @@ import type { PanelState, PanelTab, PanelView } from "@/components/workspace/Too
 
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSessionRuntime } from "./hooks/useSessionRuntime";
-import type { SessionSummary } from "./types/contracts";
+import type { Project, SessionSummary } from "./types/contracts";
 
 export function App() {
   const {
@@ -46,12 +47,40 @@ export function App() {
   const [paintedPaths, setPaintedPaths] = useState<Set<string>>(new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
+  /** Multi-folder projects; drives the sidebar grouping and repo switcher. */
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [importOpen, setImportOpen] = useState(false);
+  /** Project currently being edited in the import dialog. */
+  const [editingProject, setEditingProject] = useState<Project>();
   /** Open tool-panel tabs plus the active one; review is a singleton. */
   const [panel, setPanel] = useState<PanelState>({ tabs: [], activeId: undefined });
 
   const activeSession = useMemo(() => sessions.find((session) => session.path === activePath), [activePath, sessions]);
   const runtimeState = activePath ? runtimeStates[activePath] : undefined;
   const activeCwd = activeSession?.cwd || appInfo?.defaultCwd || "";
+  /** The project owning the active session's cwd (multi-repo routing). */
+  const activeProject = useMemo(
+    () => projects.find((project) => project.folders.includes(activeCwd)),
+    [projects, activeCwd],
+  );
+  /** Git repos of the active project, for the review repo switcher. */
+  const [activeProjectRepos, setActiveProjectRepos] = useState<string[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeProject) {
+      setActiveProjectRepos([]);
+      return;
+    }
+    void window.ePi.projects
+      .gitRepos(activeProject.folders)
+      .then((repos) => {
+        if (!cancelled) setActiveProjectRepos(repos);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeProject]);
   const handleFirstPaint = useCallback((sessionKey: string) => {
     setPaintedPaths((current) => (current.has(sessionKey) ? current : new Set(current).add(sessionKey)));
   }, []);
@@ -93,6 +122,46 @@ export function App() {
     const cwd = await window.ePi.app.chooseDirectory(appInfo?.defaultCwd);
     if (!cwd) return;
     await createSession(cwd);
+  };
+
+  /** "Import multi-repo project": persist the project, then start a session in its primary repo. */
+  const handleImportProject = async (request: {
+    name?: string;
+    folders: string[];
+    primaryRepo: string;
+  }): Promise<void> => {
+    setError(undefined);
+    try {
+      const next = await window.ePi.projects.create(request);
+      setProjects(next);
+      window.ePi.app.log(`[app] import project folders=${request.folders.length} primary=${request.primaryRepo}`);
+      await createSession(request.primaryRepo);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      throw reason;
+    }
+  };
+
+  /** Persist edits to an existing project. */
+  const handleUpdateProject = async (
+    id: string,
+    request: { name?: string; folders: string[]; primaryRepo: string },
+  ): Promise<void> => {
+    setError(undefined);
+    try {
+      const next = await window.ePi.projects.update({ id, ...request });
+      setProjects(next);
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      throw reason;
+    }
+  };
+
+  const openEditProject = (project: Project) => {
+    setEditingProject(project);
+    setImportOpen(true);
   };
 
   const selectSession = (session: SessionSummary) => {
@@ -248,7 +317,16 @@ export function App() {
   // swallow clicks on their top area. Disable the topbar drag region while
   // any modal layer is open.
   const modalOpen =
-    packageOpen || skillOpen || settingsOpen || renameTarget !== undefined || removeTarget !== undefined;
+    packageOpen || skillOpen || settingsOpen || importOpen || renameTarget !== undefined || removeTarget !== undefined;
+
+  // Load multi-folder projects and keep them in sync with the main process.
+  useEffect(() => {
+    void window.ePi.projects
+      .list()
+      .then(setProjects)
+      .catch(() => undefined);
+    return window.ePi.projects.onUpdated(setProjects);
+  }, []);
 
   return (
     <div className="app-shell" data-modal-open={modalOpen ? "" : undefined}>
@@ -261,6 +339,7 @@ export function App() {
 
         <SessionSidebar
           sessions={sessions}
+          projects={projects}
           activePath={activePath}
           runtimeStates={runtimeStates}
           homeCwd={appInfo?.defaultCwd}
@@ -268,6 +347,11 @@ export function App() {
           onSelect={selectSession}
           onCreate={createSession}
           onCreateProject={() => void createProjectSession()}
+          onImportProject={() => {
+            setEditingProject(undefined);
+            setImportOpen(true);
+          }}
+          onEditProject={openEditProject}
           onRename={(session) => void renameSession(session)}
           onRemove={(session) => void removeSession(session)}
           onOpenFolder={(cwd) => void window.ePi.app.openPath(cwd)}
@@ -353,6 +437,8 @@ export function App() {
           <Sidebar side="right" collapsible="offcanvas" className="tool-panel-sidebar">
             <ToolPanel
               cwd={activeCwd}
+              repos={activeProjectRepos}
+              primaryRepo={activeProject?.primaryRepo}
               tabs={panel.tabs}
               activeTabId={panel.activeId}
               platform={appInfo?.platform}
@@ -382,6 +468,17 @@ export function App() {
 
       <PackagePanel open={packageOpen} cwd={activeCwd} onOpenChange={setPackageOpen} onReloadPi={onReloadPi} />
       <SkillPanel open={skillOpen} cwd={activeCwd} onOpenChange={setSkillOpen} onReloadPi={onReloadPi} />
+      <ImportMultiRepoDialog
+        open={importOpen}
+        defaultPath={appInfo?.defaultCwd}
+        editing={editingProject}
+        onOpenChange={(open) => {
+          setImportOpen(open);
+          if (!open) setEditingProject(undefined);
+        }}
+        onCreateProject={handleImportProject}
+        onUpdateProject={handleUpdateProject}
+      />
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
 import { ArrowDown } from "lucide-react";
@@ -115,6 +116,17 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
       // WebGL unavailable (headless/software rendering) — xterm falls back
       // to its canvas renderer, which still works, just with repaint flicker.
     }
+    // pi's TUI emits OSC 8 hyperlinks (URLs in tool output, package pages,
+    // …). xterm does not handle links on its own, so register the official
+    // link addon. Like a system terminal, open on ⌘/Ctrl+click only, so a
+    // stray click never yanks the browser open. The sandboxed renderer's
+    // window.open is intercepted by the main process
+    // (setWindowOpenHandler → shell.openExternal), which is the existing
+    // path for opening external URLs.
+    const webLinks = new WebLinksAddon((event, uri) => {
+      if (event.metaKey || event.ctrlKey) window.open(uri, "_blank", "noopener");
+    });
+    terminal.loadAddon(webLinks);
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
 
@@ -324,6 +336,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint }: TerminalP
       terminalRef.current = null;
       window.clearTimeout(fitTimerRef.current);
       webgl?.dispose();
+      webLinks.dispose();
       resizeObserver.disconnect();
       terminal.dispose();
     };

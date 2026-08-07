@@ -24,21 +24,56 @@
   font-size: var(--fs-small);
 }
 
-/* Branch info stacks vertically: local branch on top, remote below. */
+/* Branch info on one line: local branch + upstream, ellipsized when long. */
 .git-review-branches {
   display: flex;
   min-width: 0;
   flex: 1 1 auto;
-  flex-direction: column;
-  gap: 1px;
+  align-items: center;
 }
 
-.git-review-branch,
-.git-review-upstream {
+.git-review-branch-line {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.git-review-branch-icon {
+  color: var(--muted-foreground);
+  flex: 0 0 auto;
+}
+
+.git-review-branch-line strong {
+  color: var(--foreground);
+  flex: 0 1 auto;
+  font-size: var(--fs-small);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-review-upstream {
+  color: var(--muted-foreground);
+  flex: 0 1 auto;
+  font-size: var(--fs-mini);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-review-upstream-arrow {
+  color: var(--muted-foreground);
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.git-review-upstream em {
+  font-style: normal;
+  font-weight: 600;
 }
 
 .git-review-actions {
@@ -983,4 +1018,51 @@
 }
 
 .tool-terminal-host .xterm-viewport {
+}
+
+/* --- Review repo switcher (multi-repo projects) --- */
+.git-review-repo {
+  align-items: center;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--foreground);
+  cursor: pointer;
+  display: flex;
+  font-size: var(--fs-mini);
+  font-weight: 600;
+  gap: 6px;
+  max-width: 200px;
+  padding: 3px 8px;
+}
+
+.git-review-repo:hover {
+  background: var(--muted);
+}
+
+.git-review-repo span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-review-repo-star {
+  color: var(--warning, #eab308);
+  flex: 0 0 auto;
+}
+
+.git-review-repo-item {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.git-review-repo-item em {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  font-style: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }

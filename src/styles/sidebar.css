@@ -794,3 +794,105 @@
 }
 
 
+
+/* --- Project hover info card --- */
+.project-info-card {
+  min-width: 280px;
+  max-width: 320px;
+}
+
+.project-info-row {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.project-info-icon {
+  color: var(--muted-foreground);
+  flex: 0 0 auto;
+}
+
+.project-info-name {
+  flex: 1 1 auto;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-info-primary {
+  color: var(--warning, #eab308);
+  flex: 0 0 auto;
+}
+
+.project-info-meta {
+  color: var(--muted-foreground);
+  font-size: var(--fs-mini);
+  margin-top: 2px;
+}
+
+.project-info-sep {
+  border-top: 1px solid var(--border);
+  margin: 10px 0;
+}
+
+.project-info-folder {
+  align-items: center;
+  display: flex;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.project-info-folder-icon {
+  color: var(--muted-foreground);
+  flex: 0 0 auto;
+}
+
+.project-info-folder-path {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mini);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-info-folder-tag {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border-radius: 999px;
+  color: var(--primary);
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+}
+
+
+.project-info-rename {
+  align-items: center;
+  background: none;
+  border: none;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 auto;
+  padding: 2px;
+}
+
+.project-info-rename:hover {
+  color: var(--foreground);
+}
+
+/* --- Collapsed sidebar: pinned rows are icon-only --- */
+.pinned-sessions-collapsed {
+  margin: 2px 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pinned-collapsed-session svg {
+  margin: 0 auto;
+}

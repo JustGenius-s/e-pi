@@ -975,3 +975,104 @@
   font-size: var(--fs-mini);
   white-space: nowrap;
 }
+
+/* --- Import multi-repo project dialog --- */
+.import-repo-dialog {
+  width: min(560px, calc(100vw - 32px));
+  max-width: 560px;
+}
+
+.import-repo-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow-y: auto;
+}
+
+.import-repo-folders {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.import-repo-folders-label {
+  color: var(--muted-foreground);
+  font-size: var(--fs-mini);
+}
+
+.import-repo-empty {
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted-foreground);
+  font-size: var(--fs-mini);
+  padding: 14px;
+  text-align: center;
+}
+
+.import-repo-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.import-repo-row {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.import-repo-row.is-primary {
+  border-color: color-mix(in srgb, var(--primary) 45%, var(--border));
+}
+
+.import-repo-row-icon {
+  color: var(--muted-foreground);
+  flex: 0 0 auto;
+}
+
+.import-repo-row-path {
+  flex: 1 1 auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mini);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-repo-primary-badge {
+  background: color-mix(in srgb, var(--primary) 16%, transparent);
+  border-radius: 999px;
+  color: var(--primary);
+  flex: 0 0 auto;
+  font-size: var(--fs-mini);
+  font-weight: 600;
+  padding: 2px 8px;
+}
+
+.import-repo-set-primary {
+  color: var(--muted-foreground);
+  flex: 0 0 auto;
+  gap: 4px;
+  height: auto;
+  padding: 2px 6px;
+}
+
+.import-repo-set-primary:hover {
+  color: var(--foreground);
+}
+
+.import-repo-add {
+  align-self: flex-start;
+  gap: 6px;
+}
+
+.import-repo-error {
+  margin: 0;
+}

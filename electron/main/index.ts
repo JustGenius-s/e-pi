@@ -7,6 +7,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeThem
 
 import type {
   AgentConfigSaveRequest,
+  CreateProjectRequest,
   CreateSessionRequest,
   CustomProviderRemoveRequest,
   CustomProviderRequest,
@@ -22,6 +23,7 @@ import type {
   SkillCreateRequest,
   SkillMutation,
   SkillSetEnabledRequest,
+  UpdateProjectRequest,
 } from "../../src/types/contracts";
 import { ensureNpmOnPath } from "./npm-path";
 import { getAgentConfig, saveAgentConfig } from "./services/agent-config-service";
@@ -36,6 +38,7 @@ import { TaskNotificationService } from "./services/notification-service";
 import { PackageService } from "./services/package-service";
 import { PiRuntime } from "./services/pi-runtime";
 import { applyPiUpdate, checkPiUpdate, readInstalledPiVersion } from "./services/pi-update-service";
+import { ProjectService } from "./services/project-service";
 import { SessionService } from "./services/session-service";
 import { SideTerminalService } from "./services/side-terminal-service";
 import { SkillService } from "./services/skill-service";
@@ -46,6 +49,7 @@ const __dirname = fileURLToPath(new URL(".", import.meta.url));
 app.setAppUserModelId("works.earendil.e-pi");
 const runtime = new PiRuntime();
 const sessions = new SessionService();
+const projects = new ProjectService();
 const packages = new PackageService();
 const models = new ModelService();
 const skills = new SkillService();
@@ -105,6 +109,7 @@ function registerHandlers(): void {
       // Always read from disk so an in-place pi update shows the new version.
       piVersion: readInstalledPiVersion(),
       defaultCwd: await resolveDefaultCwd(),
+      homeDir: app.getPath("home"),
       openWithApp: settings.openWithApp,
     };
   });
@@ -181,6 +186,14 @@ function registerHandlers(): void {
       properties: ["openDirectory", "createDirectory"],
     });
     return result.canceled ? undefined : result.filePaths[0];
+  });
+
+  ipcMain.handle("app:choose-directories", async (_event, defaultPath?: string) => {
+    const result = await dialog.showOpenDialog(mainWindow!, {
+      defaultPath: defaultPath || activeCwd(),
+      properties: ["openDirectory", "createDirectory", "multiSelections"],
+    });
+    return result.canceled ? [] : result.filePaths;
   });
 
   ipcMain.handle("app:choose-files", async () => {
@@ -264,19 +277,18 @@ function registerHandlers(): void {
   ipcMain.handle("sessions:create", async (_event, request: CreateSessionRequest) => {
     return sessions.create(request.cwd?.trim() || activeCwd());
   });
+  ipcMain.handle("projects:list", () => projects.list());
+  ipcMain.handle("projects:create", (_event, request: CreateProjectRequest) => projects.create(request));
+  ipcMain.handle("projects:update", (_event, request: UpdateProjectRequest) => projects.update(request));
+  ipcMain.handle("projects:remove", (_event, id: string) => projects.remove(id));
+  ipcMain.handle("projects:resolve", (_event, cwd: string) => projects.resolve(cwd));
+  ipcMain.handle("projects:git-repos", (_event, folders: string[]) => projects.gitRepos(folders));
   ipcMain.handle("sessions:rename", async (_event, request: { path: string; name: string }) => {
-    const activePath = runtime.activeSessionPath;
-    const cwd = await sessions.getCwd(request.path);
-    const wasRunning = runtime.isRunning(request.path);
-    // A running pi has the session file open; stop it so rename never races
-    // with pi's own appends, then restart it in the background.
-    if (wasRunning) await runtime.stop(request.path);
-    try {
-      await sessions.rename(request.path, request.name);
-    } finally {
-      if (wasRunning) await runtime.start(request.path, cwd);
-      runtime.setActiveSession(activePath);
-    }
+    // Renaming appends a `session_info` entry to the session file — the file
+    // itself is never moved. The running pi appends messages the same way
+    // (atomic O_APPEND line writes), so no stop/restart is needed; stopping
+    // would restart the pi process and replay the terminal for no reason.
+    await sessions.rename(request.path, request.name);
   });
   ipcMain.handle("sessions:remove", async (_event, path: string) => {
     await runtime.stop(path);
@@ -491,6 +503,7 @@ runtime.onSessionFileChanged(() => {
       .catch(() => undefined);
   }, 300);
 });
+projects.onUpdated((next) => sendToRenderer("projects:updated", next));
 
 // Task-completion banners: busy -> idle on a session raises a native
 // notification when it finished in the background.
@@ -534,6 +547,13 @@ runtime.onState((state) => {
   });
 });
 packages.setProgressListener((progress) => sendToRenderer("packages:progress", progress));
+
+// Dev builds share the packaged app's userData by default, which makes the
+// single-instance lock collide: `pnpm dev` quits immediately while the
+// packaged E-Pi is running. Give dev its own userData so both can coexist.
+if (!app.isPackaged) {
+  app.setPath("userData", app.getPath("userData") + "-dev");
+}
 
 const hasLock = app.requestSingleInstanceLock();
 if (!hasLock) {

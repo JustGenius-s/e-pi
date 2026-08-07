@@ -13,6 +13,7 @@ import {
   Minimize2,
   Rows2,
   Square,
+  Star,
 } from "lucide-react";
 import { memo, useEffect, useRef, useState } from "react";
 
@@ -29,12 +30,17 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 import { useGitReview } from "../../hooks/useGitReview";
-import { pathBaseName } from "../../lib/format";
+import { compactPath, pathBaseName } from "../../lib/format";
 import type { GitDiffResult, GitFileEntry, GitNumstat } from "../../types/contracts";
 import { DiffView, type DiffStyle } from "./DiffView";
 
 interface ReviewViewProps {
   cwd: string;
+  /** Git repos of the current project (multi-repo); shows the repo switcher when >1. */
+  repos?: string[];
+  /** The project's primary repo; marked with a star in the switcher. */
+  primaryRepo?: string;
+  onSelectRepo?: (cwd: string) => void;
 }
 const REVIEW_DIFF_STYLE_KEY = "e-pi.git.diffStyle";
 
@@ -168,7 +174,7 @@ const FileSection = memo(function FileSection({
   );
 });
 
-export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
+export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, onSelectRepo }: ReviewViewProps) {
   const review = useGitReview(cwd);
   const [showTree, setShowTree] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -227,28 +233,66 @@ export const ReviewView = memo(function ReviewView({ cwd }: ReviewViewProps) {
   return (
     <div className="git-panel-body">
       <div className="git-review-meta">
-        <div className="git-review-branches">
-          <div className="git-review-branch">
-            {review.status?.branch ? <GitBranch size={12} /> : null}
-            {review.status?.branch ? <strong title={review.status.branch}>{review.status.branch}</strong> : null}
-          </div>
-          {review.status?.branch && review.status.upstream ? (
-            <div className="git-review-upstream">
-              <span
-                title={`${review.status.upstream}${review.status.ahead > 0 ? ` ↑${review.status.ahead}` : ""}${
-                  review.status.behind > 0 ? ` ↓${review.status.behind}` : ""
-                }`}
-              >
-                {review.status.upstream}
-                {review.status.ahead > 0 || review.status.behind > 0 ? (
-                  <em>
-                    {review.status.ahead > 0 ? ` ↑${review.status.ahead}` : ""}
-                    {review.status.behind > 0 ? ` ↓${review.status.behind}` : ""}
-                  </em>
+        {repos && repos.length > 1 ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button type="button" className="git-review-repo" title={cwd}>
+                <GitBranch size={12} />
+                <span>{pathBaseName(cwd)}</span>
+                {cwd === primaryRepo ? (
+                  <Star size={10} className="git-review-repo-star" aria-label="Primary repo" />
                 ) : null}
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent side="bottom" align="start" sideOffset={6} className="min-w-[12rem]">
+              {repos.map((repo) => (
+                <DropdownMenuItem key={repo} onSelect={() => onSelectRepo?.(repo)}>
+                  <GitBranch size={12} />
+                  <span className="git-review-repo-item">
+                    <strong>{pathBaseName(repo)}</strong>
+                    <em>{compactPath(repo, 48)}</em>
+                  </span>
+                  {repo === primaryRepo ? (
+                    <Star size={10} className="git-review-repo-star" aria-label="Primary repo" />
+                  ) : null}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
+        <div className="git-review-branches">
+          <div className="git-review-branch-line">
+            {review.status?.branch ? <GitBranch size={12} className="git-review-branch-icon" /> : null}
+            {review.status?.branch ? (
+              <Tooltip delayDuration={1200}>
+                <TooltipTrigger asChild>
+                  <strong>{review.status.branch}</strong>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="start">{review.status.branch}</TooltipContent>
+              </Tooltip>
+            ) : null}
+            {review.status?.branch && review.status.upstream ? (
+              <span className="git-review-upstream-arrow" aria-hidden="true">
+                →
               </span>
-            </div>
-          ) : null}
+            ) : null}
+            {review.status?.branch && review.status.upstream ? (
+              <Tooltip delayDuration={1200}>
+                <TooltipTrigger asChild>
+                  <span className="git-review-upstream">
+                    {review.status.upstream}
+                    {review.status.ahead > 0 || review.status.behind > 0 ? (
+                      <em>
+                        {review.status.ahead > 0 ? ` ↑${review.status.ahead}` : ""}
+                        {review.status.behind > 0 ? ` ↓${review.status.behind}` : ""}
+                      </em>
+                    ) : null}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="start">{review.status.upstream}</TooltipContent>
+              </Tooltip>
+            ) : null}
+          </div>
         </div>
         <div className="git-review-actions">
           <IconButton

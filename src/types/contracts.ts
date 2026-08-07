@@ -32,6 +32,8 @@ export interface AppInfo {
   appVersion: string;
   piVersion: string;
   defaultCwd: string;
+  /** User home directory; paths under it render as `~` in the UI. */
+  homeDir: string;
   /** .app bundle path for the file tree's "open with"; undefined = system default. */
   openWithApp?: string;
 }
@@ -73,6 +75,35 @@ export interface SessionSummary {
   messageCount: number;
   firstMessage: string;
   searchText: string;
+}
+
+/**
+ * A project groups several source folders/repos under one name, with a
+ * primary repo that new sessions and git reviews target. Sessions stay bound
+ * to their own cwd; the project is a label + routing layer on top.
+ */
+export interface Project {
+  id: string;
+  /** Display name; defaults to the primary repo's basename. */
+  name?: string;
+  /** All member folders/repos, ordered, de-duplicated. */
+  folders: string[];
+  /** Git/agent target; must be one of `folders`. */
+  primaryRepo: string;
+  createdAt: string;
+}
+
+export interface CreateProjectRequest {
+  name?: string;
+  folders: string[];
+  primaryRepo: string;
+}
+
+export interface UpdateProjectRequest {
+  id: string;
+  name?: string;
+  folders?: string[];
+  primaryRepo?: string;
 }
 
 export interface PiRuntimeState {
@@ -461,6 +492,8 @@ export interface EPiApi {
      */
     applyPiUpdate(): Promise<PiUpdateResult>;
     chooseDirectory(defaultPath?: string): Promise<string | undefined>;
+    /** Pick one or more folders (multi-repo projects). */
+    chooseDirectories(defaultPath?: string): Promise<string[]>;
     chooseFiles(): Promise<string[]>;
     getPathForFile(file: File): string;
     pasteImage(): Promise<string | null>;
@@ -490,6 +523,18 @@ export interface EPiApi {
     remove(path: string): Promise<void>;
     /** Push an up-to-date session list whenever a session file changes on disk (e.g. the first message lands). */
     onUpdated(listener: (sessions: SessionSummary[]) => void): () => void;
+  };
+  projects: {
+    list(): Promise<Project[]>;
+    create(request: CreateProjectRequest): Promise<Project[]>;
+    update(request: UpdateProjectRequest): Promise<Project[]>;
+    remove(id: string): Promise<Project[]>;
+    /** Resolve the project owning a cwd (undefined for implicit single-folder projects). */
+    resolve(cwd: string): Promise<Project | undefined>;
+    /** Folders of a project that contain a .git directory (for the review repo switcher). */
+    gitRepos(folders: string[]): Promise<string[]>;
+    /** Push the project list whenever it changes on disk. */
+    onUpdated(listener: (projects: Project[]) => void): () => void;
   };
   runtime: {
     getStates(): Promise<Record<string, PiRuntimeState>>;
