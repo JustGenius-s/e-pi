@@ -7,11 +7,11 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
-import { ScrollbackGuard } from "../../lib/scrollbackGuard";
 import { appendTerminalReplay } from "../../lib/terminalReplayBuffer";
 import type { TerminalReplayBuffer } from "../../lib/terminalReplayBuffer";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
+import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 
 interface TerminalPanelProps {
   sessionKey: string;
@@ -116,8 +116,6 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
   const fitTimerRef = useRef<number | undefined>(undefined);
   const fittedOnceRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
-  // Mirrors `atBottom` for use inside IPC/PTY callbacks (no re-render needed).
-  const atBottomRef = useRef(true);
   const isDarkRef = useTerminalTheme(hostRef, terminalRef);
   // Keep the latest callback without re-running the mount effect.
   const onFirstPaintRef = useRef(onFirstPaint);
@@ -175,9 +173,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     terminalRef.current = terminal;
 
     const scrollSub = terminal.onScroll(() => {
-      const bottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
-      atBottomRef.current = bottom;
-      setAtBottom(bottom);
+      setAtBottom(terminal.buffer.active.viewportY >= terminal.buffer.active.baseY);
     });
 
     /**
@@ -326,14 +322,16 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
 
     runResizeBarrier = fitTerminal;
 
-    // While the user is scrolled up in history, strip `ESC[3J` (erase
-    // scrollback) from the stream: pi's TUI emits it on every full redraw and
-    // xterm responds by resetting ydisp to 0, yanking the viewport back to
-    // the top. At the bottom the trim is invisible and stays enabled.
-    const scrollbackGuard = new ScrollbackGuard();
+    // pi's TUI emits `ESC[2J ESC[H ESC[3J` full redraws whenever the PTY
+    // resizes or its layout changes. Executing `3J` would trim the whole
+    // scrollback and clamp ydisp to 0 — yanking a scrolled-up viewport back
+    // to the top and destroying the history the user is reading. Suppress it
+    // at parse time: a queue-time stream filter would race with xterm's
+    // asynchronous parser (see xtermScrollbackGuard).
+    const eraseScrollbackGuard = guardEraseScrollback(terminal);
     const flushWrite = (data: string, onWritten?: () => void) => {
       pendingWrites += 1;
-      terminal.write(scrollbackGuard.transform(data, !atBottomRef.current), () => {
+      terminal.write(data, () => {
         pendingWrites -= 1;
         onWritten?.();
       });
@@ -373,6 +371,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       disposed = true;
       window.clearTimeout(shimmyTimer);
       cancelPendingRestore();
+      eraseScrollbackGuard.dispose();
       unsubscribeAppearance();
       stopData();
       input.dispose();
