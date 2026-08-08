@@ -384,10 +384,10 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
 
 ### 测量结论（已实测，E_PI_DEBUG 埋点）
 
-| 场景 | chunks/10s | avg chunk | 总量 |
-|---|---|---|---|
-| 启动/恢复 dump | 5,323 | 998B | 5.3MB |
-| 活跃输出 | 21,646 | 999B | 21.6MB |
+| 场景           | chunks/10s | avg chunk | 总量   |
+| -------------- | ---------- | --------- | ------ |
+| 启动/恢复 dump | 5,323      | 998B      | 5.3MB  |
+| 活跃输出       | 21,646     | 999B      | 21.6MB |
 
 远超 500/s 阈值 → 已实施合批。合批后同负载 chunks/10s 降至 ~1,000
 （IPC 数 ~20 倍下降）。实现：`pi-runtime.ts` 的 `#queueData/#flushBatch`，
@@ -447,6 +447,36 @@ chunk 数量、平均 chunk 字节数、总字节数。
 ```
 
 每个提交都必须：`npx tsc --noEmit && npx vitest run && npx oxlint && npx oxfmt .` 全绿。
+
+## Review 轮修复（2026-08-08，提交 dbba4b9 + 774f724）
+
+**根修复入库**：smoothScrollDuration:0 / 3J guard / viewport restore / watchdog
+此前只在工作区验证未提交，已单独提交（此前干净 checkout 无法编译）。
+
+**驱逐回挂留白修复**（A2 兜底失效）：
+- `terminalReplayStore` 新增 `evictedSessions` 有界 FIFO 标记（上限 12）。
+- 被驱逐 session 的 `isAwaitingCheckpoint` 返回 true，且其新输出以
+  checkpoint-waiting 状态续接（`createAwaitingCheckpointBuffer`）。
+- `TerminalPanel` 挂载时空 replay + awaitingCheckpoint 时立即触发
+  `triggerCheckpointShimmy`（grid 未变化时 onFitted 不会执行，原来必留白）。
+- 测试更新：驱逐后 awaitingCheckpoint=true、续接恢复、clear 清标记、FIFO 有界。
+
+**开关拆分**：`E_PI_PROFILE_STARTUP=1` 控制 PI_TIMING；`E_PI_PROFILE_PTY=1`
+控制 10s chunk probe（默认零开销）。`E_PI_DEBUG=1` 不再污染用户终端。
+
+**侧终端 barrier 对齐**：SideTerminalView 现维护 pendingWrites + FIFO barrier，
+与主终端一致（原 `hasPendingWrites: () => false` 会在 shell 大量输出期间 resize）。
+
+**IPC 合批可测化**：逻辑抽到 `electron/main/services/output-batcher.ts`（纯类），
+PiRuntime 委托使用；新增 8 个 fake-timer 单测（保序/隔离/size cap/零拷贝/dispose）。
+
+**scheduler API 清理**：删除未使用的 `isDisposed` 选项。
+
+### 遗留（非本线范围）
+
+干净 checkout 仍有 24 个 tsc 错误：`4e39c79`（B4）混入了并行工作线的未提交
+功能（archived sessions / quick commands / mention references / text
+attachments / theme 导出）。需该工作线补齐提交后，仓库才能整体可编译。
 
 ## 手动回归清单（每个任务完成后过一遍）
 
