@@ -116,8 +116,17 @@ export function App() {
       cancelled = true;
     };
   }, [activeProject]);
+  /**
+   * Hide the loading overlay ~80ms after the terminal's first paint instead
+   * of instantly: the TUI's initial frame is written, then its layout
+   * (reflow + viewport sync) settles over the next few frames — revealing
+   * the terminal mid-settle flashes the layout as it finishes.
+   */
+  const FIRST_PAINT_HIDE_DELAY_MS = 80;
   const handleFirstPaint = useCallback((sessionKey: string) => {
-    setPaintedPaths((current) => (current.has(sessionKey) ? current : new Set(current).add(sessionKey)));
+    window.setTimeout(() => {
+      setPaintedPaths((current) => (current.has(sessionKey) ? current : new Set(current).add(sessionKey)));
+    }, FIRST_PAINT_HIDE_DELAY_MS);
   }, []);
   // The TUI has not mounted yet (pi still booting, or the session was never
   // started in this app run); a failed session shows the error bar instead.
