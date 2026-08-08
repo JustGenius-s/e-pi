@@ -189,10 +189,28 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     let painted = false;
     /** Pending second half of the checkpoint-recovery height shimmy. */
     let shimmyTimer: number | undefined = undefined;
+    /** Initial writes (replay + queued live chunks) all committed and rendered. */
+    let initialWritesSettled = false;
     const markPainted = (): void => {
       if (painted || disposed) return;
       painted = true;
       onFirstPaintRef.current?.(sessionKey);
+    };
+    /**
+     * The loading overlay lifts once the initial output has actually been
+     * painted. xterm.write is async (parse + render happen on later frames),
+     * so firing on "chunk arrived" reveals a half-drawn terminal; wait until
+     * every initial write committed and two render frames passed.
+     */
+    const settleInitialWrites = (): void => {
+      if (disposed || painted || initialWritesSettled) return;
+      if (pendingWrites > 0) return;
+      initialWritesSettled = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          markPainted();
+        });
+      });
     };
     let pendingWrites = 0;
     /**
@@ -265,6 +283,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       terminal.write(data, () => {
         pendingWrites -= 1;
         onWritten?.();
+        settleInitialWrites();
       });
     };
 
@@ -311,7 +330,6 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     let queuedLiveData = "";
     const stopData = window.ePi.runtime.onAnyData((path, data) => {
       if (disposed || path !== sessionKey) return;
-      markPainted();
       if (replaying) queuedLiveData += data;
       else flushWrite(data);
     });
@@ -322,6 +340,8 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
         const queued = queuedLiveData;
         queuedLiveData = "";
         flushWrite(queued);
+      } else {
+        settleInitialWrites();
       }
       // The replay write (and any queued live data) is parsed by now; xterm's
       // viewport sync for it runs on the next refresh callback. Re-assert the
@@ -331,7 +351,6 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     };
     const replay = getReplayContent(sessionKey);
     if (replay) {
-      markPainted();
       flushWrite(replay, finishReplay);
     } else {
       finishReplay();
