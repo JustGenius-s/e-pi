@@ -24,8 +24,10 @@ export interface ResizeScheduler {
   dispose(): void;
 }
 
-const SETTLE_FRAMES = 2;
+const SETTLE_FRAMES = 1;
 const DEFAULT_BARRIER_CAP_MS = 100;
+/** While the size keeps changing (drag), refit at most this often. */
+const DRAG_REFIT_INTERVAL_MS = 120;
 
 /**
  * Shared resize handling for the main TUI terminal and the side terminal.
@@ -156,6 +158,7 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
     let lastCols = -1;
     let lastRows = -1;
     let stableFrames = 0;
+    let lastDragRefitAt = 0;
     const settleStep = (): void => {
       resizeSettleFrame = undefined;
       if (disposed) return;
@@ -180,6 +183,16 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
         lastCols = cols;
         lastRows = rows;
         stableFrames = 0;
+        // The size keeps changing (panel drag / window resize): follow it at
+        // a throttled rate so the TUI reflows while dragging instead of
+        // freezing until release. Each follow costs a full pi redraw
+        // (~50-100ms), so ~8/s keeps the layout visibly tracking without
+        // saturating the pipeline.
+        const now = performance.now();
+        if (now - lastDragRefitAt >= DRAG_REFIT_INTERVAL_MS) {
+          lastDragRefitAt = now;
+          refit();
+        }
       }
       if (stableFrames >= SETTLE_FRAMES) {
         refit();

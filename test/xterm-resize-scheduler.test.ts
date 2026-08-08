@@ -82,6 +82,7 @@ function setup(proposed: () => { cols: number; rows: number }) {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 describe("createResizeScheduler", () => {
@@ -104,6 +105,7 @@ describe("createResizeScheduler", () => {
 
   it("refits once after the size is stable for two frames", () => {
     const { runFrames } = installFrameRunner();
+    vi.spyOn(performance, "now").mockReturnValue(0);
     let proposed = { cols: 80, rows: 24 };
     const { terminal, fit, onFitted, scheduler } = setup(() => proposed);
 
@@ -126,6 +128,7 @@ describe("createResizeScheduler", () => {
 
   it("refits on the first frame when the change already happened before scheduling", () => {
     const { runFrames } = installFrameRunner();
+    vi.spyOn(performance, "now").mockReturnValue(0);
     const { fit, scheduler } = setup(() => ({ cols: 90, rows: 24 }));
 
     scheduler.schedule();
@@ -137,6 +140,7 @@ describe("createResizeScheduler", () => {
 
   it("keeps waiting while the size keeps changing", () => {
     const { runFrames } = installFrameRunner();
+    vi.spyOn(performance, "now").mockReturnValue(0);
     let width = 80;
     const { fit, scheduler } = setup(() => ({ cols: width, rows: 24 }));
 
@@ -243,4 +247,37 @@ describe("createResizeScheduler", () => {
     runFrames(10);
     expect(fit.fit).not.toHaveBeenCalled();
   });
+});
+
+it("refits at a throttled rate while the size keeps changing (drag follow)", () => {
+  const { runFrames } = installFrameRunner();
+  let width = 80;
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const { fit, scheduler } = setup(() => ({ cols: width, rows: 24 }));
+
+  scheduler.schedule();
+  // Drag: the grid changes every frame; time advances ~16ms per frame.
+  for (let i = 0; i < 10; i += 1) {
+    width += 2;
+    now += 16;
+    runFrames(1);
+  }
+  // ~160ms of dragging: 120ms interval -> exactly one follow refit.
+  expect(fit.fit).toHaveBeenCalledTimes(1);
+
+  // Keep dragging past another interval -> a second follow refit.
+  for (let i = 0; i < 8; i += 1) {
+    width += 2;
+    now += 16;
+    runFrames(1);
+  }
+  expect(fit.fit).toHaveBeenCalledTimes(2);
+
+  // Release: one stable frame settles and refits exactly once more.
+  for (let i = 0; i < 3; i += 1) {
+    now += 16;
+    runFrames(1);
+  }
+  expect(fit.fit).toHaveBeenCalledTimes(3);
 });
