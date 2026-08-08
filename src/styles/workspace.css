@@ -596,14 +596,23 @@
   background: var(--accent);
 }
 
-/* Quick commands: a suggestion row inside the card, above the input, shown
-   while the input is empty. In flow (not floating) so it never overlaps
-   anything above the card (e.g. the terminal's scroll-to-bottom button). */
+/* Quick commands: a pill row floating above the card's top border while
+   the input is empty. Absolute against the composer-wrap (outside the
+   shell, whose overflow:hidden would clip it). The right edge stops
+   before the horizontal center so the row can never cover the terminal's
+   scroll-to-bottom button (centered at 50% in the frame above); extra
+   pills wrap inside the left region instead. */
 .composer-quick-commands {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  /* Align with the input's inner padding (16px) rather than the card edge. */
+  left: 14px;
+  /* Keep clear of the centered scroll-to-bottom button (28px wide at 50%). */
+  right: calc(50% + 24px);
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  padding: 10px 12px 0;
+  z-index: 40;
 }
 
 .composer-quick-command {

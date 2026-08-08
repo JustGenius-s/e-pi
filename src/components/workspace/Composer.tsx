@@ -561,26 +561,6 @@ export const Composer = memo(function Composer({
             ) : null}
           </DialogContent>
         </Dialog>
-        {/* Quick commands: an in-card suggestion row above the input while
-            it is empty. Rendered in flow (not floating over the terminal
-            area) so it can never overlap the terminal's scroll-to-bottom
-            button or anything else above the card. */}
-        {showQuickCommands ? (
-          <div className="composer-quick-commands" role="toolbar" aria-label="Quick commands">
-            {visibleQuickCommands.map((command) => (
-              <button
-                key={command.id}
-                type="button"
-                className="composer-quick-command"
-                title={command.prompt}
-                onClick={() => void runQuickCommand(command)}
-              >
-                <Zap size={11} />
-                <span>{command.name}</span>
-              </button>
-            ))}
-          </div>
-        ) : null}
         <Textarea
           ref={textareaRef}
           aria-label="Message Pi"
@@ -838,6 +818,22 @@ export const Composer = memo(function Composer({
       </div>
       {/* Floating above the card's top border, outside the card so the
           shell's overflow:hidden (rounded corners) can't clip it. */}
+      {showQuickCommands ? (
+        <div className="composer-quick-commands" role="toolbar" aria-label="Quick commands">
+          {visibleQuickCommands.map((command) => (
+            <button
+              key={command.id}
+              type="button"
+              className="composer-quick-command"
+              title={command.prompt}
+              onClick={() => void runQuickCommand(command)}
+            >
+              <Zap size={11} />
+              <span>{command.name}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 });
