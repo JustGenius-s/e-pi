@@ -191,6 +191,18 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     let shimmyTimer: number | undefined = undefined;
     /** Initial writes (replay + queued live chunks) all committed and rendered. */
     let initialWritesSettled = false;
+    /**
+     * An empty replay means the picture depends on pi's NEXT frame: either
+     * its very first render (fresh session) or a full redraw forced by the
+     * checkpoint shimmy (buffer was invalidated by overflow). pi's TUI only
+     * emits a full frame on first render/resize — its steady-state output is
+     * differential (changed lines only), which would paint a partial screen
+     * (input box, no history) on a blank terminal. So the loading overlay
+     * must NOT lift until that full frame actually arrived.
+     */
+    const replay = getReplayContent(sessionKey);
+    let waitingForFirstFrame = replay.length === 0;
+    let waitingForCheckpoint = replay.length === 0 && isAwaitingCheckpoint(sessionKey);
     const markPainted = (): void => {
       if (painted || disposed) return;
       painted = true;
@@ -204,6 +216,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
      */
     const settleInitialWrites = (): void => {
       if (disposed || painted || initialWritesSettled) return;
+      if (waitingForFirstFrame || waitingForCheckpoint) return;
       if (pendingWrites > 0) return;
       initialWritesSettled = true;
       requestAnimationFrame(() => {
@@ -332,6 +345,17 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       if (disposed || path !== sessionKey) return;
       if (replaying) queuedLiveData += data;
       else flushWrite(data);
+      // A full frame (fresh first render, or the shimmy-triggered redraw)
+      // arrived — the terminal can now paint the complete picture, so the
+      // loading overlay may lift once this chunk is committed.
+      if (waitingForCheckpoint && !isAwaitingCheckpoint(sessionKey)) {
+        waitingForCheckpoint = false;
+        settleInitialWrites();
+      }
+      if (waitingForFirstFrame) {
+        waitingForFirstFrame = false;
+        settleInitialWrites();
+      }
     });
     const finishReplay = () => {
       if (disposed) return;
@@ -340,16 +364,15 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
         const queued = queuedLiveData;
         queuedLiveData = "";
         flushWrite(queued);
-      } else {
-        settleInitialWrites();
       }
+      // With an empty replay the overlay stays until the first real frame
+      // arrives (see waitingForFirstFrame / waitingForCheckpoint above).
       // The replay write (and any queued live data) is parsed by now; xterm's
       // viewport sync for it runs on the next refresh callback. Re-assert the
       // viewport afterwards so a remounted terminal that landed on the top of
       // the scrollback (stale sync, swallowed scroll event) is corrected.
       requestAnimationFrame(syncViewportAfterWrite);
     };
-    const replay = getReplayContent(sessionKey);
     if (replay) {
       flushWrite(replay, finishReplay);
     } else {
