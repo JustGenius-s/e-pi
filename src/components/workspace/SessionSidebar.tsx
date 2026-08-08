@@ -385,7 +385,6 @@ export const SessionSidebar = memo(function SessionSidebar({
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-[11rem]">
                   <NewMenu
-                    onNewSession={() => onCreate(homeCwd)}
                     onNewProject={() => onCreateProject()}
                     onImportProject={onImportProject}
                   />

@@ -1,24 +1,21 @@
-import { FilePlus, FolderGit2, FolderPlus } from "lucide-react";
+import { FolderGit2, FolderPlus } from "lucide-react";
 
 import { DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut } from "@/components/ui/dropdown-menu";
 
-/** Menu items shared by the group-header action and the collapsed-mode button. */
+/**
+ * Menu items for the Sessions group-header "+". "New session" is NOT here:
+ * the sidebar has a dedicated one-click New session button below Packages, so
+ * the menu only offers the actions that button can't do.
+ */
 export function NewMenu({
-  onNewSession,
   onNewProject,
   onImportProject,
 }: {
-  onNewSession: () => void;
   onNewProject: () => void;
   onImportProject: () => void;
 }) {
   return (
     <>
-      <DropdownMenuItem onSelect={onNewSession}>
-        <FilePlus size={14} />
-        <span>New session</span>
-        <DropdownMenuShortcut>Home</DropdownMenuShortcut>
-      </DropdownMenuItem>
       <DropdownMenuItem onSelect={onNewProject}>
         <FolderPlus size={14} />
         <span>New project</span>
