@@ -76,16 +76,16 @@
   font-weight: 600;
 }
 
-/* Total +/- line changes for the working tree, at the right end of the
-   branch bar. Reuses the file-row add/del colors; pushed right with
-   margin-left:auto and never shrinks (long branch names ellipsize first). */
+/* Total +/- line changes for the working tree, as a standalone element at
+   the right of the branch bar (between the branch line and the actions) —
+   it must not share the branch line's shrinking space or it would squeeze
+   the upstream ↑/↓ indicators. Reuses the file-row add/del colors. */
 .git-review-total-stats {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
-  margin-left: auto;
-  padding-left: 6px;
+  margin-left: 6px;
   font-family: var(--font-mono);
   font-size: var(--fs-small);
   font-weight: 440;

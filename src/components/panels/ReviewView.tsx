@@ -308,21 +308,21 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
                 </TooltipContent>
               </Tooltip>
             ) : null}
-            {totalStats ? (
-              <Tooltip delayDuration={1200}>
-                <TooltipTrigger asChild>
-                  <span className="git-review-total-stats">
-                    <em className="git-file-stats-add">+{totalStats.additions}</em>
-                    <em className="git-file-stats-del">−{totalStats.deletions}</em>
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" align="start">
-                  {totalStats.additions} additions, {totalStats.deletions} deletions
-                </TooltipContent>
-              </Tooltip>
-            ) : null}
           </div>
         </div>
+        {totalStats ? (
+          <Tooltip delayDuration={1200}>
+            <TooltipTrigger asChild>
+              <span className="git-review-total-stats">
+                <em className="git-file-stats-add">+{totalStats.additions}</em>
+                <em className="git-file-stats-del">−{totalStats.deletions}</em>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start">
+              {totalStats.additions} additions, {totalStats.deletions} deletions
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         <div className="git-review-actions">
           <IconButton
             label={allExpanded ? "Collapse all" : "Expand all"}
