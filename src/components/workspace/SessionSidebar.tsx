@@ -1,4 +1,4 @@
-import { BadgePlus, Moon, Package, Pin, Settings2, Sparkles, Sun } from "lucide-react";
+import { BadgePlus, Moon, Package, Pin, Plus, Settings2, Sparkles, Sun } from "lucide-react";
 import { memo, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -284,7 +284,6 @@ export const SessionSidebar = memo(function SessionSidebar({
     pinnedSessions,
     unseenRuns,
     platform,
-    onCreate,
     toggleProjectPin,
     ...sessionRowCallbacks,
   };
@@ -356,6 +355,20 @@ export const SessionSidebar = memo(function SessionSidebar({
                   <span>Packages</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              {/* "New session" below Packages in both states; clicking creates a
+                  session directly (the full menu with New project / Import
+                  multi-repo stays in the Sessions group-header "+"). */}
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  className="collapsed-new-session"
+                  tooltip="New session"
+                  aria-label="New session"
+                  onClick={() => onCreate(homeCwd)}
+                >
+                  <BadgePlus />
+                  {state !== "collapsed" ? <span>New session</span> : null}
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -367,7 +380,7 @@ export const SessionSidebar = memo(function SessionSidebar({
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <SidebarGroupAction aria-label="New session or project" title="New session or project">
-                    <BadgePlus size={12} />
+                    <Plus size={12} />
                   </SidebarGroupAction>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-[11rem]">
@@ -382,32 +395,6 @@ export const SessionSidebar = memo(function SessionSidebar({
           )}
 
           <SidebarGroupContent>
-            {state === "collapsed" ? (
-              // Same new-session entry as the expanded group-header action:
-              // icon-only button opening the identical dropdown menu.
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <SidebarMenuButton
-                        className="collapsed-new-session"
-                        tooltip="New session or project"
-                        aria-label="New session or project"
-                      >
-                        <BadgePlus />
-                      </SidebarMenuButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-[11rem]">
-                      <NewMenu
-                        onNewSession={() => onCreate(homeCwd)}
-                        onNewProject={() => onCreateProject()}
-                        onImportProject={onImportProject}
-                      />
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            ) : null}
             {pinnedSessionList.length > 0 || pinnedProjectList.length > 0 ? (
               state === "collapsed" ? (
                 // Icon-only pinned rows: one aggregated pin button for pinned

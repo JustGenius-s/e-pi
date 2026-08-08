@@ -1,4 +1,4 @@
-import { Pin, Plus } from "lucide-react";
+import { Pin } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -19,8 +19,6 @@ interface ProjectFlyoutProps extends SessionRowCallbacks {
   unseenRuns?: ReadonlySet<string>;
   platform?: NodeJS.Platform;
   onExpand: () => void;
-  /** Create a new session in this project. */
-  onCreate: (cwd: string) => void;
   projectPinned: boolean;
   toggleProjectPin: (key: string) => void;
 }
@@ -41,7 +39,6 @@ export function ProjectFlyout({
   unseenRuns,
   platform,
   onExpand,
-  onCreate,
   projectPinned,
   toggleProjectPin,
   ...sessionCallbacks
@@ -72,19 +69,6 @@ export function ProjectFlyout({
             }}
           >
             <Pin size={12} fill={projectPinned ? "currentColor" : "none"} />
-          </button>
-          <button
-            type="button"
-            className="project-flyout-add"
-            aria-label={`New session in ${label}`}
-            title={`New session in ${label}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              setOpen(false);
-              onCreate(project.cwd);
-            }}
-          >
-            <Plus size={12} />
           </button>
         </div>
         <ul className="project-flyout-sessions">
