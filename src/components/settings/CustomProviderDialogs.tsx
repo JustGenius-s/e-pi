@@ -261,7 +261,11 @@ export function CustomProviderDialogs({
                             const alreadyAdded = draft?.models.some((current) => current.id === model.id);
                             const meta = catalogMeta[model.id];
                             return (
-                              <label className="model-fetch-row" data-disabled={alreadyAdded || undefined} key={model.id}>
+                              <label
+                                className="model-fetch-row"
+                                data-disabled={alreadyAdded || undefined}
+                                key={model.id}
+                              >
                                 <Checkbox
                                   checked={alreadyAdded || selectedIds.has(model.id)}
                                   disabled={alreadyAdded}
@@ -273,7 +277,9 @@ export function CustomProviderDialogs({
                                 {meta ? (
                                   <span className="model-fetch-badges">
                                     {meta.vision ? <small title="Accepts image input">vision</small> : null}
-                                    {meta.reasoning ? <small title="Supports extended thinking">reasoning</small> : null}
+                                    {meta.reasoning ? (
+                                      <small title="Supports extended thinking">reasoning</small>
+                                    ) : null}
                                     {meta.contextWindow ? (
                                       <small title="Context window">{formatTokens(meta.contextWindow)}</small>
                                     ) : null}
@@ -329,7 +335,9 @@ export function CustomProviderDialogs({
                         />
                         <IconButton
                           label={`Remove model ${index + 1}`}
-                          onClick={() => updateDraft({ models: draft.models.filter((_, current) => current !== index) })}
+                          onClick={() =>
+                            updateDraft({ models: draft.models.filter((_, current) => current !== index) })
+                          }
                           disabled={busy}
                         >
                           <X size={13} />
@@ -380,14 +388,22 @@ export function CustomProviderDialogs({
                         </label>
                       </div>
                       {model.reasoning ? (
-                        <div className="custom-model-levels" role="group" aria-label={`Model ${index + 1} thinking levels`}>
+                        <div
+                          className="custom-model-levels"
+                          role="group"
+                          aria-label={`Model ${index + 1} thinking levels`}
+                        >
                           <span>Thinking levels</span>
                           <div className="custom-model-levels-options">
                             {THINKING_LEVELS.map((level) => (
                               <label className="custom-check" key={level}>
                                 <Checkbox
                                   checked={model.thinkingLevels?.includes(level) ?? false}
-                                  onCheckedChange={(checked) => updateModel(index, { thinkingLevels: toggleLevel(model.thinkingLevels, level, Boolean(checked)) })}
+                                  onCheckedChange={(checked) =>
+                                    updateModel(index, {
+                                      thinkingLevels: toggleLevel(model.thinkingLevels, level, Boolean(checked)),
+                                    })
+                                  }
                                 />
                                 <span>{level}</span>
                               </label>

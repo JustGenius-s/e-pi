@@ -149,17 +149,20 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
   };
 
   /** Open a file with the persisted app; prompts the user when none is chosen. */
-  const openFile = useCallback(async (path: string) => {
-    if (!openWithApp) {
-      toast.info("No default app chosen; pick one from the app selector in the file tree");
-      return;
-    }
-    try {
-      await window.ePi.app.openWith(openWithApp, path);
-    } catch (reason) {
-      toast.error(reason instanceof Error ? reason.message : String(reason));
-    }
-  }, [openWithApp]);
+  const openFile = useCallback(
+    async (path: string) => {
+      if (!openWithApp) {
+        toast.info("No default app chosen; pick one from the app selector in the file tree");
+        return;
+      }
+      try {
+        await window.ePi.app.openWith(openWithApp, path);
+      } catch (reason) {
+        toast.error(reason instanceof Error ? reason.message : String(reason));
+      }
+    },
+    [openWithApp],
+  );
 
   const openFileWith = async (appPath: string, path: string) => {
     try {
@@ -349,8 +352,9 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
       const parentPath = path.slice(0, path.lastIndexOf("/"));
       const parent = findNode(root, parentPath);
       const siblingImages =
-        parent?.children?.filter((child) => child.type === "file" && isImagePath(child.path)).map((child) => child.path) ??
-        [];
+        parent?.children
+          ?.filter((child) => child.type === "file" && isImagePath(child.path))
+          .map((child) => child.path) ?? [];
       onOpenFile(path, siblingImages.length > 0 ? siblingImages : undefined);
       void node;
     },

@@ -91,6 +91,27 @@ export interface SessionSummary {
 }
 
 /**
+ * A session moved to the archived-sessions area (Codex-style archive): the
+ * file is out of pi's session tree, so it no longer appears in the sidebar,
+ * but it can be restored to its original location at any time.
+ */
+export interface ArchivedSessionSummary {
+  /** Current location of the session file, inside the archived-sessions directory. */
+  path: string;
+  /** Where the session lived when archived; unarchive moves it back here. */
+  originalPath: string;
+  id: string;
+  cwd: string;
+  name?: string;
+  createdAt: string;
+  modifiedAt: string;
+  /** When the session was archived. */
+  archivedAt: string;
+  messageCount: number;
+  firstMessage: string;
+}
+
+/**
  * A project groups several source folders/repos under one name, with a
  * primary repo that new sessions and git reviews target. Sessions stay bound
  * to their own cwd; the project is a label + routing layer on top.
@@ -464,7 +485,7 @@ export interface FileContentResult {
 export interface EditableTextResult {
   content: string;
   mtimeMs: number;
-  /** sha256 of the utf8 content, hex. */
+  /** Sha256 of the utf8 content, hex. */
   contentHash: string;
   sizeBytes: number;
   totalLines: number;
@@ -505,12 +526,7 @@ export interface MentionSearchResult {
 }
 
 /** Fs bridge error codes surfaced to the renderer (see lib/fsErrors). */
-export type FsErrorCode =
-  | "STALE_FILE"
-  | "TOO_LARGE"
-  | "BINARY"
-  | "NOT_FOUND"
-  | "OUTSIDE_WORKSPACE";
+export type FsErrorCode = "STALE_FILE" | "TOO_LARGE" | "BINARY" | "NOT_FOUND" | "OUTSIDE_WORKSPACE";
 
 /** Debounced fs change batch pushed from the main process. */
 export interface WorkspaceChangedEvent {
@@ -636,6 +652,14 @@ export interface EPiApi {
     list(): Promise<SessionSummary[]>;
     create(request: CreateSessionRequest): Promise<SessionSummary>;
     rename(request: RenameSessionRequest): Promise<void>;
+    /** Move a session into the archived-sessions area; it disappears from the sidebar but stays recoverable. */
+    archive(path: string): Promise<void>;
+    /** Archived sessions, newest first. */
+    listArchived(): Promise<ArchivedSessionSummary[]>;
+    /** Move an archived session back to its original location; it reappears in the sidebar. */
+    unarchive(path: string): Promise<void>;
+    /** Permanently delete an archived session (moves it to the system Trash). */
+    deleteArchived(path: string): Promise<void>;
     remove(path: string): Promise<void>;
     /** Push an up-to-date session list whenever a session file changes on disk (e.g. the first message lands). */
     onUpdated(listener: (sessions: SessionSummary[]) => void): () => void;
@@ -751,12 +775,7 @@ export interface EPiApi {
     /** Versioned text read for the built-in editor. */
     readEditableText(cwd: string, path: string): Promise<EditableTextResult>;
     /** Versioned write; rejects with code STALE_FILE when the snapshot mismatches. */
-    writeText(
-      cwd: string,
-      path: string,
-      content: string,
-      expected?: WriteTextExpected,
-    ): Promise<WriteTextResult>;
+    writeText(cwd: string, path: string, content: string, expected?: WriteTextExpected): Promise<WriteTextResult>;
     /** Base64 payload for previews (images / pdf / text). */
     readWorkspaceBinary(cwd: string, path: string, maxBytes?: number): Promise<WorkspaceBinaryResult>;
     /** Substring search across the workspace (file tree search box). */

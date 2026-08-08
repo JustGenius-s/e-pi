@@ -282,7 +282,9 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
                 <TooltipTrigger asChild>
                   <strong>{review.status.branch}</strong>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" align="start">{review.status.branch}</TooltipContent>
+                <TooltipContent side="bottom" align="start">
+                  {review.status.branch}
+                </TooltipContent>
               </Tooltip>
             ) : null}
             {review.status?.branch && review.status.upstream ? (
@@ -339,7 +341,10 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
           >
             {allExpanded ? <ListChevronsDownUp size={14} /> : <ListChevronsUpDown size={14} />}
           </IconButton>
-          <IconButton label={diffStyle === "split" ? "Switch to unified view" : "Switch to split view"} onClick={toggleDiffStyle}>
+          <IconButton
+            label={diffStyle === "split" ? "Switch to unified view" : "Switch to split view"}
+            onClick={toggleDiffStyle}
+          >
             {diffStyle === "split" ? <Columns2 size={14} /> : <Rows2 size={14} />}
           </IconButton>
           <IconButton

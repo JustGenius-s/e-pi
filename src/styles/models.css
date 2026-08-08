@@ -328,6 +328,32 @@
 
 .model-row {
   display: grid;
+  min-height: 44px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px;
+  padding: 0 4px;
+  border-radius: 6px;
+}
+
+.model-row:hover:not([data-unavailable="true"]),
+.model-row[data-selected="true"] {
+  background: var(--accent);
+}
+
+/* Hidden models stay listed (so they can be unhidden); the name/meta read
+   as dimmed while the switch itself stays crisp. */
+.model-row[data-hidden="true"] .model-row-name,
+.model-row[data-hidden="true"] .model-row-meta {
+  color: var(--muted-foreground);
+}
+
+.model-row[data-hidden="true"] .model-row-check {
+  opacity: 0.4;
+}
+
+.model-row-main {
+  display: grid;
   width: 100%;
   min-height: 44px;
   grid-template-columns: 18px minmax(0, 1fr) auto;
@@ -342,15 +368,13 @@
   cursor: default;
 }
 
-.model-row:hover:not(:disabled),
-.model-row:focus-visible:not(:disabled),
-.model-row[data-selected="true"] {
-  outline: none;
-  background: var(--accent);
+.model-row-main:disabled {
+  opacity: 0.45;
 }
 
-.model-row:disabled {
-  opacity: 0.45;
+.model-row-toggle {
+  flex: 0 0 auto;
+  margin-right: 4px;
 }
 
 .model-row-check {
@@ -502,7 +526,9 @@
   font: inherit;
   font-size: var(--fs-body);
   cursor: pointer;
-  transition: background 120ms ease-out, color 120ms ease-out;
+  transition:
+    background 120ms ease-out,
+    color 120ms ease-out;
 }
 
 .editor-theme-segment-item:hover {
@@ -767,7 +793,6 @@
   font-size: var(--fs-mini);
   font-weight: 400;
 }
-
 
 .custom-field-row {
   display: grid;
@@ -1115,4 +1140,94 @@
 
 .import-repo-error {
   margin: 0;
+}
+
+/* --- Archived chats (Settings → Archived) --- */
+
+.archived-section {
+  margin-top: 18px;
+  max-width: 560px;
+}
+
+.archived-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  list-style: none;
+}
+
+.archived-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.archived-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.archived-row-title {
+  overflow: hidden;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archived-row-meta {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: var(--fs-small);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archived-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+/* --- Quick commands (Settings → Composer) --- */
+
+.quick-commands-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 14px;
+  max-width: 560px;
+}
+
+.quick-command-row {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.quick-command-name {
+  font-size: var(--fs-body);
+}
+
+.quick-command-prompt {
+  min-height: 42px;
+  resize: vertical;
+  font-size: var(--fs-small);
+  line-height: 1.5;
+}
+
+.quick-commands-add {
+  margin-top: 10px;
 }

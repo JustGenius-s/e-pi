@@ -127,6 +127,10 @@
         "to": "e-pi-bridge.ts"
       },
       {
+        "from": "resources/e-pi-light.json",
+        "to": "e-pi-light.json"
+      },
+      {
         "from": "resources/node",
         "to": "node"
       }

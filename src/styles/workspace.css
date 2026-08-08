@@ -137,7 +137,6 @@
   }
 }
 
-
 .terminal-panel .xterm {
   height: 100%;
 }
@@ -212,22 +211,29 @@
   font-size: var(--fs-small);
 }
 
+/* Outer positioning (width/centering) lives here so the quick-commands
+   pills can float above the card's top border without the shell's
+   overflow:hidden (rounded corners) clipping them. */
+.composer-wrap {
+  position: relative;
+  width: min(820px, calc(100% - 24px));
+  /* Never let the action bar (attach / skill / send) get squeezed into a
+     jumbled layout when the session sidebar and tool panel are both open on
+     a narrow window. Below this the composer overflows instead of
+     compressing. Keep in sync with MIN_MAIN_WIDTH in sidebar.tsx. */
+  min-width: 400px;
+  /* 18px top margin so the composer's blurred shadow (0 10px 28px) does not
+     overlap the terminal's last lines — the shadow would otherwise cover the
+     bottom of the TUI output. */
+  margin: 18px auto 12px;
+}
+
 .composer-shell {
   position: relative;
   /* Painted above the command-list popup (z-index 20, portaled to body) so
      the input's border and background sit over the popup's bottom edge — the
      popup appears to emerge from behind the input box. */
   z-index: 30;
-  width: min(820px, calc(100% - 24px));
-  /* Never let the action bar (attach / skill / send) get squeezed into a
-     jumbled layout when the session sidebar and tool panel are both open on
-     a narrow window. Below this the shell overflows instead of compressing.
-     Keep in sync with MIN_MAIN_WIDTH in sidebar.tsx. */
-  min-width: 400px;
-  /* 18px top margin so the composer's blurred shadow (0 10px 28px) does not
-     overlap the terminal's last lines — the shadow would otherwise cover the
-     bottom of the TUI output. */
-  margin: 18px auto 12px;
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -493,6 +499,143 @@
 .composer-skill {
   color: var(--foreground);
   background: color-mix(in oklch, var(--accent) 75%, var(--secondary));
+}
+
+/* Code/file references attached from the editor or preview: graphical
+   chips above the input, serialized as markdown links on send. Also hosts
+   text attachments (large pasted text) — same chip row, distinct look. */
+.composer-references {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px 14px 0;
+}
+
+.composer-reference {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 6px 3px 8px;
+  border: 1px solid color-mix(in oklch, var(--primary) 35%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in oklch, var(--primary) 10%, var(--card));
+  color: var(--foreground);
+  font-size: var(--fs-small);
+}
+
+.composer-reference > svg {
+  flex: 0 0 auto;
+  color: var(--primary);
+}
+
+.composer-reference-name {
+  overflow: hidden;
+  font-weight: 520;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-reference-lines {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--primary) 18%, transparent);
+  color: color-mix(in oklch, var(--primary) 80%, var(--foreground));
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+}
+
+/* Large pasted text: summary chip (title + line/size meta) holding the full
+   text until send. Distinct warm accent vs the primary reference chips. */
+.composer-text-attachment {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 3px 6px 3px 8px;
+  border: 1px solid color-mix(in oklch, var(--secondary) 55%, var(--border));
+  border-radius: 7px;
+  background: color-mix(in oklch, var(--secondary) 22%, var(--card));
+  color: var(--foreground);
+  font-size: var(--fs-small);
+}
+
+.composer-text-attachment > svg {
+  flex: 0 0 auto;
+  color: color-mix(in oklch, var(--secondary) 60%, var(--foreground));
+}
+
+.composer-text-attachment-meta {
+  flex: 0 0 auto;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: color-mix(in oklch, var(--secondary) 30%, transparent);
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.82em;
+  white-space: nowrap;
+}
+
+.composer-text-attachment button,
+.composer-reference button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  place-items: center;
+  color: var(--muted-foreground);
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.composer-reference button:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+/* Quick commands: a pill row floating above the card's top border while
+   the input is empty. Absolute against the composer-wrap (outside the
+   shell, whose overflow:hidden would clip it) — the row disappears as soon
+   as the user starts typing. z-index above the shell so the input's focus
+   shadow never paints over the pills. */
+.composer-quick-commands {
+  position: absolute;
+  bottom: calc(100% + 14px);
+  /* Align with the input's inner padding (16px) rather than the card edge. */
+  left: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  z-index: 40;
+}
+
+.composer-quick-command {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--card) 92%, var(--foreground));
+  color: var(--foreground);
+  font-size: var(--fs-small);
+  box-shadow: 0 4px 14px color-mix(in oklch, var(--foreground) 14%, transparent);
+  cursor: pointer;
+  transition:
+    border-color 120ms ease,
+    background 120ms ease;
+}
+
+.composer-quick-command:hover {
+  border-color: color-mix(in oklch, var(--foreground) 40%, var(--border));
+  background: color-mix(in oklch, var(--card) 82%, var(--foreground));
+}
+
+.composer-quick-command svg {
+  color: var(--muted-foreground);
 }
 
 .composer-preview-img {

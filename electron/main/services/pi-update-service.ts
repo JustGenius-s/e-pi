@@ -72,7 +72,7 @@ export function resolvePiPackageDir(): string {
   return piPackageDir();
 }
 
-/** npm argv used for pi installs, honoring the user's `npmCommand` setting. */
+/** Npm argv used for pi installs, honoring the user's `npmCommand` setting. */
 async function npmCommand(): Promise<string[]> {
   try {
     const { SettingsManager, getAgentDir } = await loadPiAgent();
@@ -112,18 +112,15 @@ export function readInstalledPiVersion(): string {
  * Apply a pi update in place.
  *
  * Steps:
+ *
  * 1. Resolve the newest version and download its tarball.
- * 2. Extract the tarball with `tar` (its `.tgz` extension lets macOS tar
- *    detect gzip automatically), then strip the `devDependencies` the npm
- *    registry tarball ships with — npm chokes on their peer sets during a
- *    standalone install.
- * 3. Install the package's own dependencies with `npm install --omit=dev`,
- *    producing a self-contained package directory.
- * 4. Atomically swap it into the location of the bundled pi package (rename
- *    the old directory aside, move the new one in), then delete the old one.
- *    The swap is all within one filesystem, so `renameSync` is atomic; the
- *    package's own node_modules are outside the asar in packaged builds, so
- *    they can be written freely.
+ * 2. Extract the tarball with `tar` (its `.tgz` extension lets macOS tar detect gzip automatically), then strip the
+ *    `devDependencies` the npm registry tarball ships with — npm chokes on their peer sets during a standalone
+ *    install.
+ * 3. Install the package's own dependencies with `npm install --omit=dev`, producing a self-contained package directory.
+ * 4. Atomically swap it into the location of the bundled pi package (rename the old directory aside, move the new one in),
+ *    then delete the old one. The swap is all within one filesystem, so `renameSync` is atomic; the package's own
+ *    node_modules are outside the asar in packaged builds, so they can be written freely.
  * 5. The caller restarts every live session so they pick up the new version.
  *
  * Throws on any failure and leaves the existing installation untouched.
@@ -175,7 +172,16 @@ export async function applyPiUpdate(): Promise<PiUpdateResult> {
     const [command, ...args] = await npmCommand();
     await execFileAsync(
       command,
-      [...args, "install", "--no-save", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund", "--package-lock=false"],
+      [
+        ...args,
+        "install",
+        "--no-save",
+        "--omit=dev",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund",
+        "--package-lock=false",
+      ],
       { cwd: staged, timeout: INSTALL_TIMEOUT_MS, windowsHide: true },
     );
     if (!existsSync(join(staged, "node_modules"))) {

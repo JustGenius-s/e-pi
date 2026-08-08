@@ -5,8 +5,6 @@ import { dirname, join } from "node:path";
 
 import type { ModelRuntime } from "@earendil-works/pi-coding-agent";
 
-import { loadPiAgent, piPackageDir } from "./pi-agent-loader";
-
 import type {
   CatalogMetaRequest,
   CustomModelDefinition,
@@ -22,6 +20,7 @@ import type {
   ModelManagementState,
   SetDefaultModelRequest,
 } from "../../../src/types/contracts";
+import { loadPiAgent, piPackageDir } from "./pi-agent-loader";
 
 type LoginEventListener = (event: ModelLoginEvent) => void;
 
@@ -120,7 +119,7 @@ interface ModelsFile {
   providers: Record<string, Partial<CustomProviderConfig>>;
 }
 
-/** models.json model entries may declare input modalities directly. */
+/** Models.json model entries may declare input modalities directly. */
 interface RawModelEntry {
   id?: unknown;
   name?: unknown;
@@ -172,11 +171,12 @@ async function officialModels(): Promise<Map<string, OfficialModelMetadata>> {
         });
         const result = new Map<string, OfficialModelMetadata>();
         const catalogs = await Promise.all(
-          files.map(async (file) =>
-            JSON.parse(await readFile(join(dataDir, file), "utf8")) as Record<
-              string,
-              Record<string, OfficialModelMetadata>
-            >,
+          files.map(
+            async (file) =>
+              JSON.parse(await readFile(join(dataDir, file), "utf8")) as Record<
+                string,
+                Record<string, OfficialModelMetadata>
+              >,
           ),
         );
         for (const groups of catalogs) {
@@ -420,7 +420,9 @@ export class ModelService {
     // not edit (headers, compat, thinkingLevelMap, per-model cost, ...) survive
     // a save. Only the keys the dialog manages are overwritten below.
     const existing = file.providers[id] ?? {};
-    const existingModels = Array.isArray(existing.models) ? (existing.models as unknown as Record<string, unknown>[]) : [];
+    const existingModels = Array.isArray(existing.models)
+      ? (existing.models as unknown as Record<string, unknown>[])
+      : [];
     const normalized: Record<string, unknown> = {
       ...existing,
       baseUrl: baseUrl.trim(),

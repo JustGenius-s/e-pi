@@ -27,14 +27,63 @@ const CACHE_TTL_MS = 10 * 60 * 1000;
 
 /** Name keywords (lowercase) that mark an app as development-oriented. */
 const DEV_KEYWORDS = [
-  "xcode", "visual studio", "cursor", "zed", "sublime", "textmate", "bbedit",
-  "vim", "neovim", "emacs", "intellij", "webstorm", "pycharm", "goland", "rider",
-  "phpstorm", "datagrip", "clion", "rubymine", "fleet", "nova", "coteditor",
-  "coderunner", "windsurf", "trae", "iterm", "ghostty", "warp", "alacritty",
-  "kitty", "terminal", "postman", "tableplus", "dbeaver", "sequel", "postico",
-  "navicat", "compass", "redis", "fork", "tower", "sourcetree", "github desktop",
-  "figma", "sketch", "docker", "orbstack", "kaleidoscope", "hex fiend", "drawio",
-  "omnigraffle", "beyond compare", "diffmerge", "kate", "geany", "atom", "brackets",
+  "xcode",
+  "visual studio",
+  "cursor",
+  "zed",
+  "sublime",
+  "textmate",
+  "bbedit",
+  "vim",
+  "neovim",
+  "emacs",
+  "intellij",
+  "webstorm",
+  "pycharm",
+  "goland",
+  "rider",
+  "phpstorm",
+  "datagrip",
+  "clion",
+  "rubymine",
+  "fleet",
+  "nova",
+  "coteditor",
+  "coderunner",
+  "windsurf",
+  "trae",
+  "iterm",
+  "ghostty",
+  "warp",
+  "alacritty",
+  "kitty",
+  "terminal",
+  "postman",
+  "tableplus",
+  "dbeaver",
+  "sequel",
+  "postico",
+  "navicat",
+  "compass",
+  "redis",
+  "fork",
+  "tower",
+  "sourcetree",
+  "github desktop",
+  "figma",
+  "sketch",
+  "docker",
+  "orbstack",
+  "kaleidoscope",
+  "hex fiend",
+  "drawio",
+  "omnigraffle",
+  "beyond compare",
+  "diffmerge",
+  "kate",
+  "geany",
+  "atom",
+  "brackets",
 ];
 
 function isDevApp(name: string): boolean {
@@ -193,7 +242,7 @@ async function iconFromBundle(appPath: string): Promise<string | undefined> {
   return image.resize({ width: 32, height: 32 }).toDataURL();
 }
 
-/** icns container: "icns" magic, then chunks of [4-byte type][4-byte BE length][data]. */
+/** Icns container: "icns" magic, then chunks of [4-byte type][4-byte BE length][data]. */
 function extractLargestPngChunk(icns: Buffer): Buffer | undefined {
   if (icns.length < 8 || icns.toString("latin1", 0, 4) !== "icns") return undefined;
   let best: Buffer | undefined;

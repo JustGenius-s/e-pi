@@ -30,9 +30,8 @@ let cached: Promise<PiAgent> | undefined;
  * Absolute path of the pi-coding-agent package directory.
  *
  * - `PI_PACKAGE_DIR` overrides everything (tests sandbox the update swap).
- * - Packaged: `process.resourcesPath/app.asar.unpacked/node_modules/...`.
- *   If the unpacked copy is missing (unexpected), fall back to resolving the
- *   asar copy so the app still starts.
+ * - Packaged: `process.resourcesPath/app.asar.unpacked/node_modules/...`. If the unpacked copy is missing (unexpected),
+ *   fall back to resolving the asar copy so the app still starts.
  * - Dev/test: resolve through Node from this file (no electron needed).
  */
 /** True when running inside a packaged app (safe to call with a mocked electron). */

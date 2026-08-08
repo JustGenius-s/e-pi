@@ -37,7 +37,11 @@ export function ComposerCommandPopup({
               const selected = index === selectedIndex;
               return (
                 <button
-                  key={item.kind === "command" ? `${item.command.source}:${item.command.name}` : `arg:${item.command}:${item.option.value}`}
+                  key={
+                    item.kind === "command"
+                      ? `${item.command.source}:${item.command.name}`
+                      : `arg:${item.command}:${item.option.value}`
+                  }
                   type="button"
                   role="option"
                   aria-selected={selected}
@@ -51,13 +55,19 @@ export function ComposerCommandPopup({
                   {item.kind === "command" ? (
                     <>
                       <span className="composer-command-name">/{item.command.name}</span>
-                      {item.command.argumentHint ? <span className="composer-command-hint">{item.command.argumentHint}</span> : null}
-                      {item.command.description ? <span className="composer-command-desc">{item.command.description}</span> : null}
+                      {item.command.argumentHint ? (
+                        <span className="composer-command-hint">{item.command.argumentHint}</span>
+                      ) : null}
+                      {item.command.description ? (
+                        <span className="composer-command-desc">{item.command.description}</span>
+                      ) : null}
                     </>
                   ) : (
                     <>
                       <span className="composer-command-name composer-command-arg-name">{item.option.label}</span>
-                      {item.option.description ? <span className="composer-command-desc">{item.option.description}</span> : null}
+                      {item.option.description ? (
+                        <span className="composer-command-desc">{item.option.description}</span>
+                      ) : null}
                     </>
                   )}
                 </button>

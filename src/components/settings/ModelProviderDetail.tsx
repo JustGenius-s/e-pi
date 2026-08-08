@@ -2,7 +2,10 @@ import { Check, KeyRound, LoaderCircle, LogIn, LogOut, Pencil, Trash2 } from "lu
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 
+import { useModelVisibility } from "../../hooks/useModelVisibility";
+import { setModelHidden } from "../../lib/modelVisibility";
 import type { CustomProviderConfig, ModelAuthType, ModelLoginEvent, ModelProviderRecord } from "../../types/contracts";
 
 export interface ModelLoginFlow {
@@ -64,6 +67,9 @@ export function ModelProviderDetail({
   onEditCustom,
   onRemoveCustom,
 }: ModelProviderDetailProps) {
+  // Must run unconditionally (hooks rules) even though the provider pane is
+  // empty until a provider is selected.
+  const isModelHidden = useModelVisibility();
   if (!provider) return loading ? null : <div className="model-settings-empty">Select a provider</div>;
   return (
     <>
@@ -193,23 +199,38 @@ export function ModelProviderDetail({
           provider.models.map((model) => {
             const ref = `${model.provider}/${model.id}`;
             const selected = ref === defaultModelRef;
+            const hidden = isModelHidden(ref);
             return (
-              <button
+              <div
                 className="model-row"
                 data-selected={selected}
-                disabled={!model.available || Boolean(busyModel)}
+                data-hidden={hidden ? "true" : undefined}
+                data-unavailable={!model.available ? "true" : undefined}
                 key={ref}
-                onClick={() => onSetDefaultModel(model.provider, model.id)}
-                type="button"
               >
-                <span className="model-row-check">
-                  {busyModel === ref ? <LoaderCircle className="spin" /> : selected ? <Check /> : null}
-                </span>
-                <span className="model-row-name">{model.name}</span>
-                <span className="model-row-meta">
-                  {formatContextWindow(model.contextWindow)} context{model.reasoning ? " · reasoning" : ""}
-                </span>
-              </button>
+                <button
+                  className="model-row-main"
+                  disabled={!model.available || Boolean(busyModel)}
+                  onClick={() => onSetDefaultModel(model.provider, model.id)}
+                  type="button"
+                >
+                  <span className="model-row-check">
+                    {busyModel === ref ? <LoaderCircle className="spin" /> : selected ? <Check /> : null}
+                  </span>
+                  <span className="model-row-name">{model.name}</span>
+                  <span className="model-row-meta">
+                    {formatContextWindow(model.contextWindow)} context{model.reasoning ? " · reasoning" : ""}
+                  </span>
+                </button>
+                {/* Switch: on = shown in the picker, off = hidden. */}
+                <Switch
+                  className="model-row-toggle"
+                  checked={!hidden}
+                  onCheckedChange={(checked) => setModelHidden(ref, !checked)}
+                  aria-label={hidden ? `Show ${model.name} in model picker` : `Hide ${model.name} from model picker`}
+                  title={hidden ? "Show in model picker" : "Hide from model picker"}
+                />
+              </div>
             );
           })
         )}

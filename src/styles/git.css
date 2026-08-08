@@ -1087,7 +1087,9 @@
   font: inherit;
   font-size: var(--fs-medium);
   outline: none;
-  transition: border-color 120ms ease-out, background 120ms ease-out;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out;
 }
 
 .tool-file-search-input::placeholder {

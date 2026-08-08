@@ -3,12 +3,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import {
-  EDITOR_FONT_MAX,
-  EDITOR_FONT_MIN,
-  type EditorThemeChoice,
-  useEditorSettings,
-} from "../../lib/editorSettings";
+import { EDITOR_FONT_MAX, EDITOR_FONT_MIN, type EditorThemeChoice, useEditorSettings } from "../../lib/editorSettings";
 
 const THEME_OPTIONS: Array<{ value: EditorThemeChoice; label: string }> = [
   { value: "system", label: "System" },
@@ -83,8 +78,7 @@ export function EditorSettings() {
         </div>
         <div className="appearance-row">
           <span className="appearance-note">
-            Theme applies to the code area only; “System” follows the app theme. Changes apply instantly to open
-            files.
+            Theme applies to the code area only; “System” follows the app theme. Changes apply instantly to open files.
           </span>
         </div>
       </div>

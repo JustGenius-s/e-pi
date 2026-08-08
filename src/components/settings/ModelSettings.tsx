@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+import { markProviderDefaultHidden } from "../../lib/modelVisibility";
 import type {
   CustomProviderConfig,
   ModelAuthType,
@@ -127,6 +128,10 @@ export function ModelSettings({ active }: ModelSettingsProps) {
       .then((next) => {
         setState(next);
         setLogin(undefined);
+        // A freshly configured provider shows no models until the user
+        // turns them on (default-hidden); idempotent, never overrides an
+        // explicit choice.
+        markProviderDefaultHidden(target.id);
       })
       .catch((reason: unknown) => {
         const message = errorMessage(reason);
@@ -186,6 +191,9 @@ export function ModelSettings({ active }: ModelSettingsProps) {
       await window.ePi.models.customSave({ provider: cleanDraft });
       setCustomDraft(undefined);
       await loadState();
+      // Custom providers are key-configured too: models stay hidden until
+      // the user turns them on.
+      markProviderDefaultHidden(cleanDraft.id);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {

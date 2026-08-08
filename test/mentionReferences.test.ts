@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  composerReferenceKey,
   createCodeMentionReference,
   formatCodeMentionToken,
+  formatComposerReference,
+  formatFileMentionToken,
+  serializeComposerReferences,
   toRelativeWorkspacePath,
 } from "../src/lib/mentionReferences";
 
@@ -60,6 +64,43 @@ describe("mentionReferences", () => {
       expect(formatCodeMentionToken({ path: "/proj/a[b].ts", startLine: 1, endLine: 1 }, "/proj")).toBe(
         "[a\\[b\\].ts:1](<a[b].ts#L1>)",
       );
+    });
+  });
+
+  describe("formatFileMentionToken", () => {
+    it("formats a whole-file reference without a line range", () => {
+      expect(formatFileMentionToken("/proj/src/app.ts", "/proj")).toBe("[app.ts](src/app.ts)");
+    });
+
+    it("keeps absolute paths outside the cwd", () => {
+      expect(formatFileMentionToken("/other/proj/notes.md", "/proj")).toBe("[notes.md](/other/proj/notes.md)");
+    });
+
+    it("escapes markdown special characters", () => {
+      expect(formatFileMentionToken("/proj/a[b].md", "/proj")).toBe("[a\\[b\\].md](<a[b].md>)");
+    });
+  });
+
+  describe("composer references", () => {
+    it("keys a line range by path plus range, a whole file by path", () => {
+      expect(composerReferenceKey({ path: "src/app.ts", startLine: 10, endLine: 20 })).toBe("src/app.ts:10-20");
+      expect(composerReferenceKey({ path: "src/app.ts" })).toBe("src/app.ts");
+    });
+
+    it("formats line references as code mentions and whole files as file mentions", () => {
+      expect(formatComposerReference({ path: "src/app.ts", startLine: 10, endLine: 20 }, "/proj")).toBe(
+        "[app.ts:10-20](src/app.ts#L10-L20)",
+      );
+      expect(formatComposerReference({ path: "src/app.ts" }, "/proj")).toBe("[app.ts](src/app.ts)");
+    });
+
+    it("serializes multiple references space-separated", () => {
+      expect(
+        serializeComposerReferences(
+          [{ path: "src/app.ts", startLine: 10, endLine: 20 }, { path: "README.md" }],
+          "/proj",
+        ),
+      ).toBe("[app.ts:10-20](src/app.ts#L10-L20) [README.md](README.md)");
     });
   });
 });
