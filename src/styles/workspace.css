@@ -57,8 +57,8 @@
   left: 50%;
   /* Raised above the quick-command pill row (which floats over the
      composer's top edge, i.e. the terminal's bottom strip) so the two
-     never overlap. */
-  bottom: 56px;
+     never overlap — kept close enough to the bottom to feel attached. */
+  bottom: 40px;
   translate: -50% 0;
   z-index: 2;
   display: grid;
