@@ -465,9 +465,12 @@
   text-transform: uppercase;
 }
 
-/* Default-folder sessions, listed flat above the project groups. */
+/* Default-folder sessions, listed flat above the project groups. The top
+   border separates RECENT from the workspace groups above it. */
 .sidebar-recent {
-  padding-bottom: 4px;
+  margin-top: 4px;
+  padding: 6px 0 4px;
+  border-top: 1px solid var(--border);
 }
 
 .sidebar-recent-label {
