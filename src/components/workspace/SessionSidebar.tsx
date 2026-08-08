@@ -19,7 +19,7 @@ import {
   Star,
   Sun,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { toast } from "sonner";
 
 import {
@@ -80,9 +80,15 @@ interface SessionSidebarProps {
   /** Open the import dialog pre-filled with a folder group (non-multi-repo → multi-repo). */
   onPromoteProject: (cwd: string) => void;
   /** Remove a project group and move all its sessions to the Trash. */
-  onRemoveProject: (target: { project?: Project; cwd: string; sessions: SessionSummary[] }) => void;
+  onRemoveProject: (
+    target: { project?: Project; cwd: string; sessions: SessionSummary[] },
+    /** Invoked after the removal is confirmed and completed (e.g. to forget a folder group). */
+    onConfirmed?: () => void,
+  ) => void;
   onRename: (session: SessionSummary) => void;
   onRemove: (session: SessionSummary) => void;
+  /** Restart the session's pi process (e.g. to load packages installed while it ran). */
+  onReload: (session: SessionSummary) => void;
   onOpenFolder: (cwd: string) => void;
   onCopyText: (text: string) => void;
   onOpenPackages: () => void;
@@ -113,6 +119,28 @@ interface SidebarPins {
 }
 
 const PIN_STORAGE_KEY = "sidebar-pins-v1";
+/**
+ * Folders that had sessions at some point (implicit single-folder projects).
+ * Remembering them keeps the project visible after its last session is
+ * archived — otherwise archiving every chat would drop the folder from the
+ * sidebar entirely, with no persisted record to bring it back.
+ */
+const KNOWN_FOLDERS_STORAGE_KEY = "sidebar-known-folders-v1";
+
+function readKnownFolders(): ReadonlySet<string> {
+  try {
+    const raw = window.localStorage.getItem(KNOWN_FOLDERS_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) {
+        return new Set(parsed.filter((item): item is string => typeof item === "string"));
+      }
+    }
+  } catch {
+    // Storage unavailable — start with no remembered folders.
+  }
+  return new Set();
+}
 
 function readPins(): SidebarPins {
   try {
@@ -402,7 +430,7 @@ function CollapsedProjectFlyout({
   );
 }
 
-export function SessionSidebar({
+export const SessionSidebar = memo(function SessionSidebar({
   sessions,
   projects,
   activePath,
@@ -418,6 +446,7 @@ export function SessionSidebar({
   onRemoveProject,
   onRename,
   onRemove,
+  onReload,
   onOpenFolder,
   onCopyText,
   onOpenPackages,
@@ -430,6 +459,29 @@ export function SessionSidebar({
    * row's action bar stays visible even when the pointer leaves the row.
    */
   const [moreMenuPath, setMoreMenuPath] = useState<string | undefined>();
+  /**
+   * Pending single-click selection. A click on a session row is deferred by
+   * a short window so a double-click (rename) can cancel it — otherwise the
+   * two clicks preceding the double-click would both switch sessions.
+   */
+  const clickTimerRef = useRef<{ path: string; timer: number } | undefined>(undefined);
+  const handleRowClick = (session: SessionSummary) => {
+    if (clickTimerRef.current) window.clearTimeout(clickTimerRef.current.timer);
+    clickTimerRef.current = {
+      path: session.path,
+      timer: window.setTimeout(() => {
+        clickTimerRef.current = undefined;
+        onSelect(session);
+      }, 250),
+    };
+  };
+  const handleRowDoubleClick = (session: SessionSummary) => {
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current.timer);
+      clickTimerRef.current = undefined;
+    }
+    onRename(session);
+  };
   /** Click-controlled open state of the collapsed pinned-chats flyout. */
   const [pinnedFlyoutOpen, setPinnedFlyoutOpen] = useState(false);
   /**
@@ -449,6 +501,11 @@ export function SessionSidebar({
     toast.info(`Added to chat: ${sessionTitle(session)}`);
   };
 
+  /**
+   * Implicit folder groups that had sessions before; kept so archiving the
+   * last session of a project doesn't drop the project from the sidebar.
+   */
+  const [knownFolders, setKnownFolders] = useState<ReadonlySet<string>>(readKnownFolders);
   /**
    * Pinned sessions/projects, persisted in localStorage so the order
    * survives restarts. Pins only affect ordering, nothing else.
@@ -470,6 +527,25 @@ export function SessionSidebar({
       : [...pins.sessions, path];
     updatePins({ ...pins, sessions: nextSessions });
   };
+  /**
+   * Remove a project group. Implicit folders (no persisted project record)
+   * must be forgotten once the removal is confirmed, otherwise the empty
+   * group would come right back from the remembered-folders list.
+   */
+  const handleRemoveProject = (target: ProjectGroup) => {
+    onRemoveProject(target, () => {
+      if (target.project || !knownFolders.has(target.cwd)) return;
+      const next = new Set(knownFolders);
+      next.delete(target.cwd);
+      setKnownFolders(next);
+      try {
+        window.localStorage.setItem(KNOWN_FOLDERS_STORAGE_KEY, JSON.stringify([...next]));
+      } catch {
+        // Storage unavailable — the folder may reappear after a restart.
+      }
+    });
+  };
+
   const toggleProjectPin = (key: string) => {
     const nextProjects = pinnedProjects.has(key)
       ? pins.projects.filter((candidate) => candidate !== key)
@@ -514,6 +590,29 @@ export function SessionSidebar({
       }
       group.sessions.push(session);
     }
+    // Persisted multi-folder projects and folders remembered from earlier
+    // sessions stay in the sidebar even when every session under them has
+    // been archived — otherwise the project would vanish from the list and
+    // the user couldn't start a new session in it without re-importing it.
+    // Empty groups are appended after the recency-sorted session groups, so
+    // the first-load order is unchanged for projects that still have
+    // sessions.
+    for (const project of projects) {
+      if (byKey.has(project.id)) continue;
+      byKey.set(project.id, {
+        project,
+        key: project.id,
+        cwd: project.primaryRepo,
+        name: project.name,
+        primaryRepo: project.primaryRepo,
+        folders: project.folders,
+        sessions: [],
+      });
+    }
+    for (const folder of knownFolders) {
+      if (byKey.has(folder) || projectByCwd.has(folder)) continue;
+      byKey.set(folder, { key: folder, cwd: folder, sessions: [] });
+    }
     const knownOrder = groupOrderRef.current;
     if (knownOrder === null) {
       // First load: seed the stable order from the initial recency sort.
@@ -523,7 +622,27 @@ export function SessionSidebar({
     const newProjects = [...byKey.keys()].filter((key) => !knownOrder.includes(key));
     groupOrderRef.current = [...newProjects, ...knownOrder.filter((key) => byKey.has(key))];
     return groupOrderRef.current.map((key) => byKey.get(key)!);
-  }, [sessions, projectByCwd]);
+  }, [sessions, projects, projectByCwd, knownFolders]);
+
+  /** Remember implicit folder groups so archiving their last session doesn't drop them. */
+  useEffect(() => {
+    const additions: string[] = [];
+    for (const group of projectGroups) {
+      // Persisted projects have their own record; "Unknown folder" isn't a
+      // real directory and can't be re-entered, so neither needs remembering.
+      if (group.project || group.cwd === UNKNOWN_FOLDER || knownFolders.has(group.cwd)) continue;
+      additions.push(group.cwd);
+    }
+    if (additions.length === 0) return;
+    const next = new Set(knownFolders);
+    for (const folder of additions) next.add(folder);
+    setKnownFolders(next);
+    try {
+      window.localStorage.setItem(KNOWN_FOLDERS_STORAGE_KEY, JSON.stringify([...next]));
+    } catch {
+      // Storage unavailable — the folder just won't survive a restart.
+    }
+  }, [projectGroups, knownFolders]);
 
   // Pinned projects float above the stable group order. Pinned sessions move
   // out of their project groups entirely and render in a dedicated "Pinned"
@@ -635,7 +754,7 @@ export function SessionSidebar({
               </>
             ) : null}
             <ContextMenuSeparator />
-            <ContextMenuItem variant="destructive" onSelect={() => onRemoveProject(project)}>
+            <ContextMenuItem variant="destructive" onSelect={() => handleRemoveProject(project)}>
               Remove project
             </ContextMenuItem>
           </ContextMenuContent>
@@ -667,7 +786,7 @@ export function SessionSidebar({
               aria-label="Remove project"
               onClick={(event) => {
                 event.stopPropagation();
-                onRemoveProject(project);
+                handleRemoveProject(project);
               }}
             >
               <Archive size={11} />
@@ -800,7 +919,13 @@ export function SessionSidebar({
               isActive={active}
               tooltip={title}
               title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
-              onClick={() => onSelect(session)}
+              onClick={() => handleRowClick(session)}
+              // Double-click renames the chat; the deferred single-click
+              // timer is cancelled so the switch never happens.
+              onDoubleClick={(event) => {
+                event.preventDefault();
+                handleRowDoubleClick(session);
+              }}
             >
               <SessionItemContent
                 session={session}
@@ -815,6 +940,7 @@ export function SessionSidebar({
               {pinned ? "Unpin chat" : "Pin chat"}
             </ContextMenuItem>
             <ContextMenuItem onSelect={() => onRename(session)}>Rename chat</ContextMenuItem>
+            <ContextMenuItem onSelect={() => onReload(session)}>Reload session</ContextMenuItem>
             <ContextMenuSeparator />
             {platform === "darwin" && (
               <ContextMenuItem onSelect={() => session.cwd && onOpenFolder(session.cwd)}>
@@ -852,6 +978,8 @@ export function SessionSidebar({
             </Tooltip>
             <DropdownMenuContent side="right" align="start" sideOffset={6} className="min-w-[10rem]">
               <DropdownMenuItem onSelect={() => onRename(session)}>Rename chat</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onReload(session)}>Reload session</DropdownMenuItem>
+              <DropdownMenuSeparator />
               {platform === "darwin" && (
                 <DropdownMenuItem onSelect={() => session.cwd && onOpenFolder(session.cwd)}>
                   Open in Finder
@@ -1057,7 +1185,7 @@ export function SessionSidebar({
                   </SidebarMenuItem>
                 ))}
               </SidebarMenu>
-            ) : sessions.length === 0 ? (
+            ) : projectGroups.length === 0 ? (
               <div className="sidebar-empty">
                 <span>No sessions yet</span>
                 <span className="sidebar-empty-hint">New sessions start in Home.</span>
@@ -1093,4 +1221,4 @@ export function SessionSidebar({
       <SidebarRail />
     </Sidebar>
   );
-}
+});
