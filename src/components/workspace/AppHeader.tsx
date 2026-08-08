@@ -23,6 +23,9 @@ export const AppHeader = memo(function AppHeader({ activeSession, panelOpen, onT
           <img className="brand-mark" src="./e-pi-mark.svg" alt="" aria-hidden="true" />
           <span className="brand-name">E-Pi</span>
         </div>
+        <div className="brand-sidebar-toggle">
+          <SidebarTrigger />
+        </div>
       </div>
       <div className="workspace-title">
         <h2>{activeSession ? sessionTitle(activeSession) : "Pi workspace"}</h2>
@@ -36,9 +39,6 @@ export const AppHeader = memo(function AppHeader({ activeSession, panelOpen, onT
           >
             {panelOpen ? <PanelRightOpen size={13} /> : <PanelRightClose size={13} />}
           </IconButton>
-        </div>
-        <div className="topbar-sidebar-toggle">
-          <SidebarTrigger />
         </div>
       </div>
     </header>

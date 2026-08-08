@@ -97,6 +97,27 @@ body[data-fullscreen][data-top-hover] .app-topbar .brand-lockup {
   border-right: 1px solid var(--sidebar-border);
 }
 
+/* Sidebar collapse trigger: far right of the sidebar header row (the brand
+   zone is the sidebar column's header). margin-left:auto pins it to the
+   right edge of the sidebar width, independent of the traffic-light offset.
+   no-drag lives on the wrapper (Electron's app-region handling is
+   unreliable on native <button> elements). */
+.brand-sidebar-toggle {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.brand-sidebar-toggle .sidebar-trigger {
+  color: var(--muted-foreground);
+  border-radius: 7px;
+}
+
+.brand-sidebar-toggle .sidebar-trigger:hover {
+  color: var(--foreground);
+}
+
 /* Collapsed sidebar: the whole top row switches to the workspace
    background. The brand stays at its fixed offset (the ☰ trigger must
    remain right of the macOS traffic lights), and the divider line runs the
@@ -135,24 +156,6 @@ body[data-fullscreen][data-top-hover] .app-topbar .brand-lockup {
   min-width: 0;
   flex: 0 0 auto;
   border-bottom: 1px solid var(--border);
-}
-
-/* Sidebar collapse trigger: far right of the topbar, next to the tool-panel
-   toggle. no-drag lives on the wrapper (Electron's app-region handling is
-   unreliable on native <button> elements — same pattern as the panel toggle). */
-.topbar-sidebar-toggle {
-  display: flex;
-  align-items: center;
-  -webkit-app-region: no-drag;
-}
-
-.topbar-sidebar-toggle .sidebar-trigger {
-  color: var(--muted-foreground);
-  border-radius: 7px;
-}
-
-.topbar-sidebar-toggle .sidebar-trigger:hover {
-  color: var(--foreground);
 }
 
 /* Session title sits on the left, directly after the brand zone, and grows
