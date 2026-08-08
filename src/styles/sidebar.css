@@ -486,6 +486,13 @@
   gap: 1px;
 }
 
+/* Pinned block sits outside .sidebar-group (which adds 8px side padding),
+   so project rows rendered there would hug the edge — restore the offset so
+   pinned and regular project rows align. */
+.pinned-sessions .project-header {
+  margin-left: 8px;
+}
+
 .project-pin {
   display: grid;
   width: 14px;
