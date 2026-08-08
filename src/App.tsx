@@ -23,6 +23,7 @@ import {
   useWorkspaceOverlays,
 } from "./hooks/useWorkspaceOverlays";
 import { isWorkspacePreviewPath } from "./lib/workspacePreviewKind";
+import { useUnseenRunCompletions } from "./hooks/useUnseenRunCompletions";
 import type { Project, SessionSummary } from "./types/contracts";
 
 export function App() {
@@ -39,6 +40,12 @@ export function App() {
     refreshAppInfo,
     activate,
   } = useSessionRuntime();
+  /** Background runs that finished unseen: sidebar dots + the dock badge. */
+  const unseenRuns = useUnseenRunCompletions(runtimeStates, activePath);
+  // Mirror the unseen dots onto the macOS dock badge (1 dot → “1”, …).
+  useEffect(() => {
+    void window.ePi.app.setDockBadge(unseenRuns.size);
+  }, [unseenRuns]);
   const [packageOpen, setPackageOpen] = useState(false);
   const [skillOpen, setSkillOpen] = useState(false);
   const [renameTarget, setRenameTarget] = useState<SessionSummary>();

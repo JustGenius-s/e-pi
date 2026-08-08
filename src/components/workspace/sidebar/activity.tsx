@@ -22,6 +22,8 @@ function braillePattern(character: string): boolean[] {
 }
 
 const ALL_DOTS_ON = Array.from({ length: 9 }, () => true);
+/** 3x3 “?” — the waiting-for-human glyph (permission / ask-user). */
+const QUESTION_PATTERN = [false, true, false, true, false, true, false, false, true];
 /** Fixed grid positions so keys are stable and independent of array indices. */
 const DOT_POSITIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8];
 
@@ -56,6 +58,8 @@ interface ActivityIndicatorProps {
 
 /**
  * Per-session status glyph shown before the session title:
+ * - waiting (process running, blocked on a human: permission or ask-user):
+ * amber “?” — the turn is NOT finished, the agent is paused on input
  * - working (process running, agent busy): blue braille spinner
  * - done (process running, agent settled): green dot-matrix square
  * - error: red dot-matrix square
@@ -67,10 +71,22 @@ interface ActivityIndicatorProps {
  * 1fr track, where a long title squeezes it to zero width.
  */
 export function ActivityIndicator({ runtime }: ActivityIndicatorProps) {
-  const working = runtime?.status === "running" && runtime.activity === "busy";
+  const waiting = runtime?.status === "running" && runtime.waitingUser !== undefined && runtime.waitingUser !== null;
+  const working = !waiting && runtime?.status === "running" && runtime.activity === "busy";
   const done = runtime?.status === "running" && runtime.activity === "idle";
   const failed = runtime?.status === "error";
 
+  if (waiting) {
+    return (
+      <span
+        className="session-activity waiting"
+        title={`Waiting for your input${runtime.waitingUser?.detail ? `: ${runtime.waitingUser.detail}` : ""}`}
+        aria-label="Waiting for your input"
+      >
+        <DotMatrix pattern={QUESTION_PATTERN} />
+      </span>
+    );
+  }
   if (working) {
     return <ActivitySpinner />;
   }

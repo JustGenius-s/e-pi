@@ -31,6 +31,8 @@ interface SessionRowProps extends SessionRowCallbacks {
   platform?: NodeJS.Platform;
   /** Extra class for the label span (sidebar vs. flyout ellipsis styling). */
   labelClassName: string;
+  /** A background run finished while this session wasn't focused: show the nav dot. */
+  completedRun?: boolean;
   /** Rendered as the flyout <li> wrapper instead of SidebarMenuItem. */
   flyout?: boolean;
 }
@@ -48,6 +50,7 @@ export function SessionRow({
   pinned,
   platform,
   labelClassName,
+  completedRun,
   flyout,
   onSelect,
   onRename,
@@ -64,6 +67,13 @@ export function SessionRow({
    */
   const [moreOpen, setMoreOpen] = useState(false);
   const title = sessionTitle(session);
+  // The run-finished dot replaces the relative time so the cue can't be
+  // missed; selecting the session consumes it (useUnseenRunCompletions).
+  const trailing = completedRun ? (
+    <span className="session-run-dot" title="Run finished — click to view" aria-label="Run finished — click to view" />
+  ) : (
+    <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+  );
   const body = (
     <>
       <ContextMenu>
@@ -79,7 +89,7 @@ export function SessionRow({
             >
               <ActivityIndicator runtime={runtime} />
               <span className={labelClassName}>{title}</span>
-              <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+              {trailing}
             </button>
           ) : (
             <SidebarMenuButton
@@ -91,7 +101,7 @@ export function SessionRow({
             >
               <ActivityIndicator runtime={runtime} />
               <span className={labelClassName}>{title}</span>
-              <time dateTime={session.modifiedAt}>{relativeTime(session.modifiedAt)}</time>
+              {trailing}
             </SidebarMenuButton>
           )}
         </ContextMenuTrigger>

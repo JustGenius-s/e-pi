@@ -227,6 +227,13 @@ function registerHandlers(): void {
     debugLog("[renderer]", message);
   });
 
+  // Dock badge (macOS): mirrors the sidebar's unseen run-completion dots.
+  // An empty string clears the badge; non-macOS platforms have no dock.
+  ipcMain.handle("dock:set-badge", (_event, count: number) => {
+    const badge = typeof count === "number" && count > 0 ? String(Math.floor(count)) : "";
+    if (app.dock) app.dock.setBadge(badge);
+  });
+
   ipcMain.handle("app:paste-image", async () => {
     // 1) The clipboard holds raw image pixels (screenshots, copying an image
     //    in a browser): persist them to a temp PNG.

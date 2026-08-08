@@ -15,6 +15,8 @@ interface ProjectFlyoutProps extends SessionRowCallbacks {
   activeSessionPath?: string;
   runtimeStates?: Record<string, PiRuntimeState>;
   pinnedSessions: Set<string>;
+  /** Sessions whose background run finished; shown with a nav dot. */
+  unseenRuns?: ReadonlySet<string>;
   platform?: NodeJS.Platform;
   onExpand: () => void;
   /** Create a new session in this project. */
@@ -36,6 +38,7 @@ export function ProjectFlyout({
   activeSessionPath,
   runtimeStates,
   pinnedSessions,
+  unseenRuns,
   platform,
   onExpand,
   onCreate,
@@ -97,6 +100,7 @@ export function ProjectFlyout({
                 active={session.path === activeSessionPath}
                 runtime={runtimeStates?.[session.path]}
                 pinned={pinnedSessions.has(session.path)}
+                completedRun={unseenRuns?.has(session.path)}
                 platform={platform}
                 labelClassName="project-flyout-session-label"
                 {...sessionCallbacks}

@@ -23,6 +23,7 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 
+import { useUnseenRunCompletions } from "../../hooks/useUnseenRunCompletions";
 import { emitAttachFiles } from "../../lib/attachmentsBus";
 import { pathBaseName, sessionTitle } from "../../lib/format";
 import { useTheme } from "../../lib/theme";
@@ -102,6 +103,8 @@ export function SessionSidebar({
    */
   const [expandedSessionProjects, setExpandedSessionProjects] = useState<ReadonlySet<string>>(new Set());
   const { state, setOpen } = useSidebar();
+  /** Sessions whose background run finished while not focused; blue nav dot. */
+  const unseenRuns = useUnseenRunCompletions(runtimeStates ?? {}, activePath);
   const { theme, toggleTheme } = useTheme();
 
   /** Reference a session by attaching its JSONL file to the composer. */
@@ -267,6 +270,7 @@ export function SessionSidebar({
       active={session.path === activePath}
       runtime={runtimeStates?.[session.path]}
       pinned={pinnedSessions.has(session.path)}
+      completedRun={unseenRuns.has(session.path)}
       platform={platform}
       labelClassName="session-label"
       {...sessionRowCallbacks}
@@ -278,6 +282,7 @@ export function SessionSidebar({
     activeSessionPath: activePath,
     runtimeStates,
     pinnedSessions,
+    unseenRuns,
     platform,
     onCreate,
     toggleProjectPin,
@@ -444,6 +449,7 @@ export function SessionSidebar({
                                 active={session.path === activePath}
                                 runtime={runtimeStates?.[session.path]}
                                 pinned={pinnedSessions.has(session.path)}
+                                completedRun={unseenRuns.has(session.path)}
                                 platform={platform}
                                 labelClassName="project-flyout-session-label"
                                 {...sessionRowCallbacks}

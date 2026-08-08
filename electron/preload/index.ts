@@ -94,6 +94,8 @@ const api: EPiApi = {
     copyText: (text: string) => ipcRenderer.invoke("app:copy-text", text) as Promise<void>,
     setTheme: (theme: "light" | "dark") => ipcRenderer.invoke("app:set-theme", theme) as Promise<void>,
     log: (message: string) => ipcRenderer.send("app:log", message),
+    /** Dock badge (macOS): number of unseen run-completion dots; 0 clears it. */
+    setDockBadge: (count: number) => ipcRenderer.invoke("dock:set-badge", count) as Promise<void>,
   },
   sessions: {
     list: () => ipcRenderer.invoke("sessions:list") as Promise<SessionSummary[]>,
