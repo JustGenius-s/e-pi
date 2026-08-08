@@ -472,6 +472,16 @@ export function App() {
     overlays.requestPreviewClose();
   }, [activeCwd]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Native fullscreen (macOS): the menu bar hides and the traffic lights
+  // move up into the menu-bar row. The topbar content must follow, so mirror
+  // the state on <body> and let the CSS shift it (see app-shell.css).
+  useEffect(() => {
+    return window.ePi.app.onFullscreenChange((isFullscreen) => {
+      if (isFullscreen) document.body.dataset.fullscreen = "";
+      else delete document.body.dataset.fullscreen;
+    });
+  }, []);
+
   useGlobalShortcuts({
     defaultCwd: appInfo?.defaultCwd,
     packageOpen,

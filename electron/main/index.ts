@@ -532,6 +532,18 @@ function createWindow(): void {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
 
+  // Native fullscreen hides the macOS menu bar and moves the traffic lights
+  // up into the menu-bar row. The renderer shifts its topbar content to stay
+  // aligned; it needs the state, including the state macOS restores on
+  // launch (a window that was fullscreen when the app quit reopens
+  // fullscreen), so push the current state once the page is loaded and on
+  // every transition.
+  mainWindow.on("enter-full-screen", () => sendToRenderer("window:fullscreen-changed", true));
+  mainWindow.on("leave-full-screen", () => sendToRenderer("window:fullscreen-changed", false));
+  mainWindow.webContents.on("did-finish-load", () => {
+    sendToRenderer("window:fullscreen-changed", mainWindow?.isFullScreen() ?? false);
+  });
+
   mainWindow.on("closed", () => {
     mainWindow = undefined;
   });

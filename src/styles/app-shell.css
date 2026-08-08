@@ -59,6 +59,18 @@
   -webkit-app-region: no-drag;
 }
 
+/* Native fullscreen (macOS) hides the menu bar; the traffic lights move up
+   from the hiddenInset position (~y=20 center) into the menu-bar row
+   (~y=12 center). Pin the topbar content to the top of its 40px row so the
+   brand/title/actions stay aligned with the raised buttons. The menu bar
+   itself only reappears while the cursor is at the screen edge. */
+body[data-fullscreen] .app-topbar .brand-lockup,
+body[data-fullscreen] .app-topbar .workspace-title,
+body[data-fullscreen] .app-topbar .topbar-actions {
+  align-items: flex-start;
+  padding-top: 2px;
+}
+
 /* Brand zone: overlays the left sidebar column, so it shares the sidebar's
    width, background and right border (the vertical line that separates the
    brand from the session title). Left padding clears the macOS traffic
