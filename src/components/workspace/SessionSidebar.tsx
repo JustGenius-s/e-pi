@@ -506,6 +506,7 @@ export const SessionSidebar = memo(function SessionSidebar({
               </div>
             ) : (
               <>
+                {regularProjects.map((project) => renderProjectRow(project))}
                 {recentSessions.length > 0 ? (
                   <div className="sidebar-recent">
                     <div className="sidebar-recent-label">Recent</div>
@@ -514,7 +515,6 @@ export const SessionSidebar = memo(function SessionSidebar({
                     </SidebarMenu>
                   </div>
                 ) : null}
-                {regularProjects.map((project) => renderProjectRow(project))}
               </>
             )}
           </SidebarGroupContent>
