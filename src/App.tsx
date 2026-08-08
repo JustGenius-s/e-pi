@@ -472,37 +472,14 @@ export function App() {
     overlays.requestPreviewClose();
   }, [activeCwd]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Native fullscreen (macOS): the menu bar AND the traffic lights hide —
-  // they only slide back in while the pointer is at the screen edge. Mirror
-  // the state on <body> so the CSS can tuck the topbar content to the left
-  // edge (the 84px reserved for the window controls is dead space in
-  // fullscreen), and track the pointer near the top edge so the offset is
-  // restored for the brief moment the menu bar covers the controls.
+  // Native fullscreen (macOS): the menu bar hides and the traffic lights
+  // move up into the menu-bar row. Mirror the state on <body> so the CSS can
+  // adjust the brand row (see app-shell.css).
   useEffect(() => {
-    const TOP_HOVER_PX = 32;
-    let hoveringTop = false;
-    const onMove = (event: MouseEvent): void => {
-      const next = event.clientY <= TOP_HOVER_PX;
-      if (next === hoveringTop) return;
-      hoveringTop = next;
-      if (next) document.body.dataset.topHover = "";
-      else delete document.body.dataset.topHover;
-    };
-    const offFullscreen = window.ePi.app.onFullscreenChange((isFullscreen) => {
-      if (isFullscreen) {
-        document.body.dataset.fullscreen = "";
-        window.addEventListener("mousemove", onMove, { passive: true });
-      } else {
-        delete document.body.dataset.fullscreen;
-        delete document.body.dataset.topHover;
-        hoveringTop = false;
-        window.removeEventListener("mousemove", onMove);
-      }
+    return window.ePi.app.onFullscreenChange((isFullscreen) => {
+      if (isFullscreen) document.body.dataset.fullscreen = "";
+      else delete document.body.dataset.fullscreen;
     });
-    return () => {
-      offFullscreen();
-      window.removeEventListener("mousemove", onMove);
-    };
   }, []);
 
   useGlobalShortcuts({
