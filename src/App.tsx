@@ -163,14 +163,6 @@ export function App() {
     [appInfo, refreshSessions, activate, setActivePath, setError, setJustCreatedPath],
   );
 
-  /** New project: ask the user for a folder, then start a session inside it. */
-  const createProjectSession = useCallback(async (): Promise<void> => {
-    setError(undefined);
-    const cwd = await window.ePi.app.chooseDirectory(appInfo?.defaultCwd);
-    if (!cwd) return;
-    await createSession(cwd);
-  }, [appInfo, createSession, setError]);
-
   /** "Import multi-repo project": persist the project, then start a session in its primary repo. */
   const handleImportProject = useCallback(
     async (request: { name?: string; folders: string[]; primaryRepo: string }): Promise<void> => {
@@ -625,7 +617,6 @@ export function App() {
           platform={appInfo?.platform}
           onSelect={selectSession}
           onCreate={createSession}
-          onCreateProject={createProjectSession}
           onImportProject={openImportProject}
           onEditProject={openEditProject}
           onPromoteProject={openPromoteProject}

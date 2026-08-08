@@ -2,7 +2,6 @@ import { BadgePlus, Moon, Package, Pin, Plus, Settings2, Sparkles, Sun } from "l
 import { memo, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
   Sidebar,
@@ -24,7 +23,6 @@ import { emitAttachFiles } from "../../lib/attachmentsBus";
 import { pathBaseName, sessionTitle } from "../../lib/format";
 import { useTheme } from "../../lib/theme";
 import type { PiRuntimeState, Project, SessionSummary } from "../../types/contracts";
-import { NewMenu } from "./sidebar/NewMenu";
 import { ProjectFlyout } from "./sidebar/ProjectFlyout";
 import { ProjectRow, ShowMore } from "./sidebar/ProjectRow";
 import { SessionRow } from "./sidebar/SessionRow";
@@ -48,8 +46,6 @@ interface SessionSidebarProps {
   platform?: NodeJS.Platform;
   onSelect: (session: SessionSummary) => void;
   onCreate: (cwd?: string) => void;
-  /** Pick a folder, then create a session inside it (new project). */
-  onCreateProject: () => void;
   /** Open the multi-repo import dialog. */
   onImportProject: () => void;
   /** Open the import dialog in edit mode for an existing project. */
@@ -78,7 +74,6 @@ export const SessionSidebar = memo(function SessionSidebar({
   platform,
   onSelect,
   onCreate,
-  onCreateProject,
   onImportProject,
   onEditProject,
   onPromoteProject,
@@ -387,20 +382,14 @@ export const SessionSidebar = memo(function SessionSidebar({
         <SidebarGroup className="sidebar-session-group">
           {state === "collapsed" ? null : (
             <SidebarGroupLabel>
-              Projects
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <SidebarGroupAction aria-label="New session or project" title="New session or project">
-                    <Plus size={12} />
-                  </SidebarGroupAction>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="right" align="start" sideOffset={8} className="min-w-[11rem]">
-                  <NewMenu
-                    onNewProject={() => onCreateProject()}
-                    onImportProject={onImportProject}
-                  />
-                </DropdownMenuContent>
-              </DropdownMenu>
+              Workspaces
+              <SidebarGroupAction
+                aria-label="Add workspace"
+                title="Add workspace"
+                onClick={onImportProject}
+              >
+                <Plus size={12} />
+              </SidebarGroupAction>
             </SidebarGroupLabel>
           )}
 
