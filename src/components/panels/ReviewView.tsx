@@ -190,6 +190,20 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
   const allExpanded =
     Boolean(review.status?.files.length) && review.status!.files.every((file) => review.expanded.has(file.workPath));
 
+  // Total +/- line changes across the working tree (same numstat the file
+  // rows show individually), displayed at the right of the branch bar.
+  const totalStats = useMemo(() => {
+    const numstat = review.status?.numstat;
+    if (!numstat) return undefined;
+    let additions = 0;
+    let deletions = 0;
+    for (const stats of Object.values(numstat)) {
+      additions += stats.additions;
+      deletions += stats.deletions;
+    }
+    return additions > 0 || deletions > 0 ? { additions, deletions } : undefined;
+  }, [review.status?.numstat]);
+
   const toggleAll = () => {
     if (!review.status) return;
     const next = new Set<string>();
@@ -289,7 +303,22 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
                     ) : null}
                   </span>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" align="start">{review.status.upstream}</TooltipContent>
+                <TooltipContent side="bottom" align="start">
+                  {review.status.upstream}
+                </TooltipContent>
+              </Tooltip>
+            ) : null}
+            {totalStats ? (
+              <Tooltip delayDuration={1200}>
+                <TooltipTrigger asChild>
+                  <span className="git-review-total-stats">
+                    <em className="git-file-stats-add">+{totalStats.additions}</em>
+                    <em className="git-file-stats-del">−{totalStats.deletions}</em>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="bottom" align="start">
+                  {totalStats.additions} additions, {totalStats.deletions} deletions
+                </TooltipContent>
               </Tooltip>
             ) : null}
           </div>
