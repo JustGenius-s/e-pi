@@ -226,6 +226,8 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       });
     };
     let pendingWrites = 0;
+    /** Bytes still queued for xterm; >4KB means a full frame is draining. */
+    let pendingWriteBytes = 0;
     /**
      * Checkpoint-recovery height shimmy: the replay buffer can be invalidated
      * by overflow or LRU eviction, and pi's TUI only re-emits a full frame
@@ -254,6 +256,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       terminal,
       fit,
       hasPendingWrites: () => pendingWrites > 0,
+      pendingWriteBytes: () => pendingWriteBytes,
       queueWriteBarrier: (onDrained) => {
         terminal.write("", () => {
           if (disposed) return;
@@ -293,8 +296,10 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     const eraseScrollbackGuard = guardEraseScrollback(terminal);
     const flushWrite = (data: string, onWritten?: () => void) => {
       pendingWrites += 1;
+      pendingWriteBytes += data.length;
       terminal.write(data, () => {
         pendingWrites -= 1;
+        pendingWriteBytes -= data.length;
         onWritten?.();
         settleInitialWrites();
       });

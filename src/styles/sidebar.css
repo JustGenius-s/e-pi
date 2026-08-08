@@ -714,10 +714,13 @@
    the target width instead so the terminal refits exactly once. Rail drags
    already force transition:none above, so this only changes the toggle
    animation, not drag behavior. */
-.sidebar-root[data-side="right"] {
-  transition: none;
-}
-
+/* Right tool panel opens/closes by resizing the grid column, which resizes
+   the terminal next door. The width transition was dropped when every
+   animation frame caused a full xterm refit + PTY SIGWINCH (flicker,
+   scrollbar jump); the scheduler now reflows xterm locally per frame and
+   throttles PTY resizes, so the 180ms animation is smooth again — same
+   behavior as the left sidebar. Rail drags still force transition:none
+   below, so dragging tracks the pointer 1:1. */
 .sidebar-root[data-side="right"] .sidebar-container {
   border-right: none;
   border-left: 1px solid var(--sidebar-border);
