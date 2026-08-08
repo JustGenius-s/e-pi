@@ -7,11 +7,16 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
-import { appendTerminalReplay } from "../../lib/terminalReplayBuffer";
-import type { TerminalReplayBuffer } from "../../lib/terminalReplayBuffer";
+import {
+  appendTerminalBuffer,
+  clearTerminalBuffer,
+  getReplayContent,
+  isAwaitingCheckpoint,
+} from "../../lib/terminalReplayStore";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
-import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
+import { createResizeScheduler } from "../../lib/xtermResizeScheduler";
 import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
+import { createViewportWatchdog } from "../../lib/xtermViewportWatchdog";
 
 interface TerminalPanelProps {
   sessionKey: string;
@@ -56,24 +61,11 @@ function parseWorkspaceFileLink(uri: string): { path: string; line?: number } | 
   return { path, line };
 }
 
-/**
- * Scrollback per session, kept across terminal unmount/remount (switching to
- * another session destroys the xterm instance). A hidden session keeps
- * accumulating output in the background via the app-lifetime feeder below, so
- * switching back replays the latest self-contained TUI frame plus subsequent
- * output. Obsolete full-redraw frames are compacted instead of replayed.
- */
-const buffers = new Map<string, TerminalReplayBuffer>();
-
-export function clearTerminalBuffer(sessionKey: string): void {
-  buffers.delete(sessionKey);
-}
-
-function appendTerminalBuffer(sessionKey: string, data: string): void {
-  buffers.set(sessionKey, appendTerminalReplay(buffers.get(sessionKey), data));
-}
-
 let feederStarted = false;
+
+// Backward-compatible entry point for consumers that historically imported
+// clearTerminalBuffer from this component; the storage lives in the store.
+export { clearTerminalBuffer };
 
 /**
  * Smoothly scroll the terminal to the bottom. xterm has no built-in animated
@@ -113,8 +105,6 @@ function ensureBufferFeeder(): void {
 export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileLink }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const fitTimerRef = useRef<number | undefined>(undefined);
-  const fittedOnceRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
   const isDarkRef = useTerminalTheme(hostRef, terminalRef);
   // Keep the latest callback without re-running the mount effect.
@@ -176,151 +166,123 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       setAtBottom(terminal.buffer.active.viewportY >= terminal.buffer.active.baseY);
     });
 
+    // Self-heal: if xterm's internal scroll state ever diverges from the
+    // buffer viewport (a swallowed scroll event, a clamp the app never
+    // observed), the `atBottom` state above never updates again and the
+    // viewport appears stuck. The watchdog re-derives it from the buffer.
+    const viewportWatchdog = createViewportWatchdog(terminal, setAtBottom);
+
+    /** Re-assert the viewport from the buffer after xterm syncs replay/reset output. */
+    const syncViewportAfterWrite = () => {
+      if (disposed) return;
+      viewportWatchdog.check();
+    };
+
     /**
-     * Refit the terminal to its container. With the WebGL renderer (glyph
-     * atlas) a refit only repositions quads, so following the panel width
-     * live — even per frame while dragging — is flicker-free and the grid
-     * never shows a stale layout. The canvas fallback repaints the whole
-     * canvas per resize, so it debounces to a single refit once the width
-     * settles.
+     * Refit the terminal to its container. Panel collapse/expand animates the
+     * width over ~180ms; per-frame settle detection refits within a couple of
+     * frames of the size going stable, and the current screen is repainted at
+     * the new container width while the transition is still running — the
+     * user never sees a frozen old-layout frame.
      */
     let disposed = false;
     let painted = false;
     /** Pending second half of the checkpoint-recovery height shimmy. */
     let shimmyTimer: number | undefined = undefined;
+    /** Initial writes (replay + queued live chunks) all committed and rendered. */
+    let initialWritesSettled = false;
+    /**
+     * An empty replay means the picture depends on pi's NEXT frame: either
+     * its very first render (fresh session) or a full redraw forced by the
+     * checkpoint shimmy (buffer was invalidated by overflow). pi's TUI only
+     * emits a full frame on first render/resize — its steady-state output is
+     * differential (changed lines only), which would paint a partial screen
+     * (input box, no history) on a blank terminal. So the loading overlay
+     * must NOT lift until that full frame actually arrived.
+     */
+    const replay = getReplayContent(sessionKey);
+    let waitingForFirstFrame = replay.length === 0;
+    let waitingForCheckpoint = replay.length === 0 && isAwaitingCheckpoint(sessionKey);
     const markPainted = (): void => {
       if (painted || disposed) return;
       painted = true;
       onFirstPaintRef.current?.(sessionKey);
     };
-    let restoreGeneration = 0;
-    let pendingWrites = 0;
-    let deferredRefit = false;
-    let resizeBarrierQueued = false;
-    let runResizeBarrier: (() => void) | undefined;
-    // Bump the generation so any in-flight viewport restore from a previous
-    // refit aborts at its next frame check. cancelAnimationFrame cannot stop a
-    // callback that is already executing (it would reschedule itself), so the
-    // generation check inside the restore loop is the real guard.
-    const cancelPendingRestore = () => {
-      restoreGeneration += 1;
+    /**
+     * The loading overlay lifts once the initial output has actually been
+     * painted. xterm.write is async (parse + render happen on later frames),
+     * so firing on "chunk arrived" reveals a half-drawn terminal; wait until
+     * every initial write committed and two render frames passed.
+     */
+    const settleInitialWrites = (): void => {
+      if (disposed || painted || initialWritesSettled) return;
+      if (waitingForFirstFrame || waitingForCheckpoint) return;
+      if (pendingWrites > 0) return;
+      initialWritesSettled = true;
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          markPainted();
+        });
+      });
     };
-    const fitTerminal = () => {
-      const host = hostRef.current;
-      if (!host) return;
-      try {
-        // Skip the refit when the character grid did not change (e.g.
-        // sub-pixel width wobble) — resizing repaints the renderer.
-        const dims = fit.proposeDimensions();
-        if (!dims) return;
-        if (dims.cols === terminal.cols && dims.rows === terminal.rows) return;
-      } catch {
-        // The terminal can be measured before its parent is visible.
-        return;
-      }
-      const refit = () => {
-        // xterm parses writes asynchronously. Resizing while a TUI frame is
-        // still queued makes the producer and emulator disagree about cursor
-        // coordinates; the next spinner update can then scroll instead of
-        // replacing its row. Wait until the current write batch is committed.
-        if (pendingWrites > 0) {
-          deferredRefit = true;
-          if (!resizeBarrierQueued) {
-            resizeBarrierQueued = true;
-            // An empty write is an explicit FIFO barrier behind all terminal
-            // data queued so far. This prevents a sustained stream from
-            // starving resize forever while preserving parser ordering.
-            terminal.write("", () => {
-              resizeBarrierQueued = false;
-              if (disposed || !deferredRefit) return;
-              runResizeBarrier?.();
-            });
-          }
-          return;
-        }
-        deferredRefit = false;
-
-        // A previous refit may still have a delayed restoration queued. If it
-        // runs after this refit, its old line number can move the viewport to
-        // the wrong place (including the top) after a second reflow.
-        cancelPendingRestore();
-
-        // Capture the viewport by line, not pixel: reflow re-wraps the whole
-        // scrollback, so a pixel offset no longer maps to the same content
-        // (and the browser/xterm may clamp it to the new scroll height, which
-        // is the "jumps back to top" bug). Line numbers survive reflow.
-        const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
-        const topLine = terminal.buffer.active.viewportY;
-        try {
-          fit.fit();
-        } catch {
-          return;
-        }
-        // refit() is coalesced (see fitTerminal below), so this is at most
-        // once per resize pause — one PTY resize, one TUI re-layout.
-        window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
+    let pendingWrites = 0;
+    /**
+     * Checkpoint-recovery height shimmy: the replay buffer can be invalidated
+     * by overflow or LRU eviction, and pi's TUI only re-emits a full frame
+     * when the pty size changes. Nudge the height and restore it so the live
+     * frame repaints the current screen and plants a fresh checkpoint. The
+     * two resizes must straddle a TUI render tick (MIN_RENDER_INTERVAL_MS is
+     * 16ms) or the intermediate size is never observed and the redraw is
+     * skipped.
+     */
+    const triggerCheckpointShimmy = (cols: number, rows: number) => {
+      window.ePi.runtime.resize(sessionKey, { cols, rows: rows + 1 });
+      window.clearTimeout(shimmyTimer);
+      shimmyTimer = window.setTimeout(() => {
+        if (disposed) return;
+        window.ePi.runtime.resize(sessionKey, { cols, rows });
+      }, 60);
+    };
+    /**
+     * Refit the terminal to its container. Panel collapse/expand animates the
+     * width over ~180ms; per-frame settle detection refits within a couple of
+     * frames of the size going stable, and the current screen is repainted at
+     * the new container width while the transition is still running — the
+     * user never sees a frozen old-layout frame. See xtermResizeScheduler.
+     */
+    const resizeScheduler = createResizeScheduler({
+      terminal,
+      fit,
+      hasPendingWrites: () => pendingWrites > 0,
+      queueWriteBarrier: (onDrained) => {
+        terminal.write("", () => {
+          if (disposed) return;
+          onDrained();
+        });
+      },
+      onFitted: ({ cols, rows }) => {
+        // One PTY resize per refit pause — the TUI re-lays out once.
+        window.ePi.runtime.resize(sessionKey, { cols, rows });
         // The replay checkpoint buffer can be invalidated by overflow: a long
         // resume-history dump or an output-heavy run can exceed the cap before
-        // the TUI's next full redraw, and pi's TUI only re-emits a full frame
-        // when the pty size changes. On a remount the resize above is usually a
-        // no-op (the pty already has this size), so nothing would ever repaint
-        // the replayed (empty) terminal. Shimmy the height and restore it to
-        // force the TUI into a full redraw: the live frame repaints the current
-        // screen and plants a fresh checkpoint in the replay buffer. The two
-        // resizes must straddle a TUI render tick (MIN_RENDER_INTERVAL_MS is
-        // 16ms) or the intermediate size is never observed and the redraw is
-        // skipped.
-        if (buffers.get(sessionKey)?.awaitingCheckpoint) {
-          const { cols, rows } = terminal;
-          window.ePi.runtime.resize(sessionKey, { cols, rows: rows + 1 });
-          window.clearTimeout(shimmyTimer);
-          shimmyTimer = window.setTimeout(() => {
-            if (disposed) return;
-            window.ePi.runtime.resize(sessionKey, { cols, rows });
-          }, 60);
+        // the TUI's next full redraw. On a remount the resize above is usually
+        // a no-op (the pty already has this size), so nothing would ever
+        // repaint the replayed (empty) terminal — shimmy the height instead.
+        if (isAwaitingCheckpoint(sessionKey)) {
+          triggerCheckpointShimmy(cols, rows);
         }
-        // xterm's resize schedules its own viewport sync on a refresh callback
-        // (viewport.queueSync -> _sync on rAF) that can run AFTER a fixed-delay
-        // restore and clamp the viewport back to the top of the scrollback.
-        // Restore only once the viewport has stopped moving on its own, so the
-        // restore lands after xterm's sync instead of racing it. The stale
-        // check makes a newer refit (or unmount) abort the loop at the next
-        // frame.
-        const generation = restoreGeneration;
-        restoreViewportAfterSettle({
-          terminal,
-          wasAtBottom,
-          topLine,
-          isStale: () => disposed || generation !== restoreGeneration,
-        });
-      };
-      if (!fittedOnceRef.current) {
-        // First mount: fit immediately so the terminal has a size right away.
-        fittedOnceRef.current = true;
-        refit();
-      } else {
-        // Coalesce refits while the window/panel width is being dragged: a
-        // per-frame refit repaints the renderer every frame (visible as a
-        // flicker) and reflows the scrollback repeatedly. xterm stays on the
-        // last settled size until resizing pauses, then refits once — which
-        // also means one PTY resize and one TUI re-layout per pause.
-        window.clearTimeout(fitTimerRef.current);
-        fitTimerRef.current = window.setTimeout(refit, 150);
-      }
-    };
-    const resizeObserver = new ResizeObserver(fitTerminal);
+      },
+    });
+    const resizeObserver = new ResizeObserver(() => resizeScheduler.schedule());
     resizeObserver.observe(hostRef.current);
-    fittedOnceRef.current = false;
-    fitTerminal();
+    resizeScheduler.refitNow();
 
     // Live font-size updates from the Appearance settings (refit reflows the
     // grid; the skip-if-unchanged guard makes this a no-op when nothing moves).
     const unsubscribeAppearance = subscribeAppearance(() => {
       terminal.options.fontSize = getAppearance().termMain;
-      fitTerminal();
+      resizeScheduler.schedule();
     });
-
-    runResizeBarrier = fitTerminal;
 
     // pi's TUI emits `ESC[2J ESC[H ESC[3J` full redraws whenever the PTY
     // resizes or its layout changes. Executing `3J` would trim the whole
@@ -334,8 +296,44 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       terminal.write(data, () => {
         pendingWrites -= 1;
         onWritten?.();
+        settleInitialWrites();
       });
     };
+
+    // Re-sync after a process restart (sidebar "Reload session"): the new
+    // pty spawns at pi's default 120x36 grid, while this xterm keeps its
+    // real size — so the fit guard below sees no change and never sends a
+    // resize, leaving pi to lay out at 120 columns (wrapped wrongly on
+    // wider terminals) on top of the previous session's stale screen (the
+    // replay buffer was cleared, so nothing repaints it). When the bridge
+    // reports a fresh generation, reset the terminal and re-assert the real
+    // grid size; the pty resize makes pi repaint a full frame correctly.
+    // Baseline generation for restart detection. onState only fires on state
+    // CHANGES, so a session running quietly (no busy/idle transitions) never
+    // triggers it after mount — the baseline would stay undefined and the
+    // first post-reload state would be misread as the baseline. Query the
+    // current generation up front instead.
+    let bootGeneration: number | undefined;
+    void window.ePi.runtime.getStates().then((states) => {
+      if (disposed) return;
+      bootGeneration = states[sessionKey]?.generation ?? 0;
+    });
+    const stopState = window.ePi.runtime.onState((state) => {
+      if (disposed || state.sessionPath !== sessionKey) return;
+      if (bootGeneration === undefined) {
+        // First state report after mount: record the baseline generation so
+        // a normal first launch (0 → 1) never counts as a restart.
+        bootGeneration = state.generation;
+        return;
+      }
+      if (state.generation <= bootGeneration) return;
+      bootGeneration = state.generation;
+      terminal.reset();
+      window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
+      // The repainted full frame after the pty resize re-syncs xterm's
+      // viewport asynchronously; re-assert position once it settles.
+      requestAnimationFrame(syncViewportAfterWrite);
+    });
 
     // Subscribe before taking the replay snapshot. IPC dispatch is ordered, so
     // the app-lifetime feeder has already appended each event by the time this
@@ -345,9 +343,19 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     let queuedLiveData = "";
     const stopData = window.ePi.runtime.onAnyData((path, data) => {
       if (disposed || path !== sessionKey) return;
-      markPainted();
       if (replaying) queuedLiveData += data;
       else flushWrite(data);
+      // A full frame (fresh first render, or the shimmy-triggered redraw)
+      // arrived — the terminal can now paint the complete picture, so the
+      // loading overlay may lift once this chunk is committed.
+      if (waitingForCheckpoint && !isAwaitingCheckpoint(sessionKey)) {
+        waitingForCheckpoint = false;
+        settleInitialWrites();
+      }
+      if (waitingForFirstFrame) {
+        waitingForFirstFrame = false;
+        settleInitialWrites();
+      }
     });
     const finishReplay = () => {
       if (disposed) return;
@@ -357,27 +365,41 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
         queuedLiveData = "";
         flushWrite(queued);
       }
+      // With an empty replay the overlay stays until the first real frame
+      // arrives (see waitingForFirstFrame / waitingForCheckpoint above).
+      // The replay write (and any queued live data) is parsed by now; xterm's
+      // viewport sync for it runs on the next refresh callback. Re-assert the
+      // viewport afterwards so a remounted terminal that landed on the top of
+      // the scrollback (stale sync, swallowed scroll event) is corrected.
+      requestAnimationFrame(syncViewportAfterWrite);
     };
-    const replay = buffers.get(sessionKey)?.content;
     if (replay) {
-      markPainted();
       flushWrite(replay, finishReplay);
     } else {
       finishReplay();
+    }
+    // A session whose buffer was LRU-evicted (or invalidated) remounts with
+    // an empty replay. The shimmy above only fires inside onFitted, which
+    // never runs when the grid is unchanged (refitNow's guard no-ops) — so
+    // nothing would force pi to repaint and the terminal stays blank. Trigger
+    // the height shimmy right away using the already-fit grid size.
+    if (!replay && isAwaitingCheckpoint(sessionKey)) {
+      triggerCheckpointShimmy(terminal.cols, terminal.rows);
     }
     const input = terminal.onData((data) => window.ePi.runtime.write(sessionKey, data));
 
     return () => {
       disposed = true;
       window.clearTimeout(shimmyTimer);
-      cancelPendingRestore();
+      resizeScheduler.dispose();
       eraseScrollbackGuard.dispose();
+      viewportWatchdog.dispose();
       unsubscribeAppearance();
       stopData();
+      stopState();
       input.dispose();
       scrollSub.dispose();
       terminalRef.current = null;
-      window.clearTimeout(fitTimerRef.current);
       webgl?.dispose();
       webLinks.dispose();
       resizeObserver.disconnect();

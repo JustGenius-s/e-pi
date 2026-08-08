@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 
 import type {
+  ArchivedSessionSummary,
   AgentConfigSaveRequest,
   AppDescriptor,
   AppInfo,
@@ -94,6 +95,7 @@ const api: EPiApi = {
     copyText: (text: string) => ipcRenderer.invoke("app:copy-text", text) as Promise<void>,
     setTheme: (theme: "light" | "dark") => ipcRenderer.invoke("app:set-theme", theme) as Promise<void>,
     log: (message: string) => ipcRenderer.send("app:log", message),
+    onFullscreenChange: (listener: (isFullscreen: boolean) => void) => subscribe("window:fullscreen-changed", listener),
     /** Dock badge (macOS): number of unseen run-completion dots; 0 clears it. */
     setDockBadge: (count: number) => ipcRenderer.invoke("dock:set-badge", count) as Promise<void>,
   },
@@ -102,6 +104,10 @@ const api: EPiApi = {
     create: (request: CreateSessionRequest) =>
       ipcRenderer.invoke("sessions:create", request) as Promise<SessionSummary>,
     rename: (request: RenameSessionRequest) => ipcRenderer.invoke("sessions:rename", request) as Promise<void>,
+    archive: (path: string) => ipcRenderer.invoke("sessions:archive", path) as Promise<void>,
+    listArchived: () => ipcRenderer.invoke("sessions:list-archived") as Promise<ArchivedSessionSummary[]>,
+    unarchive: (path: string) => ipcRenderer.invoke("sessions:unarchive", path) as Promise<void>,
+    deleteArchived: (path: string) => ipcRenderer.invoke("sessions:delete-archived", path) as Promise<void>,
     remove: (path: string) => ipcRenderer.invoke("sessions:remove", path) as Promise<void>,
     onUpdated: (callback: (sessions: SessionSummary[]) => void) => {
       const listener = (_event: Electron.IpcRendererEvent, sessions: SessionSummary[]) => callback(sessions);
@@ -111,10 +117,8 @@ const api: EPiApi = {
   },
   projects: {
     list: () => ipcRenderer.invoke("projects:list") as Promise<Project[]>,
-    create: (request: CreateProjectRequest) =>
-      ipcRenderer.invoke("projects:create", request) as Promise<Project[]>,
-    update: (request: UpdateProjectRequest) =>
-      ipcRenderer.invoke("projects:update", request) as Promise<Project[]>,
+    create: (request: CreateProjectRequest) => ipcRenderer.invoke("projects:create", request) as Promise<Project[]>,
+    update: (request: UpdateProjectRequest) => ipcRenderer.invoke("projects:update", request) as Promise<Project[]>,
     remove: (id: string) => ipcRenderer.invoke("projects:remove", id) as Promise<Project[]>,
     resolve: (cwd: string) => ipcRenderer.invoke("projects:resolve", cwd) as Promise<Project | undefined>,
     gitRepos: (folders: string[]) => ipcRenderer.invoke("projects:git-repos", folders) as Promise<string[]>,
@@ -236,8 +240,7 @@ const api: EPiApi = {
     watchStart: (cwd: string) => ipcRenderer.invoke("workspace:watch-start", cwd) as Promise<void>,
     watchStop: (cwd: string) => ipcRenderer.invoke("workspace:watch-stop", cwd) as Promise<void>,
     onChanged: (listener: (event: WorkspaceChangedEvent) => void) => {
-      const handler = (_event: Electron.IpcRendererEvent, payload: WorkspaceChangedEvent): void =>
-        listener(payload);
+      const handler = (_event: Electron.IpcRendererEvent, payload: WorkspaceChangedEvent): void => listener(payload);
       ipcRenderer.on("workspace:changed", handler);
       return () => ipcRenderer.removeListener("workspace:changed", handler);
     },

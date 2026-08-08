@@ -142,7 +142,11 @@ export class CommandService {
    * `/login` completes provider ids, and extension commands can register their
    * own `getArgumentCompletions`. Returns null when the command has none.
    */
-  async argumentCompletions(cwd: string, command: string, argumentPrefix: string): Promise<CommandArgumentOption[] | null> {
+  async argumentCompletions(
+    cwd: string,
+    command: string,
+    argumentPrefix: string,
+  ): Promise<CommandArgumentOption[] | null> {
     if (command === "model") return this.#modelCompletions(argumentPrefix);
     if (command === "login") return this.#loginCompletions(argumentPrefix);
     const handler = (await this.#pluginArgumentCompletionsFor(cwd)).get(command);

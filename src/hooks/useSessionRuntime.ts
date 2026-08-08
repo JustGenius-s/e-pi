@@ -1,9 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { clearTerminalBuffer } from "@/components/workspace/TerminalPanel";
-import { setHomeDir } from "../lib/format";
+import { clearTerminalBuffer } from "@/lib/terminalReplayStore";
 
+import { setHomeDir } from "../lib/format";
+import { isSameRuntimeState } from "../lib/runtimeStateEquality";
 import type { AppInfo, PiRuntimeState, SessionSummary } from "../types/contracts";
+
+/**
+ * State-stream logging is noisy (the sidecar re-emits on every poll while
+ * the agent streams) and pays for a JSON.stringify + IPC round-trip per
+ * event even when logging is off in the main process. Flip to true in
+ * DevTools when debugging state transitions.
+ */
+const LOG_STATE_UPDATES = false;
 
 export function useSessionRuntime() {
   const [appInfo, setAppInfo] = useState<AppInfo>();
@@ -69,8 +78,16 @@ export function useSessionRuntime() {
         setLoading(false);
       });
     const stopState = window.ePi.runtime.onState((state) => {
-      window.ePi.app.log(`[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
-      setRuntimeStates((current) => ({ ...current, [state.sessionPath]: state }));
+      if (LOG_STATE_UPDATES) {
+        window.ePi.app.log(`[app] onState ${JSON.stringify({ status: state.status, sessionPath: state.sessionPath })}`);
+      }
+      setRuntimeStates((current) => {
+        const previous = current[state.sessionPath];
+        // Bail out when nothing changed: keeps the object identity stable so
+        // memoized components (Composer, SessionSidebar, ...) skip re-render.
+        if (previous && isSameRuntimeState(previous, state)) return current;
+        return { ...current, [state.sessionPath]: state };
+      });
     });
     // The main process pushes a fresh list when a session file changes (first
     // message, title, recency), so the sidebar never sits on a stale title.

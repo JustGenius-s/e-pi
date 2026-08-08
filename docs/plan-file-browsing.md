@@ -6,13 +6,13 @@
 
 ## 0. 已确认选型
 
-| 项 | 决策 | 说明 |
-|---|---|---|
-| 编辑器内核 | **CodeMirror 6** | ~300KB，Electron 友好，选区/行 API 简洁；不引入 Monaco 的 worker 复杂度 |
-| 选区→对话格式 | **仅引用链接** | 照搬 LiveAgent：`[file.ts:10-20](src/file.ts#L10-L20)`，只传路径+行号，由 pi 自行 Read |
-| 预览范围 | **核心集** | 图片（缩放/旋转/翻页）、Markdown 渲染、纯文本、PDF（iframe） |
-| 联动深度 | **完整联动** | fs.watch 驱动树自动刷新；终端/消息中的文件链接可点击回跳编辑器定位行；编辑器保存实时反映到树 |
-| **交互形态** | **完整仿照 LiveAgent** | 编辑器/预览为覆盖 workspace 主区的 overlay（左侧滑入动画）；互斥切换；脏关闭 Save all/Discard/Cancel；右键"插入代码引用" |
+| 项            | 决策                   | 说明                                                                                                                     |
+| ------------- | ---------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| 编辑器内核    | **CodeMirror 6**       | ~300KB，Electron 友好，选区/行 API 简洁；不引入 Monaco 的 worker 复杂度                                                  |
+| 选区→对话格式 | **仅引用链接**         | 照搬 LiveAgent：`[file.ts:10-20](src/file.ts#L10-L20)`，只传路径+行号，由 pi 自行 Read                                   |
+| 预览范围      | **核心集**             | 图片（缩放/旋转/翻页）、Markdown 渲染、纯文本、PDF（iframe）                                                             |
+| 联动深度      | **完整联动**           | fs.watch 驱动树自动刷新；终端/消息中的文件链接可点击回跳编辑器定位行；编辑器保存实时反映到树                             |
+| **交互形态**  | **完整仿照 LiveAgent** | 编辑器/预览为覆盖 workspace 主区的 overlay（左侧滑入动画）；互斥切换；脏关闭 Save all/Discard/Cancel；右键"插入代码引用" |
 
 引用格式兼容性依据：LiveAgent 的 agent 运行时就是 `@earendil-works/pi-ai` + `pi-agent-core`，E-Pi 的 pi 同为 `@earendil-works/pi-coding-agent`，`[label](path#L10-L20)` markdown 引用是其原生支持的输入格式。**Phase E 开工前仍需做一次实测确认**（见 §11 风险）。
 
@@ -31,16 +31,16 @@
 
 ### 1.2 与 LiveAgent 的关键差距（抄作业点）
 
-| 能力 | LiveAgent 做法 | E-Pi 落地方式 |
-|---|---|---|
-| 树数据层 | `fs_list` depth=1 懒加载 + ref 请求去重 + epoch 防乱序 | 保持递归懒加载，加 watcher 失效刷新 |
-| 树刷新 | workspace-activity 事件（revision + changedPaths 精确子树刷新） | 新增 fs watcher 服务，事件合并后按目录级刷新 |
-| 树搜索 | `fs_mention_list`（主进程 walk + 过滤，180ms 防抖） | main 侧新增 `fs:mention-search` |
-| 预览 | 扩展名路由 → **单例 overlay**，base64 → blob URL | 同一路由 + 同一 overlay 形态 |
-| 编辑器 | Monaco 多标签 overlay + **版本化读写**（mtime+contentHash，stale_file 冲突） | CodeMirror 6 多标签 overlay + 同一版本化契约 |
-| 选区→对话 | 选区扩整行 → `createCodeMentionReference` → 序列化 markdown 链接 → 插入输入框 | 编辑器右键菜单 → composerBus 插入文本（E-Pi 为 textarea，插入纯文本 token，交互位置一致） |
-| 链接回跳 | 消息渲染 rewrite 链接 → `open_chat_file_link` 分类 → 编辑器定位行 | 终端 OSC 8 链接拦截 → 编辑器打开定位行 |
-| **overlay 状态机** | `useWorkspaceOverlays`：mounted/open/request(id)/closeRequestId/cleanupPending，编辑器/预览/SSH 三互斥 | **移植同构 hook**（去掉 SSH 项，保留 editor/preview 互斥） |
+| 能力               | LiveAgent 做法                                                                                         | E-Pi 落地方式                                                                             |
+| ------------------ | ------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| 树数据层           | `fs_list` depth=1 懒加载 + ref 请求去重 + epoch 防乱序                                                 | 保持递归懒加载，加 watcher 失效刷新                                                       |
+| 树刷新             | workspace-activity 事件（revision + changedPaths 精确子树刷新）                                        | 新增 fs watcher 服务，事件合并后按目录级刷新                                              |
+| 树搜索             | `fs_mention_list`（主进程 walk + 过滤，180ms 防抖）                                                    | main 侧新增 `fs:mention-search`                                                           |
+| 预览               | 扩展名路由 → **单例 overlay**，base64 → blob URL                                                       | 同一路由 + 同一 overlay 形态                                                              |
+| 编辑器             | Monaco 多标签 overlay + **版本化读写**（mtime+contentHash，stale_file 冲突）                           | CodeMirror 6 多标签 overlay + 同一版本化契约                                              |
+| 选区→对话          | 选区扩整行 → `createCodeMentionReference` → 序列化 markdown 链接 → 插入输入框                          | 编辑器右键菜单 → composerBus 插入文本（E-Pi 为 textarea，插入纯文本 token，交互位置一致） |
+| 链接回跳           | 消息渲染 rewrite 链接 → `open_chat_file_link` 分类 → 编辑器定位行                                      | 终端 OSC 8 链接拦截 → 编辑器打开定位行                                                    |
+| **overlay 状态机** | `useWorkspaceOverlays`：mounted/open/request(id)/closeRequestId/cleanupPending，编辑器/预览/SSH 三互斥 | **移植同构 hook**（去掉 SSH 项，保留 editor/preview 互斥）                                |
 
 ---
 
@@ -296,28 +296,34 @@ workspacePreviewKind(path): PreviewKind | null
 ## 9. 实施阶段与验证
 
 ### Phase A — 后端 IPC（无 UI）
+
 - 文件：`file-service.ts`（readEditableText/writeText/readWorkspaceBinary/mentionSearch）、新 `workspace-watcher-service.ts`、`contracts.ts`、`preload/index.ts`、`electron/main/index.ts`（注册通道）
 - 测试：`test/file-service.test.ts`（vitest，覆盖：版本化冲突、原子写、二进制探测、越界拒绝、mention 过滤）、watcher 合并逻辑单测
 - 验证：`npm run test && npm run typecheck`
 
 ### Phase B — 文件树升级
+
 - 文件：`FileTreeView.tsx`（搜索框、watcher 刷新、右键 Preview/Open in Editor、revealPath、双击路由入口）、`contracts` 消费
 - 验证：手动开两个项目，外部 `touch` 文件观察树自动刷新；搜索定位
 
 ### Phase C — 预览 overlay
+
 - 文件：`workspacePreviewKind.ts`、`WorkspaceFilePreviewOverlay.tsx`、`useWorkspaceOverlays.ts`（预览部分）、`WorkspaceOverlayHost.tsx`、`App.tsx`（host 接入 + 打开路由）、新依赖 `react-markdown`/`remark-gfm`
 - 验证：png/jpg/md/pdf/txt 各打开一次（overlay 滑入动画、互斥）；大图缩放旋转；跨目录图片翻页；md 中"编辑"按钮切编辑器
 
 ### Phase D — 编辑器 overlay
+
 - 文件：`WorkspaceCodeEditorOverlay.tsx`、`languageForPath.ts`、`useWorkspaceOverlays.ts`（编辑器部分）、CM6 依赖
 - 验证：多标签打开/切换/关闭（脏提示、Save all/Discard/Cancel）；⌘S 保存；外部改文件后保存触发冲突三选一；>1MB/二进制只读；✕ 关闭滑出动画回终端
 
 ### Phase E — 选区→对话 + 链接回跳
+
 - 文件：`composerBus.ts`、编辑器右键菜单、`Composer.tsx`（bus 订阅）、`TerminalPanel.tsx`（链接拦截解析）
 - **前置实测**：向 pi 发一条 `[file.ts:10-20](src/file.ts#L10-L20)` 消息，确认 pi 正确 Read 该区间（备选方案见 §11）
 - 验证：编辑器选区 → 右键 → 引用插入输入框 → 发送 → pi 回复内容命中选中区间；终端里 pi 输出的文件链接（若带 OSC 8）点击 → 编辑器定位
 
 ### Phase F — 打磨（可裁剪）
+
 - 树虚拟化（超大项目）、text 预览行号、编辑器 tab 拖拽排序、fuzzy 搜索升级、⌘P 快速打开、编辑器顶栏脏点透出（overlay 隐藏时提示未保存）
 
 ---
@@ -333,15 +339,15 @@ workspacePreviewKind(path): PreviewKind | null
 
 ## 11. 风险与备选
 
-| 风险 | 应对 |
-|---|---|
-| pi 对 `[label](path#L10-L20)` 引用的实际解析行为未实测 | Phase E 前置 30 分钟实测；若 pi 不识别，退化为发送时转换：`请查看 src/file.ts 第 10-20 行` + 保留链接文本 |
-| `fs.watch` recursive 平台差异（Linux 不支持 recursive） | main 侧按平台分派：Linux 目录遍历注册 + 变更补注册；事件丢失可接受（保存后主动广播兜底） |
-| CodeMirror 语言包体积 | 按需引入（核心官方包 + legacy-modes 兜底）；CI 里 `pnpm build` 观察 bundle |
-| 大文件/二进制误判 | readEditableText 1MB 上限 + binary 标志只读；预览 binary 探测失败时渲染 text 但截断提示 |
-| 编辑器与终端抢占焦点（⌘S 全局快捷键） | ⌘S 仅在编辑器 overlay open 时拦截；xterm 快捷键不受影响 |
-| overlay 遮挡 Composer 导致"发送中看不到输入" | LiveAgent 同构（overlay 本就覆盖主区）；关闭后焦点回 Composer（对齐 LiveAgent `focusEditorAtSavedSelection` 思路：关闭时若此前焦点在编辑器则恢复） |
-| 会话切换（activeCwd 变化）时 overlay 残留 | 对齐 LiveAgent 的"文件树 tab 关闭 → cleanup"语义：会话切换 → cleanupPending → 请求关闭；脏 → Save all/Discard/Cancel |
+| 风险                                                    | 应对                                                                                                                                               |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| pi 对 `[label](path#L10-L20)` 引用的实际解析行为未实测  | Phase E 前置 30 分钟实测；若 pi 不识别，退化为发送时转换：`请查看 src/file.ts 第 10-20 行` + 保留链接文本                                          |
+| `fs.watch` recursive 平台差异（Linux 不支持 recursive） | main 侧按平台分派：Linux 目录遍历注册 + 变更补注册；事件丢失可接受（保存后主动广播兜底）                                                           |
+| CodeMirror 语言包体积                                   | 按需引入（核心官方包 + legacy-modes 兜底）；CI 里 `pnpm build` 观察 bundle                                                                         |
+| 大文件/二进制误判                                       | readEditableText 1MB 上限 + binary 标志只读；预览 binary 探测失败时渲染 text 但截断提示                                                            |
+| 编辑器与终端抢占焦点（⌘S 全局快捷键）                   | ⌘S 仅在编辑器 overlay open 时拦截；xterm 快捷键不受影响                                                                                            |
+| overlay 遮挡 Composer 导致"发送中看不到输入"            | LiveAgent 同构（overlay 本就覆盖主区）；关闭后焦点回 Composer（对齐 LiveAgent `focusEditorAtSavedSelection` 思路：关闭时若此前焦点在编辑器则恢复） |
+| 会话切换（activeCwd 变化）时 overlay 残留               | 对齐 LiveAgent 的"文件树 tab 关闭 → cleanup"语义：会话切换 → cleanupPending → 请求关闭；脏 → Save all/Discard/Cancel                               |
 
 ---
 

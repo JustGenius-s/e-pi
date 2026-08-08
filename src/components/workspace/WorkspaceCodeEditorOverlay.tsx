@@ -1,12 +1,5 @@
-import {
-  defaultKeymap,
-  history,
-  historyKeymap,
-  indentWithTab,
-  redo,
-  selectAll,
-  undo,
-} from "@codemirror/commands";
+import { autocompletion } from "@codemirror/autocomplete";
+import { defaultKeymap, history, historyKeymap, indentWithTab, redo, selectAll, undo } from "@codemirror/commands";
 import { bracketMatching, defaultHighlightStyle, indentOnInput, syntaxHighlighting } from "@codemirror/language";
 import {
   SearchQuery,
@@ -59,18 +52,17 @@ import {
   type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from "react";
+import { toast } from "sonner";
 
+import { useIsDark } from "../../hooks/useIsDark";
 import type { WorkspaceEditorOpenRequest, WorkspacePreviewOpenRequest } from "../../hooks/useWorkspaceOverlays";
-import { emitInsertComposerText } from "../../lib/composerBus";
+import { languageForPath, languageLabel } from "../../lib/codeEditorLanguages";
+import { emitInsertComposerReference } from "../../lib/composerBus";
 import { useEditorSettings } from "../../lib/editorSettings";
 import { isFsError, toFsErrorMessage } from "../../lib/fsErrors";
-import { languageForPath, languageLabel } from "../../lib/codeEditorLanguages";
-import { formatCodeMentionToken } from "../../lib/mentionReferences";
+import { toRelativeWorkspacePath } from "../../lib/mentionReferences";
 import { cn } from "../../lib/utils";
 import { isWorkspacePreviewPath } from "../../lib/workspacePreviewKind";
-import { useIsDark } from "../../hooks/useIsDark";
-
-import { autocompletion } from "@codemirror/autocomplete";
 
 const EDITOR_ANIMATION_MS = 180;
 const CONTEXT_MENU_WIDTH = 220;
@@ -95,7 +87,10 @@ type EditorTab = {
   scrollTop: number;
 };
 
-type PendingDialog = { kind: "closeOverlay" } | { kind: "closeTab"; tabKey: string } | { kind: "reloadTab"; tabKey: string };
+type PendingDialog =
+  | { kind: "closeOverlay" }
+  | { kind: "closeTab"; tabKey: string }
+  | { kind: "reloadTab"; tabKey: string };
 
 type ContextMenuState = { x: number; y: number };
 
@@ -314,9 +309,7 @@ function createSearchPanel(view: EditorView): Panel {
     top: true,
     dom,
     update(update) {
-      const queryChanged = update.transactions.some((t) =>
-        t.effects.some((e) => e.is(setSearchQuery)),
-      );
+      const queryChanged = update.transactions.some((t) => t.effects.some((e) => e.is(setSearchQuery)));
       if (!update.docChanged && !update.selectionSet && !queryChanged) return;
       const query = getSearchQuery(update.state);
       if (query.search !== findInput.value) findInput.value = query.search;
@@ -359,7 +352,12 @@ function buildEditorTheme(dark: boolean, fontSize: number): Extension[] {
         ".cm-panels": { backgroundColor: "#252526", color: "#d4d4d4", borderBottom: "1px solid #333333" },
       }
     : {
-        "&": { height: "100%", fontSize: `${fontSize}px`, backgroundColor: "var(--background)", color: "var(--foreground)" },
+        "&": {
+          height: "100%",
+          fontSize: `${fontSize}px`,
+          backgroundColor: "var(--background)",
+          color: "var(--foreground)",
+        },
         ".cm-scroller": scroller,
         ".cm-gutters": {
           backgroundColor: "var(--background-stronger, var(--background))",
@@ -377,7 +375,11 @@ function buildEditorTheme(dark: boolean, fontSize: number): Extension[] {
         },
         ".cm-searchMatch": { backgroundColor: "color-mix(in oklch, var(--primary) 25%, transparent)" },
         ".cm-searchMatch-selected": { backgroundColor: "color-mix(in oklch, var(--primary) 40%, transparent)" },
-        ".cm-panels": { backgroundColor: "var(--background)", color: "var(--foreground)", borderBottom: "1px solid var(--border)" },
+        ".cm-panels": {
+          backgroundColor: "var(--background)",
+          color: "var(--foreground)",
+          borderBottom: "1px solid var(--border)",
+        },
       };
   return [syntaxHighlighting(highlight, { fallback: true }), EditorView.theme(theme, { dark })];
 }
@@ -438,10 +440,7 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [isVisible, setIsVisible] = useState(false);
 
-  const activeTab = useMemo(
-    () => tabs.find((tab) => tab.key === activeKey) ?? tabs[0] ?? null,
-    [activeKey, tabs],
-  );
+  const activeTab = useMemo(() => tabs.find((tab) => tab.key === activeKey) ?? tabs[0] ?? null, [activeKey, tabs]);
   const canPreviewActiveTab = Boolean(activeTab && isWorkspacePreviewPath(activeTab.path));
   const dirtyTabs = useMemo(() => tabs.filter((tab) => tab.content !== tab.savedContent), [tabs]);
   const hasDirtyTabs = dirtyTabs.length > 0;
@@ -460,9 +459,7 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
       const value = update.state.doc.toString();
       const lineCount = update.state.doc.lines;
       setTabs((current) =>
-        current.map((tab) =>
-          tab.key === key ? { ...tab, content: value, totalLines: lineCount, error: null } : tab,
-        ),
+        current.map((tab) => (tab.key === key ? { ...tab, content: value, totalLines: lineCount, error: null } : tab)),
       );
     });
   }
@@ -733,17 +730,14 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
     command(editor);
   }, []);
 
-  const runClipboardCommand = useCallback(
-    async (command: "cut" | "copy") => {
-      setContextMenu(null);
-      const editor = editorRef.current;
-      if (!editor) return;
-      editor.focus();
-      // CM6 handles the native clipboard events fired by execCommand.
-      document.execCommand(command);
-    },
-    [],
-  );
+  const runClipboardCommand = useCallback(async (command: "cut" | "copy") => {
+    setContextMenu(null);
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    // CM6 handles the native clipboard events fired by execCommand.
+    document.execCommand(command);
+  }, []);
 
   const pasteIntoEditor = useCallback(async () => {
     setContextMenu(null);
@@ -760,24 +754,31 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
     }
   }, []);
 
-  /** Expand the selection to whole lines and send it as a code reference. */
+  /** Expand the selection to whole lines and attach it as a code reference. */
   const insertSelectionAsCodeMention = useCallback(() => {
     setContextMenu(null);
     const editor = editorRef.current;
     const tab = activeTab;
     if (!editor || !tab) return;
     const { from, to, empty } = editor.state.selection.main;
+    let reference: { path: string; startLine: number; endLine: number };
     if (empty) {
       const line = editor.state.doc.lineAt(from);
-      emitInsertComposerText(formatCodeMentionToken({ path: tab.path, startLine: line.number, endLine: line.number }, tab.cwd));
-      return;
+      reference = { path: tab.path, startLine: line.number, endLine: line.number };
+    } else {
+      const startLine = editor.state.doc.lineAt(from).number;
+      const endLineAt = editor.state.doc.lineAt(to);
+      let endLine = endLineAt.number;
+      // A selection ending at column 1 stops visually at the previous line.
+      if (endLineAt.from === to) endLine = Math.max(startLine, endLine - 1);
+      reference = { path: tab.path, startLine, endLine };
     }
-    const startLine = editor.state.doc.lineAt(from).number;
-    const endLineAt = editor.state.doc.lineAt(to);
-    let endLine = endLineAt.number;
-    // A selection ending at column 1 stops visually at the previous line.
-    if (endLineAt.from === to) endLine = Math.max(startLine, endLine - 1);
-    emitInsertComposerText(formatCodeMentionToken({ path: tab.path, startLine, endLine }, tab.cwd));
+    const handled = emitInsertComposerReference({
+      path: toRelativeWorkspacePath(reference.path, tab.cwd),
+      startLine: reference.startLine,
+      endLine: reference.endLine,
+    });
+    if (handled) toast.success("Added to chat");
   }, [activeTab]);
 
   const openEditorContextMenu = useCallback(
@@ -863,12 +864,9 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
       parent: container,
       state: EditorState.create({
         doc: "",
-        extensions: editorExtensions(
-          true,
-          null,
-          themeCompartmentRef.current.of(themeConfigRef.current),
-          [docUpdateListenerRef.current ?? []],
-        ),
+        extensions: editorExtensions(true, null, themeCompartmentRef.current.of(themeConfigRef.current), [
+          docUpdateListenerRef.current ?? [],
+        ]),
       }),
     });
     editorRef.current = view;
@@ -985,10 +983,7 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
         : "This file has unsaved changes. Save them before closing?";
 
   return (
-    <div
-      ref={overlayRef}
-      className={cn("workspace-code-editor-overlay", isVisible ? "visible" : "hidden")}
-    >
+    <div ref={overlayRef} className={cn("workspace-code-editor-overlay", isVisible ? "visible" : "hidden")}>
       <div className="workspace-overlay-toolbar">
         <FilePenLine className="workspace-overlay-toolbar-icon" />
         <div className="workspace-overlay-toolbar-titles">
@@ -1031,18 +1026,10 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
           return (
             <div
               key={tab.key}
-              className={cn(
-                "workspace-editor-tab",
-                tab.key === activeKey && "active",
-                dirty && "dirty",
-              )}
+              className={cn("workspace-editor-tab", tab.key === activeKey && "active", dirty && "dirty")}
               title={tab.path}
             >
-              <button
-                type="button"
-                className="workspace-editor-tab-main"
-                onClick={() => setActiveKey(tab.key)}
-              >
+              <button type="button" className="workspace-editor-tab-main" onClick={() => setActiveKey(tab.key)}>
                 {tab.status === "conflict" ? (
                   <AlertTriangle size={12} className="text-amber-500" />
                 ) : (
@@ -1088,11 +1075,7 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
         <div ref={containerRef} className={cn("absolute inset-0", !activeTab && "hidden")} />
         {!activeTab ? (
           <div className="workspace-preview-empty">
-            {isOpening ? (
-              <Loader2 size={22} className="spin" />
-            ) : (
-              <FilePenLine size={24} />
-            )}
+            {isOpening ? <Loader2 size={22} className="spin" /> : <FilePenLine size={24} />}
             <span>{isOpening ? "Opening…" : "Select a file from the file tree to edit"}</span>
             {globalError ? <span className="workspace-editor-empty-error">{globalError}</span> : null}
           </div>
@@ -1108,8 +1091,18 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
           onContextMenu={(event) => event.preventDefault()}
           onMouseDown={(event) => event.preventDefault()}
         >
-          <ContextMenuItem icon={<Undo2 size={14} />} label="Undo" shortcut="⌘Z" onClick={() => runEditorCommand(undo)} />
-          <ContextMenuItem icon={<Redo2 size={14} />} label="Redo" shortcut="⌘⇧Z" onClick={() => runEditorCommand(redo)} />
+          <ContextMenuItem
+            icon={<Undo2 size={14} />}
+            label="Undo"
+            shortcut="⌘Z"
+            onClick={() => runEditorCommand(undo)}
+          />
+          <ContextMenuItem
+            icon={<Redo2 size={14} />}
+            label="Redo"
+            shortcut="⌘⇧Z"
+            onClick={() => runEditorCommand(redo)}
+          />
           <ContextMenuSeparator />
           <ContextMenuItem
             icon={<Scissors size={14} />}
@@ -1185,25 +1178,13 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
             <div className="text-sm font-semibold">{dialogTitle}</div>
             <div className="mt-2 text-sm leading-5 text-[var(--muted-foreground)]">{dialogDescription}</div>
             <div className="mt-4 flex justify-end gap-2">
-              <button
-                type="button"
-                className="workspace-overlay-dialog-button"
-                onClick={() => setPendingDialog(null)}
-              >
+              <button type="button" className="workspace-overlay-dialog-button" onClick={() => setPendingDialog(null)}>
                 Cancel
               </button>
-              <button
-                type="button"
-                className="workspace-overlay-dialog-button"
-                onClick={discardDialogTarget}
-              >
+              <button type="button" className="workspace-overlay-dialog-button" onClick={discardDialogTarget}>
                 Discard
               </button>
-              <button
-                type="button"
-                className="workspace-overlay-dialog-button primary"
-                onClick={saveDialogTarget}
-              >
+              <button type="button" className="workspace-overlay-dialog-button primary" onClick={saveDialogTarget}>
                 {pendingDialog.kind === "closeOverlay" ? "Save all" : "Save"}
               </button>
             </div>
@@ -1214,12 +1195,7 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
   );
 });
 
-function ToolbarButton(props: {
-  label: string;
-  disabled?: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
+function ToolbarButton(props: { label: string; disabled?: boolean; onClick: () => void; children: ReactNode }) {
   const { label, disabled, onClick, children } = props;
   return (
     <button
@@ -1235,16 +1211,15 @@ function ToolbarButton(props: {
   );
 }
 
-function ContextMenuItem(props: {
-  icon?: ReactNode;
-  label: string;
-  shortcut?: string;
-  onClick: () => void;
-}) {
+function ContextMenuItem(props: { icon?: ReactNode; label: string; shortcut?: string; onClick: () => void }) {
   const { icon, label, shortcut, onClick } = props;
   return (
     <button type="button" role="menuitem" className="workspace-editor-context-item" onClick={onClick}>
-      {icon ? <span className="workspace-editor-context-icon">{icon}</span> : <span className="workspace-editor-context-icon" />}
+      {icon ? (
+        <span className="workspace-editor-context-icon">{icon}</span>
+      ) : (
+        <span className="workspace-editor-context-icon" />
+      )}
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
       {shortcut ? <kbd className="workspace-editor-context-kbd">{shortcut}</kbd> : null}
     </button>

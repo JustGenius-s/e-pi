@@ -104,13 +104,19 @@ function inferMimeType(path: string, buffer: Buffer): string {
   if (buffer.length >= 5 && buffer.subarray(0, 5).toString("latin1") === "%PDF-") {
     return "application/pdf";
   }
-  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) {
+  if (
+    buffer.length >= 8 &&
+    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
+  ) {
     return "image/png";
   }
   if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
     return "image/jpeg";
   }
-  if (buffer.length >= 6 && buffer.subarray(0, 6).toString("latin1") === "GIF87a" || buffer.length >= 6 && buffer.subarray(0, 6).toString("latin1") === "GIF89a") {
+  if (
+    (buffer.length >= 6 && buffer.subarray(0, 6).toString("latin1") === "GIF87a") ||
+    (buffer.length >= 6 && buffer.subarray(0, 6).toString("latin1") === "GIF89a")
+  ) {
     return "image/gif";
   }
   return "application/octet-stream";
@@ -234,12 +240,7 @@ export class FileService {
    * hash), the write is rejected with STALE_FILE so the UI can offer
    * reload/overwrite instead of silently clobbering external changes.
    */
-  async writeText(
-    cwd: string,
-    path: string,
-    content: string,
-    expected?: WriteTextExpected,
-  ): Promise<WriteTextResult> {
+  async writeText(cwd: string, path: string, content: string, expected?: WriteTextExpected): Promise<WriteTextResult> {
     const { target } = resolveTarget(cwd, path);
     let existing;
     try {

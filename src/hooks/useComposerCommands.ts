@@ -115,13 +115,22 @@ export function useComposerCommands({ cwd, text, skills, textareaRef }: UseCompo
   const argumentGroups = useMemo<CommandPopupGroup[]>(() => {
     if (!argumentMode || filteredArguments.length === 0) return [];
     const { command } = argumentMode;
-    return [{ source: "argument", label: `/${command}`, items: filteredArguments.map((option) => ({ kind: "argument" as const, option, command })), start: 0 }];
+    return [
+      {
+        source: "argument",
+        label: `/${command}`,
+        items: filteredArguments.map((option) => ({ kind: "argument" as const, option, command })),
+        start: 0,
+      },
+    ];
   }, [filteredArguments, argumentMode]);
   const commandGroups = useMemo<CommandPopupGroup[]>(() => {
     let offset = 0;
     const groups: CommandPopupGroup[] = [];
     for (const { label, sources } of COMMAND_GROUPS) {
-      const items = popupCommands.filter((command) => sources.includes(command.source)).map((command) => ({ kind: "command" as const, command }));
+      const items = popupCommands
+        .filter((command) => sources.includes(command.source))
+        .map((command) => ({ kind: "command" as const, command }));
       if (items.length === 0) continue;
       groups.push({ source: sources[0]!, label, items, start: offset });
       offset += items.length;

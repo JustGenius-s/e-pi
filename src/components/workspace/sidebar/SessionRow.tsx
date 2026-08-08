@@ -55,6 +55,7 @@ export function SessionRow({
   onSelect,
   onRename,
   onRemove,
+  onReload,
   onOpenFolder,
   onCopyText,
   addToChat,
@@ -118,6 +119,8 @@ export function SessionRow({
             Copy working directory
           </ContextMenuItem>
           <ContextMenuItem onSelect={() => onCopyText(session.path)}>Copy session</ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onSelect={() => onReload(session)}>Reload session</ContextMenuItem>
           <ContextMenuSeparator />
           <ContextMenuItem onSelect={() => addToChat(session)}>Add to chat</ContextMenuItem>
           <ContextMenuSeparator />

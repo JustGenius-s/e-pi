@@ -24,6 +24,8 @@ export interface SessionRowCallbacks {
   onSelect: (session: SessionSummary) => void;
   onRename: (session: SessionSummary) => void;
   onRemove: (session: SessionSummary) => void;
+  /** Restart the session's pi process (e.g. after installing packages). */
+  onReload: (session: SessionSummary) => void;
   onOpenFolder: (cwd: string) => void;
   onCopyText: (text: string) => void;
   addToChat: (session: SessionSummary) => void;

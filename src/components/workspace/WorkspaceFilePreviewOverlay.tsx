@@ -4,6 +4,7 @@ import {
   FilePenLine,
   FileText,
   Loader2,
+  MessageSquarePlus,
   Minus,
   Plus,
   RefreshCw,
@@ -11,8 +12,11 @@ import {
   X,
 } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { toast } from "sonner";
 
 import type { WorkspaceEditorOpenRequest, WorkspacePreviewOpenRequest } from "../../hooks/useWorkspaceOverlays";
+import { emitInsertComposerReference } from "../../lib/composerBus";
+import { toRelativeWorkspacePath } from "../../lib/mentionReferences";
 import { cn } from "../../lib/utils";
 import {
   getWorkspacePreviewKind,
@@ -303,6 +307,15 @@ export const WorkspaceFilePreviewOverlay = memo(function WorkspaceFilePreviewOve
   );
   const canOpenEditor = Boolean(activePreviewRequest && isWorkspaceEditablePreviewPath(activePath));
 
+  /** Attach a whole-file reference to the composer; tip on success. */
+  const addPreviewToChat = useCallback(() => {
+    if (!activePreviewRequest || !activePath) return;
+    const handled = emitInsertComposerReference({
+      path: toRelativeWorkspacePath(activePath, activePreviewRequest.cwd),
+    });
+    if (handled) toast.success("Added to chat");
+  }, [activePreviewRequest, activePath]);
+
   const openImagePath = useCallback(
     (path: string, transitionDirection: -1 | 0 | 1 = 0) => {
       if (!activePreviewRequest || !path || path === activePath) return;
@@ -320,6 +333,16 @@ export const WorkspaceFilePreviewOverlay = memo(function WorkspaceFilePreviewOve
           <div className="workspace-overlay-toolbar-path">{activePath}</div>
         </div>
         <div className="workspace-overlay-toolbar-actions">
+          {activePreviewRequest && activePath ? (
+            <button
+              type="button"
+              className="workspace-overlay-tool-button"
+              title="Add to chat"
+              onClick={addPreviewToChat}
+            >
+              <MessageSquarePlus size={15} />
+            </button>
+          ) : null}
           {canOpenEditor && activePreviewRequest ? (
             <button
               type="button"

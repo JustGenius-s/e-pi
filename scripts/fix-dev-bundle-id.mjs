@@ -6,7 +6,7 @@
  * notifications silently fail). The packaged app keeps its own appId, so
  * this only affects `pnpm dev`.
  *
- * pnpm install re-extracts the pristine Electron.app, so this script runs
+ * Pnpm install re-extracts the pristine Electron.app, so this script runs
  * before every `dev` start. It is idempotent: when the bundle id already
  * matches, it exits immediately.
  */

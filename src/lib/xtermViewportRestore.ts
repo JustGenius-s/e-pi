@@ -15,12 +15,15 @@ export interface ViewportRestoreOptions {
  *
  * Xterm's resize does not update the viewport synchronously: it queues a sync
  * on the render service's refresh callback (`viewport.queueSync -> _sync`),
- * which can run AFTER a fixed-delay restore and clamp the viewport back to
- * the top of the scrollback (the intermittent "jumps to top" bug). So instead
- * of restoring after a fixed number of frames, wait until the viewport stops
- * moving on its own — that means xterm's queued sync has run and any clamp
- * has propagated into `ydisp` — then restore once. One extra frame afterwards
- * corrects a straggler sync that ran after the restore.
+ * which runs on a later frame. In xterm v6 that sync goes through the
+ * scrollable's smooth-scroll path (`combine`/`reuseAnimation`), which can
+ * leave the internal scroll state at a stale/clamped value (0 when the
+ * scrollHeight was still 0) instead of the buffer's `ydisp` — the
+ * intermittent "jumps to top" bug. So instead of restoring after a fixed
+ * number of frames, wait until the viewport stops moving on its own — that
+ * means xterm's queued sync has run and any stale position has propagated
+ * into `ydisp` — then restore once. One extra frame afterwards corrects a
+ * straggler sync that ran after the restore.
  *
  * Bounded: gives up after 60 frames (~1s) and restores anyway. Every frame
  * checks `isStale` so a disposed terminal or a newer refit (with its own

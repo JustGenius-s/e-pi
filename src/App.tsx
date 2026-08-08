@@ -11,20 +11,18 @@ import { AppHeader } from "@/components/workspace/AppHeader";
 import { Composer } from "@/components/workspace/Composer";
 import { SessionSidebar } from "@/components/workspace/SessionSidebar";
 import { SkillPanel } from "@/components/workspace/SkillPanel";
-import { clearTerminalBuffer, TerminalPanel } from "@/components/workspace/TerminalPanel";
+import { TerminalPanel } from "@/components/workspace/TerminalPanel";
 import { ToolPanel } from "@/components/workspace/ToolPanel";
 import type { PanelState, PanelTab, PanelView } from "@/components/workspace/ToolPanel";
 import { WorkspaceOverlayHost } from "@/components/workspace/WorkspaceOverlayHost";
+import { clearTerminalBuffer } from "@/lib/terminalReplayStore";
 
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSessionRuntime } from "./hooks/useSessionRuntime";
-import {
-  restoreWorkspaceOverlays,
-  useWorkspaceOverlays,
-} from "./hooks/useWorkspaceOverlays";
-import { isWorkspacePreviewPath } from "./lib/workspacePreviewKind";
 import { useUnseenRunCompletions } from "./hooks/useUnseenRunCompletions";
-import type { Project, SessionSummary } from "./types/contracts";
+import { restoreWorkspaceOverlays, useWorkspaceOverlays } from "./hooks/useWorkspaceOverlays";
+import { isWorkspacePreviewPath } from "./lib/workspacePreviewKind";
+import type { ArchivedSessionSummary, Project, SessionSummary } from "./types/contracts";
 
 export function App() {
   const {
@@ -59,6 +57,8 @@ export function App() {
   /** Sessions whose terminal painted at least one frame; hides the "loading session" overlay. */
   const [paintedPaths, setPaintedPaths] = useState<Set<string>>(new Set());
   const [settingsOpen, setSettingsOpen] = useState(false);
+  /** Sessions moved to the archived-sessions area (Settings → Archived). */
+  const [archivedSessions, setArchivedSessions] = useState<ArchivedSessionSummary[]>([]);
   const [panelOpen, setPanelOpen] = useState(true);
   /** Multi-folder projects; drives the sidebar grouping and repo switcher. */
   const [projects, setProjects] = useState<Project[]>([]);
@@ -77,6 +77,8 @@ export function App() {
     project?: Project;
     cwd: string;
     sessions: SessionSummary[];
+    /** Called after a confirmed removal, so callers can forget UI-only state. */
+    onConfirmed?: () => void;
   }>();
   /** Open tool-panel tabs plus the active one; review is a singleton. */
   const [panel, setPanel] = useState<PanelState>({ tabs: [], activeId: undefined });
@@ -114,8 +116,17 @@ export function App() {
       cancelled = true;
     };
   }, [activeProject]);
+  /**
+   * Hide the loading overlay ~80ms after the terminal's first paint instead
+   * of instantly: the TUI's initial frame is written, then its layout
+   * (reflow + viewport sync) settles over the next few frames — revealing
+   * the terminal mid-settle flashes the layout as it finishes.
+   */
+  const FIRST_PAINT_HIDE_DELAY_MS = 80;
   const handleFirstPaint = useCallback((sessionKey: string) => {
-    setPaintedPaths((current) => (current.has(sessionKey) ? current : new Set(current).add(sessionKey)));
+    window.setTimeout(() => {
+      setPaintedPaths((current) => (current.has(sessionKey) ? current : new Set(current).add(sessionKey)));
+    }, FIRST_PAINT_HIDE_DELAY_MS);
   }, []);
   // The TUI has not mounted yet (pi still booting, or the session was never
   // started in this app run); a failed session shows the error bar instead.
@@ -126,121 +137,120 @@ export function App() {
     runtimeState?.status !== "exited" &&
     runtimeState?.status !== "error";
 
-  const createSession = async (cwd?: string): Promise<SessionSummary | undefined> => {
-    setError(undefined);
-    const targetCwd = cwd?.trim() || appInfo?.defaultCwd;
-    try {
-      const session = await window.ePi.sessions.create({ cwd: targetCwd });
-      window.ePi.app.log(`[app] createSession created=${session.path} cwd=${session.cwd}`);
-      setActivePath(session.path);
-      setJustCreatedPath(session.path);
-      // Re-sort from the source of truth instead of blind-prepending: background
-      // agent activity can change other sessions' recency since the last list,
-      // and a stale prepend would leave the sidebar in the wrong order until the
-      // next refresh (visible as a second jump).
-      await refreshSessions();
-      await activate(session.path);
-      return session;
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      setError(message);
-      toast.error(`Failed to create session: ${message}`);
-      return undefined;
-    }
-  };
-
-  /** New project: ask the user for a folder, then start a session inside it. */
-  const createProjectSession = async (): Promise<void> => {
-    setError(undefined);
-    const cwd = await window.ePi.app.chooseDirectory(appInfo?.defaultCwd);
-    if (!cwd) return;
-    await createSession(cwd);
-  };
+  const createSession = useCallback(
+    async (cwd?: string): Promise<SessionSummary | undefined> => {
+      setError(undefined);
+      const targetCwd = cwd?.trim() || appInfo?.defaultCwd;
+      try {
+        const session = await window.ePi.sessions.create({ cwd: targetCwd });
+        window.ePi.app.log(`[app] createSession created=${session.path} cwd=${session.cwd}`);
+        setActivePath(session.path);
+        setJustCreatedPath(session.path);
+        // Re-sort from the source of truth instead of blind-prepending: background
+        // agent activity can change other sessions' recency since the last list,
+        // and a stale prepend would leave the sidebar in the wrong order until the
+        // next refresh (visible as a second jump).
+        await refreshSessions();
+        await activate(session.path);
+        return session;
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError(message);
+        toast.error(`Failed to create session: ${message}`);
+        return undefined;
+      }
+    },
+    [appInfo, refreshSessions, activate, setActivePath, setError, setJustCreatedPath],
+  );
 
   /** "Import multi-repo project": persist the project, then start a session in its primary repo. */
-  const handleImportProject = async (request: {
-    name?: string;
-    folders: string[];
-    primaryRepo: string;
-  }): Promise<void> => {
-    setError(undefined);
-    try {
-      const next = await window.ePi.projects.create(request);
-      setProjects(next);
-      window.ePi.app.log(`[app] import project folders=${request.folders.length} primary=${request.primaryRepo}`);
-      await createSession(request.primaryRepo);
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      setError(message);
-      throw reason;
-    }
-  };
+  const handleImportProject = useCallback(
+    async (request: { name?: string; folders: string[]; primaryRepo: string }): Promise<void> => {
+      setError(undefined);
+      try {
+        const next = await window.ePi.projects.create(request);
+        setProjects(next);
+        window.ePi.app.log(`[app] import project folders=${request.folders.length} primary=${request.primaryRepo}`);
+        await createSession(request.primaryRepo);
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError(message);
+        throw reason;
+      }
+    },
+    [createSession, setError, setProjects],
+  );
 
   /** Persist edits to an existing project. */
-  const handleUpdateProject = async (
-    id: string,
-    request: { name?: string; folders: string[]; primaryRepo: string },
-  ): Promise<void> => {
-    setError(undefined);
-    try {
-      const next = await window.ePi.projects.update({ id, ...request });
-      setProjects(next);
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      setError(message);
-      throw reason;
-    }
-  };
+  const handleUpdateProject = useCallback(
+    async (id: string, request: { name?: string; folders: string[]; primaryRepo: string }): Promise<void> => {
+      setError(undefined);
+      try {
+        const next = await window.ePi.projects.update({ id, ...request });
+        setProjects(next);
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError(message);
+        throw reason;
+      }
+    },
+    [setError, setProjects],
+  );
 
-  const openEditProject = (project: Project) => {
+  const openEditProject = useCallback((project: Project) => {
     setPromoteCwd(undefined);
     setEditingProject(project);
     setImportOpen(true);
-  };
+  }, []);
 
   /** Non-multi-repo folder group: pre-fill the import dialog to promote it to a multi-repo project. */
-  const openPromoteProject = (cwd: string) => {
+  const openPromoteProject = useCallback((cwd: string) => {
     setEditingProject(undefined);
     setPromoteCwd(cwd);
     setImportOpen(true);
-  };
+  }, []);
 
   /** Create the project record only (no new session) when promoting a folder group. */
-  const handlePromoteProject = async (request: {
-    name?: string;
-    folders: string[];
-    primaryRepo: string;
-  }): Promise<void> => {
-    setError(undefined);
-    try {
-      const next = await window.ePi.projects.create(request);
-      setProjects(next);
-      window.ePi.app.log(`[app] promote project folders=${request.folders.length} primary=${request.primaryRepo}`);
-    } catch (reason) {
-      const message = reason instanceof Error ? reason.message : String(reason);
-      setError(message);
-      throw reason;
-    }
-  };
+  const handlePromoteProject = useCallback(
+    async (request: { name?: string; folders: string[]; primaryRepo: string }): Promise<void> => {
+      setError(undefined);
+      try {
+        const next = await window.ePi.projects.create(request);
+        setProjects(next);
+        window.ePi.app.log(`[app] promote project folders=${request.folders.length} primary=${request.primaryRepo}`);
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError(message);
+        throw reason;
+      }
+    },
+    [setError, setProjects],
+  );
 
-  const removeProject = (target: { project?: Project; cwd: string; sessions: SessionSummary[] }) => {
-    setRemoveProjectTarget(target);
-  };
+  const removeProject = useCallback(
+    (target: { project?: Project; cwd: string; sessions: SessionSummary[] }, onConfirmed?: () => void) => {
+      setRemoveProjectTarget({ ...target, onConfirmed });
+    },
+    [],
+  );
 
-  /** Trash the project's sessions, then drop the project record (multi-folder only). */
+  /** Archive the project's sessions, then drop the project record (multi-folder only). */
   const confirmRemoveProject = async () => {
     if (!removeProjectTarget) return;
     try {
-      const { project, sessions: projectSessions } = removeProjectTarget;
-      // Trash each session file; different sessions share no state, so they
-      // can be trashed in parallel.
-      await Promise.all(projectSessions.map((session) => window.ePi.sessions.remove(session.path)));
+      const { project, sessions: projectSessions, onConfirmed } = removeProjectTarget;
+      // Archive each session file; different sessions share no state, so they
+      // can be archived in parallel. Archiving (not trashing) keeps the
+      // project recoverable from Settings → Archived.
+      await Promise.all(projectSessions.map((session) => window.ePi.sessions.archive(session.path)));
       if (project) {
         setProjects(await window.ePi.projects.remove(project.id));
       }
       await refreshSessions();
+      await refreshArchivedSessions();
       if (activePath && projectSessions.some((session) => session.path === activePath)) setActivePath(undefined);
       setRemoveProjectTarget(undefined);
+      onConfirmed?.();
       toast.success("Project removed");
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : String(reason);
@@ -249,12 +259,15 @@ export function App() {
     }
   };
 
-  const selectSession = (session: SessionSummary) => {
-    setError(undefined);
-    window.ePi.app.log(`[app] selectSession ${session.path}`);
-    setActivePath(session.path);
-    void activate(session.path);
-  };
+  const selectSession = useCallback(
+    (session: SessionSummary) => {
+      setError(undefined);
+      window.ePi.app.log(`[app] selectSession ${session.path}`);
+      setActivePath(session.path);
+      void activate(session.path);
+    },
+    [activate, setActivePath, setError],
+  );
 
   // Clicking a task-completion banner opens that session in the UI.
   useEffect(() => {
@@ -265,10 +278,10 @@ export function App() {
     });
   });
 
-  const renameSession = async (session: SessionSummary) => {
+  const renameSession = useCallback(async (session: SessionSummary) => {
     setRenameTarget(session);
     setRenameName(session.name || session.firstMessage);
-  };
+  }, []);
 
   const commitRename = async () => {
     if (!renameTarget || !renameName.trim()) return;
@@ -284,17 +297,64 @@ export function App() {
     }
   };
 
-  const removeSession = (session: SessionSummary) => {
+  const removeSession = useCallback((session: SessionSummary) => {
     setRemoveTarget(session);
-  };
+  }, []);
+
+  /** Refresh the archived-sessions list from the main process. */
+  const refreshArchivedSessions = useCallback(async (): Promise<void> => {
+    try {
+      setArchivedSessions(await window.ePi.sessions.listArchived());
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }, [setError]);
+
+  // The archived list only matters while Settings is open; load it fresh
+  // every time so archive/unarchive/delete elsewhere stays reflected.
+  useEffect(() => {
+    if (!settingsOpen) return;
+    void window.ePi.sessions
+      .listArchived()
+      .then(setArchivedSessions)
+      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+  }, [settingsOpen, setError]);
 
   const confirmRemoveSession = async () => {
     if (!removeTarget) return;
     try {
-      await window.ePi.sessions.remove(removeTarget.path);
+      await window.ePi.sessions.archive(removeTarget.path);
       await refreshSessions();
+      await refreshArchivedSessions();
       if (activePath === removeTarget.path) setActivePath(undefined);
       setRemoveTarget(undefined);
+      toast.success("Session archived");
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Failed to archive session: ${message}`);
+    }
+  };
+
+  /** Restore an archived session; it reappears in its original project. */
+  const unarchiveSession = async (session: ArchivedSessionSummary) => {
+    try {
+      await window.ePi.sessions.unarchive(session.path);
+      await refreshSessions();
+      await refreshArchivedSessions();
+      toast.success("Session restored");
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setError(message);
+      toast.error(`Failed to restore session: ${message}`);
+    }
+  };
+
+  /** Permanently delete an archived session (system Trash as the last stop). */
+  const deleteArchivedSession = async (session: ArchivedSessionSummary) => {
+    try {
+      await window.ePi.sessions.deleteArchived(session.path);
+      await refreshArchivedSessions();
       toast.success("Session deleted");
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : String(reason);
@@ -303,25 +363,28 @@ export function App() {
     }
   };
 
-  const submit = async (messages: string[]): Promise<boolean> => {
-    setError(undefined);
-    const sessionPath = activePath || (await createSession())?.path;
-    if (!sessionPath) return false;
-    try {
-      await messages.reduce(
-        (previous, message) =>
-          previous.then(() => {
-            window.ePi.app.log(`[app] submit session=${sessionPath} text=${message.slice(0, 60)}`);
-            return window.ePi.runtime.submit(sessionPath, message);
-          }),
-        Promise.resolve(),
-      );
-      return true;
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-      return false;
-    }
-  };
+  const submit = useCallback(
+    async (messages: string[]): Promise<boolean> => {
+      setError(undefined);
+      const sessionPath = activePath || (await createSession())?.path;
+      if (!sessionPath) return false;
+      try {
+        await messages.reduce(
+          (previous, message) =>
+            previous.then(() => {
+              window.ePi.app.log(`[app] submit session=${sessionPath} text=${message.slice(0, 60)}`);
+              return window.ePi.runtime.submit(sessionPath, message);
+            }),
+          Promise.resolve(),
+        );
+        return true;
+      } catch (reason) {
+        setError(reason instanceof Error ? reason.message : String(reason));
+        return false;
+      }
+    },
+    [activePath, createSession, setError],
+  );
 
   const openPanelTab = useCallback((view: PanelView, forceNew = false) => {
     setPanel((current) => {
@@ -410,6 +473,16 @@ export function App() {
     overlays.requestPreviewClose();
   }, [activeCwd]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Native fullscreen (macOS): the menu bar hides and the traffic lights
+  // move up into the menu-bar row. Mirror the state on <body> so the CSS can
+  // adjust the brand row (see app-shell.css).
+  useEffect(() => {
+    return window.ePi.app.onFullscreenChange((isFullscreen) => {
+      if (isFullscreen) document.body.dataset.fullscreen = "";
+      else delete document.body.dataset.fullscreen;
+    });
+  }, []);
+
   useGlobalShortcuts({
     defaultCwd: appInfo?.defaultCwd,
     packageOpen,
@@ -424,27 +497,68 @@ export function App() {
     },
   });
 
-  const openPackages = () => {
+  const openPackages = useCallback(() => {
     if (!activeCwd) return;
     setPackageOpen(true);
-  };
+  }, [activeCwd]);
 
-  const openSkills = () => {
+  const openSkills = useCallback(() => {
     if (!activeCwd) return;
     setSkillOpen(true);
-  };
+  }, [activeCwd]);
 
-  const reloadPi = async () => {
+  /**
+   * Bumped on every manual session reload. Forces the TerminalPanel to
+   * remount (new xterm instance), which re-fits the grid and re-sends the
+   * real pty size — the same code path as entering a session, so the TUI
+   * lays out correctly right after a reload instead of keeping the stale
+   * 120x36 pty grid.
+   */
+  const [terminalEpoch, setTerminalEpoch] = useState(0);
+
+  /** Restart one session's pi process; used to load packages installed while it ran. */
+  const reloadSessionPath = useCallback(
+    async (sessionPath: string): Promise<void> => {
+      setError(undefined);
+      await window.ePi.runtime.stop(sessionPath);
+      clearTerminalBuffer(sessionPath);
+      // The remounted terminal is blank until the fresh pi process paints its
+      // first frame; forget the old paint so the loading overlay shows again.
+      setPaintedPaths((current) => {
+        if (!current.has(sessionPath)) return current;
+        const next = new Set(current);
+        next.delete(sessionPath);
+        return next;
+      });
+      await activate(sessionPath);
+      setTerminalEpoch((current) => current + 1);
+    },
+    [activate, setError, setPaintedPaths, setTerminalEpoch],
+  );
+
+  const reloadPi = useCallback(async () => {
     if (!activePath) return;
-    setError(undefined);
     try {
-      await window.ePi.runtime.stop(activePath);
-      clearTerminalBuffer(activePath);
-      await activate(activePath);
+      await reloadSessionPath(activePath);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     }
-  };
+  }, [activePath, reloadSessionPath, setError]);
+
+  /** Sidebar "Reload session": restart that session's process without switching to it. */
+  const reloadSession = useCallback(
+    async (session: SessionSummary) => {
+      try {
+        await reloadSessionPath(session.path);
+        toast.success("Session reloaded");
+      } catch (reason) {
+        const message = reason instanceof Error ? reason.message : String(reason);
+        setError(message);
+        toast.error(`Failed to reload session: ${message}`);
+      }
+    },
+    [reloadSessionPath, setError],
+  );
 
   // Keep a stable reload callback for the memoized panels: App re-renders on
   // every runtime-state update, and a fresh `reloadPi` reference would defeat
@@ -452,6 +566,20 @@ export function App() {
   const reloadPiRef = useRef(reloadPi);
   reloadPiRef.current = reloadPi;
   const onReloadPi = useCallback(() => reloadPiRef.current(), []);
+
+  // Stable callbacks for the memoized children: App re-renders on every
+  // runtime-state update, and inline arrows would defeat their memoization.
+  const togglePanel = useCallback(() => setPanelOpen((current) => !current), []);
+  const openImportProject = useCallback(() => {
+    setEditingProject(undefined);
+    setImportOpen(true);
+  }, []);
+  const openFolder = useCallback((cwd: string) => void window.ePi.app.openPath(cwd), []);
+  const copyText = useCallback((text: string) => void window.ePi.app.copyText(text), []);
+  const openSettings = useCallback(() => setSettingsOpen(true), []);
+  const interrupt = useCallback(() => {
+    if (activePath) void window.ePi.runtime.interrupt(activePath);
+  }, [activePath]);
 
   // Drawers and dialogs are portaled to <body> at z-50, so they cover the
   // topbar — but Electron's window-drag mask ignores z-index and would still
@@ -478,11 +606,7 @@ export function App() {
   return (
     <div className="app-shell" data-modal-open={modalOpen ? "" : undefined}>
       <SidebarProvider className="app-content">
-        <AppHeader
-          activeSession={activeSession}
-          panelOpen={panelOpen}
-          onTogglePanel={() => setPanelOpen((current) => !current)}
-        />
+        <AppHeader activeSession={activeSession} panelOpen={panelOpen} onTogglePanel={togglePanel} />
 
         <SessionSidebar
           sessions={sessions}
@@ -493,21 +617,18 @@ export function App() {
           platform={appInfo?.platform}
           onSelect={selectSession}
           onCreate={createSession}
-          onCreateProject={() => void createProjectSession()}
-          onImportProject={() => {
-            setEditingProject(undefined);
-            setImportOpen(true);
-          }}
+          onImportProject={openImportProject}
           onEditProject={openEditProject}
           onPromoteProject={openPromoteProject}
           onRemoveProject={removeProject}
-          onRename={(session) => void renameSession(session)}
-          onRemove={(session) => void removeSession(session)}
-          onOpenFolder={(cwd) => void window.ePi.app.openPath(cwd)}
-          onCopyText={(text) => void window.ePi.app.copyText(text)}
+          onRename={renameSession}
+          onRemove={removeSession}
+          onReload={reloadSession}
+          onOpenFolder={openFolder}
+          onCopyText={copyText}
           onOpenPackages={openPackages}
           onOpenSkills={openSkills}
-          onOpenSettings={() => setSettingsOpen(true)}
+          onOpenSettings={openSettings}
         />
 
         <div className="app-main">
@@ -521,6 +642,7 @@ export function App() {
                 </div>
               ) : activeSession ? (
                 <TerminalPanel
+                  key={`${activeSession.path}:${terminalEpoch}`}
                   sessionKey={activeSession.path}
                   autoFocus={activePath === justCreatedPath && runtimeState?.status === "starting"}
                   onFirstPaint={handleFirstPaint}
@@ -572,13 +694,9 @@ export function App() {
                 runtimeState?.status === "exited"
               }
               onSubmit={submit}
-              onInterrupt={() => activePath && window.ePi.runtime.interrupt(activePath)}
+              onInterrupt={interrupt}
             />
-            <WorkspaceOverlayHost
-              overlays={overlays}
-              cwd={activeCwd}
-              onOpenWorkspacePath={handleOpenWorkspacePath}
-            />
+            <WorkspaceOverlayHost overlays={overlays} cwd={activeCwd} onOpenWorkspacePath={handleOpenWorkspacePath} />
           </SidebarInset>
         </div>
 
@@ -619,6 +737,9 @@ export function App() {
         removeProjectTarget={removeProjectTarget}
         onConfirmRemoveProject={() => void confirmRemoveProject()}
         onCloseRemoveProject={() => setRemoveProjectTarget(undefined)}
+        archivedSessions={archivedSessions}
+        onUnarchiveArchived={(session) => void unarchiveSession(session)}
+        onDeleteArchived={(session) => void deleteArchivedSession(session)}
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         appInfo={appInfo}

@@ -340,19 +340,19 @@ describe("ModelService custom providers", () => {
         vi.fn(async () => new Response(JSON.stringify({ data: [{ id: "gpt-5.6-sol" }] }), { status: 200 })),
       );
 
-      await expect(
-        service.fetchModels({ baseUrl: "https://relay.example.com/v1", apiKey: "secret" }),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          id: "gpt-5.6-sol",
-          name: "GPT-5.6 Sol",
-          reasoning: true,
-          vision: true,
-          contextWindow: 272000,
-          maxTokens: 128000,
-          thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
-        }),
-      ]);
+      await expect(service.fetchModels({ baseUrl: "https://relay.example.com/v1", apiKey: "secret" })).resolves.toEqual(
+        [
+          expect.objectContaining({
+            id: "gpt-5.6-sol",
+            name: "GPT-5.6 Sol",
+            reasoning: true,
+            vision: true,
+            contextWindow: 272000,
+            maxTokens: 128000,
+            thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+          }),
+        ],
+      );
     });
   });
 

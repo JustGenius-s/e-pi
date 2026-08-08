@@ -1,7 +1,7 @@
+import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { randomUUID } from "node:crypto";
 
 import { app } from "electron";
 
@@ -48,9 +48,7 @@ export class ProjectService {
   async create(request: CreateProjectRequest): Promise<Project[]> {
     await this.#ensureLoaded();
     const folders = normalizeFolders(request.folders);
-    const primaryRepo = folders.includes(normalizePath(request.primaryRepo))
-      ? request.primaryRepo
-      : folders[0];
+    const primaryRepo = folders.includes(normalizePath(request.primaryRepo)) ? request.primaryRepo : folders[0];
     if (!primaryRepo) throw new Error("A project needs at least one folder.");
     const project: Project = {
       id: randomUUID(),

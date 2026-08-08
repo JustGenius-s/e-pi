@@ -20,6 +20,14 @@ export function createXterm({ isDark, background, fontSize, lineHeight, scrollba
     fontSize,
     lineHeight,
     scrollback,
+    // xterm v6 routes programmatic scrolls through a SmoothScrollingOperation
+    // (combine/reuseAnimation). Viewport._sync applies scrollHeight and
+    // scrollTop in two non-atomic steps, so while an animation is alive a
+    // clamped intermediate scrollTop (0 on the first sync, when scrollHeight
+    // is still 0) gets baked into the animation's `from` keyframe and the
+    // viewport sticks at the top of the scrollback. Disabling smooth scroll
+    // makes every _sync land synchronously via setScrollPositionNow.
+    smoothScrollDuration: 0,
     theme: terminalTheme(isDark, background),
   });
 }

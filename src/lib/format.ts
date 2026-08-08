@@ -36,7 +36,11 @@ export function formatTokens(count: number): string {
   return `${Math.round(count / 1_000_000)}M`;
 }
 
-export function sessionTitle(session: SessionSummary): string {
+/** Anything carrying a session name/first message (active or archived). */
+export type SessionTitleSource = Pick<SessionSummary, "name" | "firstMessage">;
+
+/** Display title: the custom name, else the first user message, else a placeholder. */
+export function sessionTitle(session: SessionTitleSource): string {
   return session.name || session.firstMessage || "New session";
 }
 

@@ -5,7 +5,7 @@ import type { GitDiffResult, GitFileEntry, GitStatus } from "../types/contracts"
 
 export type GitReviewPhase = "idle" | "generating" | "committing" | "pushing" | "pulling";
 
-/** ipcRenderer wraps handler errors as "Error invoking remote method 'git:status': Error: <message>". */
+/** IpcRenderer wraps handler errors as "Error invoking remote method 'git:status': Error: <message>". */
 function isNotRepoError(reason: unknown): boolean {
   return reason instanceof Error && /not a git repository/i.test(reason.message);
 }

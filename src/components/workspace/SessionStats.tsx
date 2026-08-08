@@ -1,3 +1,5 @@
+import { memo } from "react";
+
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 import { formatTokens } from "../../lib/format";
@@ -17,7 +19,13 @@ interface SessionStatsProps {
  * Context usage ring with a hover details card (tokens, cache, cost).
  * Rendered left of the Send button in the composer toolbar.
  */
-export function SessionStats({ context, usage, cacheHitRate, speed, live }: SessionStatsProps) {
+export const SessionStats = memo(function SessionStats({
+  context,
+  usage,
+  cacheHitRate,
+  speed,
+  live,
+}: SessionStatsProps) {
   const totalTokens = usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
   const hasCache = usage.cacheRead > 0 || usage.cacheWrite > 0;
   const percent = context?.percent ?? null;
@@ -101,4 +109,4 @@ export function SessionStats({ context, usage, cacheHitRate, speed, live }: Sess
       </HoverCardContent>
     </HoverCard>
   );
-}
+});

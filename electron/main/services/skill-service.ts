@@ -4,8 +4,6 @@ import { basename, dirname, resolve } from "node:path";
 
 import type { SettingsManager } from "@earendil-works/pi-coding-agent";
 import { shell } from "electron";
-
-import { loadPiAgent } from "./pi-agent-loader";
 import { stringify } from "yaml";
 
 import type {
@@ -16,6 +14,7 @@ import type {
   SkillSetEnabledRequest,
   SkillSource,
 } from "../../../src/types/contracts";
+import { loadPiAgent } from "./pi-agent-loader";
 
 const SKILL_NAME_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

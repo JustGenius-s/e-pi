@@ -39,7 +39,7 @@ const MARKDOWN_HTML_SCHEMA = {
 };
 
 /**
- * react-markdown `components` map for workspace previews. Defined at module
+ * React-markdown `components` map for workspace previews. Defined at module
  * level (not during render) so the components are stable across renders;
  * render-dependent handlers are passed in as arguments.
  */
@@ -135,7 +135,10 @@ export const WorkspaceMarkdownPreview = memo(function WorkspaceMarkdownPreview({
     <div className={`workspace-md-preview ${className ?? ""}`}>
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeRaw, { passThrough: [] }], [rehypeSanitize, MARKDOWN_HTML_SCHEMA]]}
+        rehypePlugins={[
+          [rehypeRaw, { passThrough: [] }],
+          [rehypeSanitize, MARKDOWN_HTML_SCHEMA],
+        ]}
         components={createMarkdownComponents({ handleLinkClick, resolveWorkspacePath, onOpenWorkspacePath })}
       >
         {content}

@@ -179,9 +179,13 @@ function registerHandlers(): void {
   });
 
   // The renderer owns the theme choice (CSS variables + persistence); this
-  // keeps native chrome (macOS traffic lights, scrollbars) in step with it.
+  // keeps native chrome (macOS traffic lights, scrollbars) in step with it,
+  // and hot-switches every running session's TUI theme through the bridge
+  // command (no restart needed).
   ipcMain.handle("app:set-theme", (_event, theme: "light" | "dark") => {
     nativeTheme.themeSource = theme === "dark" ? "dark" : "light";
+    runtime.setThemeHint(theme);
+    runtime.broadcastTuiTheme(theme);
   });
 
   ipcMain.handle("app:choose-directory", async (_event, defaultPath?: string) => {
@@ -306,6 +310,17 @@ function registerHandlers(): void {
     runtime.forget(path);
     await shell.trashItem(path);
   });
+  // Codex-style archive: stop the session, then move the file into the
+  // archived-sessions area instead of the system Trash. The sidebar refresh
+  // is App-driven (it awaits the archive and re-lists).
+  ipcMain.handle("sessions:archive", async (_event, path: string) => {
+    await runtime.stop(path);
+    runtime.forget(path);
+    await sessions.archive(path);
+  });
+  ipcMain.handle("sessions:list-archived", () => sessions.listArchived());
+  ipcMain.handle("sessions:unarchive", (_event, path: string) => sessions.unarchive(path));
+  ipcMain.handle("sessions:delete-archived", (_event, path: string) => sessions.deleteArchived(path));
 
   ipcMain.handle("runtime:get-states", () => runtime.getStates());
   ipcMain.handle("runtime:start", async (_event, path: string) => {
@@ -388,23 +403,14 @@ function registerHandlers(): void {
   );
   ipcMain.handle(
     "fs:write-text",
-    async (
-      _event,
-      cwd: string,
-      path: string,
-      content: string,
-      expected?: { mtimeMs?: number; contentHash?: string },
-    ) => fileService.writeText(cwd || activeCwd(), path, content, expected),
+    async (_event, cwd: string, path: string, content: string, expected?: { mtimeMs?: number; contentHash?: string }) =>
+      fileService.writeText(cwd || activeCwd(), path, content, expected),
   );
-  ipcMain.handle(
-    "fs:read-workspace-binary",
-    async (_event, cwd: string, path: string, maxBytes?: number) =>
-      fileService.readWorkspaceBinary(cwd || activeCwd(), path, maxBytes),
+  ipcMain.handle("fs:read-workspace-binary", async (_event, cwd: string, path: string, maxBytes?: number) =>
+    fileService.readWorkspaceBinary(cwd || activeCwd(), path, maxBytes),
   );
-  ipcMain.handle(
-    "fs:mention-search",
-    async (_event, cwd: string, query: string, limit?: number) =>
-      fileService.mentionSearch(cwd || activeCwd(), query, limit),
+  ipcMain.handle("fs:mention-search", async (_event, cwd: string, query: string, limit?: number) =>
+    fileService.mentionSearch(cwd || activeCwd(), query, limit),
   );
 
   ipcMain.handle("workspace:watch-start", (_event, cwd: string) => {
@@ -531,6 +537,18 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
+
+  // Native fullscreen hides the macOS menu bar and moves the traffic lights
+  // up into the menu-bar row. The renderer shifts its topbar content to stay
+  // aligned; it needs the state, including the state macOS restores on
+  // launch (a window that was fullscreen when the app quit reopens
+  // fullscreen), so push the current state once the page is loaded and on
+  // every transition.
+  mainWindow.on("enter-full-screen", () => sendToRenderer("window:fullscreen-changed", true));
+  mainWindow.on("leave-full-screen", () => sendToRenderer("window:fullscreen-changed", false));
+  mainWindow.webContents.on("did-finish-load", () => {
+    sendToRenderer("window:fullscreen-changed", mainWindow?.isFullScreen() ?? false);
+  });
 
   mainWindow.on("closed", () => {
     mainWindow = undefined;

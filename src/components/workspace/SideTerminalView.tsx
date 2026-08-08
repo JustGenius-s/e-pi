@@ -4,9 +4,9 @@ import { memo, useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
-import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
-import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
+import { createResizeScheduler } from "../../lib/xtermResizeScheduler";
+import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 
 interface SideTerminalViewProps {
   cwd: string;
@@ -31,8 +31,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
     let stopData: (() => void) | undefined;
     let inputDisposable: { dispose(): void } | undefined;
     let resizeObserver: ResizeObserver | undefined;
-    let fitTimer: number | undefined;
-    let restoreGeneration = 0;
+    let resizeScheduler: ReturnType<typeof createResizeScheduler> | undefined;
     let unsubscribeAppearance: (() => void) | undefined;
     let eraseScrollbackGuard: { dispose(): void } | undefined;
 
@@ -68,52 +67,60 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       // viewport to the top.
       eraseScrollbackGuard = guardEraseScrollback(terminal);
 
-      const fitTerminal = () => {
-        try {
-          const dims = fit.proposeDimensions();
-          if (!dims || (dims.cols === terminal!.cols && dims.rows === terminal!.rows)) return;
-          window.clearTimeout(fitTimer);
-          fitTimer = undefined;
-          // Bump the generation so any in-flight viewport restore from a
-          // previous refit aborts at its next frame check.
-          restoreGeneration += 1;
-
-          // xterm reflows scrollback when its column count changes. Preserve
-          // the logical line rather than the pixel offset, then wait for its
-          // queued viewport sync to settle before restoring it. Without this,
-          // a resize can intermittently clamp the side terminal to the top.
-          const wasAtBottom = terminal!.buffer.active.viewportY >= terminal!.buffer.active.baseY;
-          const topLine = terminal!.buffer.active.viewportY;
-          fit.fit();
-          if (id) window.ePi.sideTerminal.resize(id, { cols: terminal!.cols, rows: terminal!.rows });
-
-          const generation = restoreGeneration;
-          restoreViewportAfterSettle({
-            terminal: terminal!,
-            wasAtBottom,
-            topLine,
-            isStale: () => disposed || generation !== restoreGeneration,
-          });
-        } catch {
-          // Terminal may not be measurable yet.
+      /**
+       * Xterm's viewport only re-syncs its scrollable state from the buffer
+       * when the scroll position actually changes. On a fresh spawn the
+       * internal state can sit at scrollTop 0 while the buffer has already
+       * been positioned by the first output burst; nudging by one line (and
+       * straight back) forces the sync so the position the user sees and the
+       * buffer agree before any user scroll happens.
+       */
+      const primeViewportSync = () => {
+        if (disposed || !terminal) return;
+        const buffer = terminal.buffer.active;
+        if (buffer.baseY > 0 && buffer.viewportY >= buffer.baseY) {
+          terminal.scrollLines(1);
+          terminal.scrollToBottom();
         }
       };
-      resizeObserver = new ResizeObserver(() => {
-        // Coalesce layout notifications while the panel is being resized.
-        window.clearTimeout(fitTimer);
-        fitTimer = window.setTimeout(fitTerminal, 120);
+      let pendingWrites = 0;
+      const flushWrite = (data: string, onWritten?: () => void) => {
+        pendingWrites += 1;
+        terminal!.write(data, () => {
+          pendingWrites -= 1;
+          onWritten?.();
+        });
+      };
+      resizeScheduler = createResizeScheduler({
+        terminal: terminal!,
+        fit,
+        // Same parser-ordering discipline as the main terminal: resizing while
+        // a shell output batch is still queued makes the producer and the
+        // emulator disagree about cursor coordinates, so defer the fit until
+        // the current write batch commits (capped by the scheduler).
+        hasPendingWrites: () => pendingWrites > 0,
+        queueWriteBarrier: (onDrained) => {
+          terminal!.write("", () => {
+            if (disposed) return;
+            onDrained();
+          });
+        },
+        onFitted: ({ cols, rows }) => {
+          if (id) window.ePi.sideTerminal.resize(id, { cols, rows });
+        },
       });
+      resizeObserver = new ResizeObserver(() => resizeScheduler!.schedule());
       resizeObserver.observe(hostRef.current);
-      fitTerminal();
+      resizeScheduler.refitNow();
 
       // Live font-size updates from the Appearance settings.
       unsubscribeAppearance = subscribeAppearance(() => {
         terminal!.options.fontSize = getAppearance().termSide;
-        fitTerminal();
+        resizeScheduler!.schedule();
       });
 
       stopData = window.ePi.sideTerminal.onData((dataId, data) => {
-        if (dataId === id) terminal!.write(data);
+        if (dataId === id) flushWrite(data, primeViewportSync);
       });
       inputDisposable = terminal.onData((data) => {
         if (id) window.ePi.sideTerminal.write(id, data);
@@ -125,8 +132,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
 
     return () => {
       disposed = true;
-      window.clearTimeout(fitTimer);
-      restoreGeneration += 1;
+      resizeScheduler?.dispose();
       if (id) window.ePi.sideTerminal.kill(id);
       stopData?.();
       inputDisposable?.dispose();

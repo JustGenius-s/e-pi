@@ -1,4 +1,5 @@
 import { PanelRightClose, PanelRightOpen } from "lucide-react";
+import { memo } from "react";
 
 import { IconButton } from "@/components/ui/IconButton";
 import { SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
@@ -12,16 +13,18 @@ interface AppHeaderProps {
   onTogglePanel: () => void;
 }
 
-export function AppHeader({ activeSession, panelOpen, onTogglePanel }: AppHeaderProps) {
+export const AppHeader = memo(function AppHeader({ activeSession, panelOpen, onTogglePanel }: AppHeaderProps) {
   const { state } = useSidebar();
   return (
     <header className="app-topbar" data-collapsed={state === "collapsed" ? "" : undefined}>
       <div className="window-drag-region" />
       <div className="brand-lockup">
-        <SidebarTrigger />
         <div className="brand-mark-lockup" aria-label="E-Pi">
           <img className="brand-mark" src="./e-pi-mark.svg" alt="" aria-hidden="true" />
           <span className="brand-name">E-Pi</span>
+        </div>
+        <div className="brand-sidebar-toggle">
+          <SidebarTrigger />
         </div>
       </div>
       <div className="workspace-title">
@@ -40,4 +43,4 @@ export function AppHeader({ activeSession, panelOpen, onTogglePanel }: AppHeader
       </div>
     </header>
   );
-}
+});

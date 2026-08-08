@@ -6,8 +6,6 @@ import { promisify } from "node:util";
 import type { DefaultPackageManager } from "@earendil-works/pi-coding-agent";
 import { net } from "electron";
 
-import { loadPiAgent } from "./pi-agent-loader";
-
 import type {
   PackageDownloads,
   PackageMutation,
@@ -17,6 +15,7 @@ import type {
   PackageUpdateRequest,
   RemotePackageInfo,
 } from "../../../src/types/contracts";
+import { loadPiAgent } from "./pi-agent-loader";
 
 export type PackageProgressListener = (progress: PackageProgress) => void;
 

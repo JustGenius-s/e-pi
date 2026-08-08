@@ -104,14 +104,14 @@ export function ImportMultiRepoDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="custom-provider-dialog import-repo-dialog">
         <DialogHeader>
-          <DialogTitle>{editing ? "Edit multi-repo project" : "Import multi-repo project"}</DialogTitle>
+          <DialogTitle>{editing ? "Edit workspace" : "Add workspace"}</DialogTitle>
         </DialogHeader>
         <div className="import-repo-form">
           <label className="custom-field">
-            <span>Project name</span>
+            <span>Workspace name</span>
             <Input
               value={name}
-              placeholder={suggestedName || "Project name"}
+              placeholder={suggestedName || "Workspace name"}
               onChange={(event) => {
                 setName(event.target.value);
                 setAutoNamed(false);
@@ -168,7 +168,7 @@ export function ImportMultiRepoDialog({
             Cancel
           </Button>
           <Button onClick={() => void submit()} disabled={!canCreate}>
-            {editing ? "Save changes" : initial ? "Create project" : "Create project & new session"}
+            {editing ? "Save changes" : "Create workspace"}
           </Button>
         </DialogFooter>
       </DialogContent>

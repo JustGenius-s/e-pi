@@ -327,6 +327,22 @@ const imageMime: Record<string, string> = {
 };
 
 export default function ePiBridge(pi: ExtensionAPI): void {
+  pi.registerCommand("e-pi-theme", {
+    description: "Sync the TUI theme with E-Pi's light/dark mode",
+    handler: async (args, ctx) => {
+      // "e-pi-light" is E-Pi's contrast-fixed light theme (muted warm
+      // tones tuned for white backgrounds); "dark" is pi's built-in dark.
+      const themeName = args?.trim() === "light" ? "e-pi-light" : "dark";
+      // setTheme(name) persists the name into settings.json, clobbering the
+      // auto "e-pi-light/dark" setting. Switching by Theme instance keeps
+      // the hot switch in memory only, so future launches still resolve the
+      // variant from COLORFGBG.
+      const themeInstance = ctx.ui.getTheme(themeName);
+      if (themeInstance) ctx.ui.setTheme(themeInstance);
+      else ctx.ui.setTheme(themeName);
+    },
+  });
+
   pi.registerCommand("e-pi-thinking", {
     description: "Set E-Pi thinking level",
     handler: async (args) => {

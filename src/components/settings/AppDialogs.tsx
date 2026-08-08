@@ -25,12 +25,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useImeComposition } from "../../hooks/useImeComposition";
 import { pathBaseName, sessionTitle } from "../../lib/format";
-import type { AppInfo, Project, SessionSummary } from "../../types/contracts";
+import type { AppInfo, ArchivedSessionSummary, Project, SessionSummary } from "../../types/contracts";
+import { ArchivedChatsSettings } from "./ArchivedChatsSettings";
 import { CommonSettings } from "./CommonSettings";
 import { EditorSettings } from "./EditorSettings";
 import { FontSettings } from "./FontSettings";
 import { ModelSettings } from "./ModelSettings";
 import { PiAgentSettings } from "./PiAgentSettings";
+import { QuickCommandsSettings } from "./QuickCommandsSettings";
 
 interface RenameInputProps {
   value: string;
@@ -53,6 +55,10 @@ function RenameInput({ value, onChange, onCommit }: RenameInputProps) {
       autoFocus
       value={value}
       aria-label="Session name"
+      // Focus lands with the whole name selected: typing replaces it, and
+      // this covers every entry point (context menu, double-click) since
+      // they all open the same dialog.
+      onFocus={(event) => event.target.select()}
       onChange={(event) => onChange(event.target.value)}
       onCompositionStart={onCompositionStart}
       onCompositionEnd={onCompositionEnd}
@@ -78,6 +84,10 @@ interface AppDialogsProps {
   removeProjectTarget?: { project?: Project; cwd: string; sessions: SessionSummary[] };
   onConfirmRemoveProject: () => void;
   onCloseRemoveProject: () => void;
+  /** Archived chats (Settings → Archived); restored/deleted from there. */
+  archivedSessions: ArchivedSessionSummary[];
+  onUnarchiveArchived: (session: ArchivedSessionSummary) => void;
+  onDeleteArchived: (session: ArchivedSessionSummary) => void;
   settingsOpen: boolean;
   onSettingsOpenChange: (open: boolean) => void;
   appInfo?: AppInfo;
@@ -97,6 +107,9 @@ export function AppDialogs({
   removeProjectTarget,
   onConfirmRemoveProject,
   onCloseRemoveProject,
+  archivedSessions,
+  onUnarchiveArchived,
+  onDeleteArchived,
   settingsOpen,
   onSettingsOpenChange,
   appInfo,
@@ -121,9 +134,12 @@ export function AppDialogs({
     if (!removeProjectTarget) return "";
     const count = removeProjectTarget.sessions.length;
     const name = removeProjectTarget.project?.name ?? pathBaseName(removeProjectTarget.cwd);
+    // A project can outlive all of its sessions (archived one by one);
+    // removing the empty group only drops it from the sidebar.
+    if (count === 0) return `${name} will be removed from the sidebar.`;
     return removeProjectTarget.project
-      ? `${name} and its ${count} session${count === 1 ? "" : "s"} will be moved to the system Trash.`
-      : `${count} session${count === 1 ? "" : "s"} in ${name} will be moved to the system Trash.`;
+      ? `${name} and its ${count} session${count === 1 ? "" : "s"} will be moved to Archived chats.`
+      : `${count} session${count === 1 ? "" : "s"} in ${name} will be moved to Archived chats.`;
   })();
 
   return (
@@ -151,7 +167,8 @@ export function AppDialogs({
           <AlertDialogHeader>
             <AlertDialogTitle>Archive session?</AlertDialogTitle>
             <AlertDialogDescription>
-              {removeTarget ? sessionTitle(removeTarget) : "This session"} will be moved to the system Trash.
+              {removeTarget ? sessionTitle(removeTarget) : "This session"} will be moved to Archived chats. You can
+              restore it anytime in Settings → Archived.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -198,6 +215,8 @@ export function AppDialogs({
             <TabsList variant="line">
               <TabsTrigger value="models">Models</TabsTrigger>
               <TabsTrigger value="general">General</TabsTrigger>
+              <TabsTrigger value="composer">Composer</TabsTrigger>
+              <TabsTrigger value="archived">Archived</TabsTrigger>
               <TabsTrigger value="appearance">Font</TabsTrigger>
               <TabsTrigger value="editor">Editor</TabsTrigger>
             </TabsList>
@@ -209,6 +228,16 @@ export function AppDialogs({
             </TabsContent>
             <TabsContent value="editor">
               <EditorSettings />
+            </TabsContent>
+            <TabsContent value="composer">
+              <QuickCommandsSettings />
+            </TabsContent>
+            <TabsContent value="archived">
+              <ArchivedChatsSettings
+                sessions={archivedSessions}
+                onUnarchive={onUnarchiveArchived}
+                onDelete={onDeleteArchived}
+              />
             </TabsContent>
             <TabsContent value="general">
               <PiAgentSettings active={settingsOpen} piVersion={appInfo?.piVersion} onUpdated={onAppInfoChange} />

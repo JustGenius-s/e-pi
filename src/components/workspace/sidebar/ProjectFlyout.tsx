@@ -1,4 +1,4 @@
-import { Pin, Plus } from "lucide-react";
+import { Pin } from "lucide-react";
 import { useState, type CSSProperties } from "react";
 
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
@@ -19,9 +19,8 @@ interface ProjectFlyoutProps extends SessionRowCallbacks {
   unseenRuns?: ReadonlySet<string>;
   platform?: NodeJS.Platform;
   onExpand: () => void;
-  /** Create a new session in this project. */
-  onCreate: (cwd: string) => void;
-  projectPinned: boolean;
+  /** Undefined hides the pin button (e.g. the default-folder Home entry). */
+  projectPinned?: boolean;
   toggleProjectPin: (key: string) => void;
 }
 
@@ -41,7 +40,6 @@ export function ProjectFlyout({
   unseenRuns,
   platform,
   onExpand,
-  onCreate,
   projectPinned,
   toggleProjectPin,
   ...sessionCallbacks
@@ -61,31 +59,20 @@ export function ProjectFlyout({
       <HoverCardContent side="right" sideOffset={10} align="start" className="project-flyout">
         <div className="project-flyout-header">
           <span className="project-flyout-title">{label}</span>
-          <button
-            type="button"
-            className={`project-flyout-add${projectPinned ? " active" : ""}`}
-            aria-label={projectPinned ? "Unpin workspace" : "Pin workspace"}
-            title={projectPinned ? "Unpin workspace" : "Pin workspace"}
-            onClick={(event) => {
-              event.stopPropagation();
-              toggleProjectPin(project.key);
-            }}
-          >
-            <Pin size={12} fill={projectPinned ? "currentColor" : "none"} />
-          </button>
-          <button
-            type="button"
-            className="project-flyout-add"
-            aria-label={`New session in ${label}`}
-            title={`New session in ${label}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              setOpen(false);
-              onCreate(project.cwd);
-            }}
-          >
-            <Plus size={12} />
-          </button>
+          {projectPinned !== undefined ? (
+            <button
+              type="button"
+              className={`project-flyout-add${projectPinned ? " active" : ""}`}
+              aria-label={projectPinned ? "Unpin workspace" : "Pin workspace"}
+              title={projectPinned ? "Unpin workspace" : "Pin workspace"}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleProjectPin(project.key);
+              }}
+            >
+              <Pin size={12} fill={projectPinned ? "currentColor" : "none"} />
+            </button>
+          ) : null}
         </div>
         <ul className="project-flyout-sessions">
           {/* Pinned chats live in the pinned-chats flyout instead (same

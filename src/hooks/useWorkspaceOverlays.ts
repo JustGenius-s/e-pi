@@ -4,14 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
  * Overlay state machine for the workspace code editor and file preview
  * (port of LiveAgent's useWorkspaceOverlays, without the SSH terminal).
  *
- * - mounted: the overlay exists in the DOM (mount/unmount cost);
- * - open: it is visible; opening one overlay closes the other (mutual
- *   exclusion);
- * - openRequest: monotonically id'ed request the overlay consumes to load a
- *   file; a new request id always re-reads even for the same path;
- * - closeRequestId: monotonically id'ed request to *really* close (runs the
- *   dirty-save confirmation when needed); closing runs the slide-out
- *   animation, then onClose unmounts.
+ * - Mounted: the overlay exists in the DOM (mount/unmount cost);
+ * - Open: it is visible; opening one overlay closes the other (mutual exclusion);
+ * - OpenRequest: monotonically id'ed request the overlay consumes to load a file; a new request id always re-reads even
+ *   for the same path;
+ * - CloseRequestId: monotonically id'ed request to _really_ close (runs the dirty-save confirmation when needed); closing
+ *   runs the slide-out animation, then onClose unmounts.
  *
  * Session persistence: the dev server fully reloads the page when workspace
  * source files are edited/saved; the open requests are mirrored to

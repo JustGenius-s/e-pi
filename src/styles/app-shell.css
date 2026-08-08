@@ -59,6 +59,18 @@
   -webkit-app-region: no-drag;
 }
 
+/* Native fullscreen (macOS) hides the menu bar and the traffic lights —
+   they only slide back in while the pointer is at the screen edge, so the
+   84px reserved for the window controls is dead space in fullscreen. Align
+   the brand row's left edge with the sidebar row icons below (17px = 8px
+   sidebar-group padding + 9px menu-button padding), keeping the normal
+   vertical centering. The menu bar still slides over the top of the row
+   while the pointer is at the edge — that is standard macOS fullscreen
+   behavior, and the offset stays fixed (no hover toggling, no flicker). */
+body[data-fullscreen] .app-topbar .brand-lockup {
+  padding-left: 17px;
+}
+
 /* Brand zone: overlays the left sidebar column, so it shares the sidebar's
    width, background and right border (the vertical line that separates the
    brand from the session title). Left padding clears the macOS traffic
@@ -69,6 +81,27 @@
   padding: 0 12px 0 84px;
   background: var(--sidebar);
   border-right: 1px solid var(--sidebar-border);
+}
+
+/* Sidebar collapse trigger: far right of the sidebar header row (the brand
+   zone is the sidebar column's header). margin-left:auto pins it to the
+   right edge of the sidebar width, independent of the traffic-light offset.
+   no-drag lives on the wrapper (Electron's app-region handling is
+   unreliable on native <button> elements). */
+.brand-sidebar-toggle {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  -webkit-app-region: no-drag;
+}
+
+.brand-sidebar-toggle .sidebar-trigger {
+  color: var(--muted-foreground);
+  border-radius: 7px;
+}
+
+.brand-sidebar-toggle .sidebar-trigger:hover {
+  color: var(--foreground);
 }
 
 /* Collapsed sidebar: the whole top row switches to the workspace

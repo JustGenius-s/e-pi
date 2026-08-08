@@ -15,7 +15,7 @@ import {
   Square,
   Star,
 } from "lucide-react";
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -190,6 +190,20 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
   const allExpanded =
     Boolean(review.status?.files.length) && review.status!.files.every((file) => review.expanded.has(file.workPath));
 
+  // Total +/- line changes across the working tree (same numstat the file
+  // rows show individually), displayed at the right of the branch bar.
+  const totalStats = useMemo(() => {
+    const numstat = review.status?.numstat;
+    if (!numstat) return undefined;
+    let additions = 0;
+    let deletions = 0;
+    for (const stats of Object.values(numstat)) {
+      additions += stats.additions;
+      deletions += stats.deletions;
+    }
+    return additions > 0 || deletions > 0 ? { additions, deletions } : undefined;
+  }, [review.status?.numstat]);
+
   const toggleAll = () => {
     if (!review.status) return;
     const next = new Set<string>();
@@ -268,7 +282,9 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
                 <TooltipTrigger asChild>
                   <strong>{review.status.branch}</strong>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" align="start">{review.status.branch}</TooltipContent>
+                <TooltipContent side="bottom" align="start">
+                  {review.status.branch}
+                </TooltipContent>
               </Tooltip>
             ) : null}
             {review.status?.branch && review.status.upstream ? (
@@ -279,21 +295,44 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
             {review.status?.branch && review.status.upstream ? (
               <Tooltip delayDuration={1200}>
                 <TooltipTrigger asChild>
-                  <span className="git-review-upstream">
-                    {review.status.upstream}
-                    {review.status.ahead > 0 || review.status.behind > 0 ? (
-                      <em>
-                        {review.status.ahead > 0 ? ` ↑${review.status.ahead}` : ""}
-                        {review.status.behind > 0 ? ` ↓${review.status.behind}` : ""}
-                      </em>
-                    ) : null}
-                  </span>
+                  <span className="git-review-upstream">{review.status.upstream}</span>
                 </TooltipTrigger>
-                <TooltipContent side="bottom" align="start">{review.status.upstream}</TooltipContent>
+                <TooltipContent side="bottom" align="start">
+                  {review.status.upstream}
+                </TooltipContent>
               </Tooltip>
+            ) : null}
+            {review.status?.branch && review.status.upstream && review.status.ahead > 0 ? (
+              <span
+                className="git-review-ahead"
+                title={`${review.status.ahead} commit${review.status.ahead === 1 ? "" : "s"} ahead of ${review.status.upstream}`}
+              >
+                ↑{review.status.ahead}
+              </span>
+            ) : null}
+            {review.status?.branch && review.status.upstream && review.status.behind > 0 ? (
+              <span
+                className="git-review-behind"
+                title={`${review.status.behind} commit${review.status.behind === 1 ? "" : "s"} behind ${review.status.upstream}`}
+              >
+                ↓{review.status.behind}
+              </span>
             ) : null}
           </div>
         </div>
+        {totalStats ? (
+          <Tooltip delayDuration={1200}>
+            <TooltipTrigger asChild>
+              <span className="git-review-total-stats">
+                <em className="git-file-stats-add">+{totalStats.additions}</em>
+                <em className="git-file-stats-del">−{totalStats.deletions}</em>
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" align="start">
+              {totalStats.additions} additions, {totalStats.deletions} deletions
+            </TooltipContent>
+          </Tooltip>
+        ) : null}
         <div className="git-review-actions">
           <IconButton
             label={allExpanded ? "Collapse all" : "Expand all"}
@@ -302,7 +341,10 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
           >
             {allExpanded ? <ListChevronsDownUp size={14} /> : <ListChevronsUpDown size={14} />}
           </IconButton>
-          <IconButton label={diffStyle === "split" ? "Switch to unified view" : "Switch to split view"} onClick={toggleDiffStyle}>
+          <IconButton
+            label={diffStyle === "split" ? "Switch to unified view" : "Switch to split view"}
+            onClick={toggleDiffStyle}
+          >
             {diffStyle === "split" ? <Columns2 size={14} /> : <Rows2 size={14} />}
           </IconButton>
           <IconButton

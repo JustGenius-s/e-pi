@@ -5,8 +5,6 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { loadPiAgent } from "./pi-agent-loader";
-
 import type {
   GitCommitMessageResult,
   GitDiffResult,
@@ -15,6 +13,7 @@ import type {
   GitOperationResult,
   GitStatus,
 } from "../../../src/types/contracts";
+import { loadPiAgent } from "./pi-agent-loader";
 
 const execFileAsync = promisify(execFile);
 

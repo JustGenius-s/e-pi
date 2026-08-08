@@ -4,7 +4,7 @@
  * A reference carries only the path and line range — never the content —
  * serialized as a markdown link the pi agent can follow:
  *
- *   [file.ts:10-20](src/file.ts#L10-L20)
+ * [file.ts:10-20](src/file.ts#L10-L20)
  *
  * (Same contract as LiveAgent's mentionReferences; pi natively resolves
  * markdown links in user messages.)
@@ -88,10 +88,7 @@ function codeMentionTokenDestination(reference: CodeMentionReference) {
  * [file.ts:10-20](src/file.ts#L10-L20) — path and line range only, never the
  * referenced content itself.
  */
-export function formatCodeMentionToken(
-  raw: { path: string; startLine: number; endLine: number },
-  cwd: string,
-): string {
+export function formatCodeMentionToken(raw: { path: string; startLine: number; endLine: number }, cwd: string): string {
   const relative = toRelativeWorkspacePath(raw.path, cwd);
   const reference = createCodeMentionReference({
     path: relative,
@@ -100,4 +97,48 @@ export function formatCodeMentionToken(
   });
   if (!reference) return raw.path;
   return `[${escapeMarkdownReferenceLabel(codeMentionTokenLabel(reference))}](${formatMarkdownReferenceDestination(codeMentionTokenDestination(reference))})`;
+}
+
+/**
+ * A composer attachment reference (graphical chip in the input): a
+ * workspace-relative path plus an optional line range. `startLine`/`endLine`
+ * are undefined for whole-file references (file preview), set for code
+ * selections (editor context menu). Serialized to the markdown-link format
+ * below when the message is sent.
+ */
+export type ComposerReference = {
+  /** Workspace-relative posix path. */
+  path: string;
+  startLine?: number;
+  endLine?: number;
+};
+
+/** Stable identity for dedupe/keys: `path:start-end` (whole file = `path`). */
+export function composerReferenceKey(reference: ComposerReference): string {
+  const { path, startLine, endLine } = reference;
+  if (startLine === undefined || endLine === undefined) return path;
+  return `${path}:${startLine}-${endLine}`;
+}
+
+/** Serialize one reference to the agent-readable markdown link format. */
+export function formatComposerReference(reference: ComposerReference, cwd: string): string {
+  const { path, startLine, endLine } = reference;
+  if (startLine === undefined || endLine === undefined) return formatFileMentionToken(path, cwd);
+  return formatCodeMentionToken({ path, startLine, endLine }, cwd);
+}
+
+/** Serialize all references, space-separated, for the outgoing prompt. */
+export function serializeComposerReferences(references: ComposerReference[], cwd: string): string {
+  return references.map((reference) => formatComposerReference(reference, cwd)).join(" ");
+}
+
+/**
+ * Serialize a whole-file reference (file preview "add to chat") as a
+ * markdown link the model can follow: [name](path). No line range — the
+ * preview has no selection.
+ */
+export function formatFileMentionToken(absPath: string, cwd: string): string {
+  const relative = toRelativeWorkspacePath(absPath, cwd);
+  const name = absPath.split(/[\\/]/).pop() || absPath;
+  return `[${escapeMarkdownReferenceLabel(name)}](${formatMarkdownReferenceDestination(relative)})`;
 }

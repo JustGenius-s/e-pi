@@ -49,7 +49,9 @@
   color: var(--foreground);
   flex: 0 1 auto;
   font-size: var(--fs-small);
-  min-width: 0;
+  /* A floor so the local branch never shrinks out of existence — below this
+     the name ellipsizes instead of vanishing. */
+  min-width: 4em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -59,7 +61,9 @@
   color: var(--muted-foreground);
   flex: 0 1 auto;
   font-size: var(--fs-mini);
-  min-width: 0;
+  /* Like the local branch: a floor so the remote ref stays visible and
+     ellipsizes when the row is tight. */
+  min-width: 5em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -71,9 +75,59 @@
   font-size: 11px;
 }
 
-.git-review-upstream em {
-  font-style: normal;
+/* Ahead/behind as separate chips after the upstream ref: never shrink, so
+   the sync state stays visible even when the ref names ellipsize. */
+.git-review-ahead,
+.git-review-behind {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+  font-size: var(--fs-mini);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* Total +/- line changes for the working tree, as a standalone element at
+   the right of the branch bar (between the branch line and the actions) —
+   it must not share the branch line's shrinking space or it would squeeze
+   the upstream ↑/↓ indicators. Reuses the file-row add/del colors. */
+.git-review-total-stats {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-left: 6px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-small);
+  font-weight: 440;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.git-review-total-stats em {
+  font-style: normal;
+}
+
+/* .git-review-meta span/em (higher specificity) would otherwise paint these
+   with the muted/chart colors and add a border-left + padding — restore the
+   file-row green/red with a more specific selector. */
+.git-review-total-stats em {
+  flex: initial;
+  padding-left: 0;
+  border-left: none;
+}
+
+.git-review-total-stats .git-file-stats-add {
+  color: var(--diff-add-base);
+}
+
+.git-review-total-stats .git-file-stats-del {
+  color: var(--diff-del-base);
 }
 
 .git-review-actions {
@@ -1033,7 +1087,9 @@
   font: inherit;
   font-size: var(--fs-medium);
   outline: none;
-  transition: border-color 120ms ease-out, background 120ms ease-out;
+  transition:
+    border-color 120ms ease-out,
+    background 120ms ease-out;
 }
 
 .tool-file-search-input::placeholder {

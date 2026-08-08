@@ -1,6 +1,8 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+
+import { app } from "electron";
 
 import type { PiTuiSettings } from "../../../src/types/contracts";
 
@@ -35,6 +37,12 @@ function readSettingsFile(): Record<string, unknown> {
   return {};
 }
 
+function writeSettingsFile(next: Record<string, unknown>): void {
+  const path = settingsPath();
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, JSON.stringify(next, null, 2), "utf8");
+}
+
 export function getPiTuiSettings(): PiTuiSettings {
   const raw = readSettingsFile();
   return {
@@ -48,9 +56,54 @@ export function savePiTuiSettings(settings: PiTuiSettings): PiTuiSettings {
     quietStartup: settings.quietStartup === true,
     hideThinkingBlock: settings.hideThinkingBlock === true,
   };
-  const merged = { ...readSettingsFile(), ...next };
-  const path = settingsPath();
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, JSON.stringify(merged, null, 2), "utf8");
+  writeSettingsFile({ ...readSettingsFile(), ...next });
   return next;
+}
+
+/**
+ * Auto theme setting: pi's `"<light>/<dark>"` format (light variant first)
+ * picks the theme variant from the terminal background at launch. E-Pi
+ * injects `COLORFGBG` into the pi process (following the app theme), so
+ * sessions start with the right variant; running sessions are hot-switched
+ * via the `/e-pi-theme` bridge command. Only defaults are taken over — a
+ * theme the user picked in `/settings` stays untouched.
+ */
+export const AUTO_THEME_SETTING = "e-pi-light/dark";
+
+/** Theme values that are pi defaults or E-Pi's own (E-Pi may manage these). */
+const DEFAULT_THEMES = new Set(["dark", "light", "dark/light", "light/dark", "e-pi-light", AUTO_THEME_SETTING]);
+
+export function ensureAutoThemeSetting(): void {
+  const raw = readSettingsFile();
+  const current = typeof raw.theme === "string" ? raw.theme : undefined;
+  if (current === AUTO_THEME_SETTING) return;
+  if (current !== undefined && !DEFAULT_THEMES.has(current)) return;
+  writeSettingsFile({ ...raw, theme: AUTO_THEME_SETTING });
+}
+
+/**
+ * E-Pi's contrast-fixed light theme, shipped next to the bridge extension.
+ * pi discovers themes from `~/.pi/agent/themes/*.json` at session start, so
+ * the file must exist before a session spawns.
+ */
+export function ensureEpiLightThemeFile(sourceOverride?: string): void {
+  const target = join(agentDir(), "themes", "e-pi-light.json");
+  const source = sourceOverride ?? epiLightThemeSource();
+  try {
+    if (readFileSync(target, "utf8").trim() === readFileSync(source, "utf8").trim()) return;
+  } catch {
+    // Missing target or source — (re)write below.
+  }
+  try {
+    mkdirSync(dirname(target), { recursive: true });
+    writeFileSync(target, readFileSync(source, "utf8"), "utf8");
+  } catch {
+    // Theme sync is best-effort; without it light mode falls back to dark.
+  }
+}
+
+function epiLightThemeSource(): string {
+  const packagedPath = typeof process.resourcesPath === "string" ? join(process.resourcesPath, "e-pi-light.json") : "";
+  if (app.isPackaged && packagedPath && existsSync(packagedPath)) return packagedPath;
+  return join(app.getAppPath(), "resources", "e-pi-light.json");
 }
