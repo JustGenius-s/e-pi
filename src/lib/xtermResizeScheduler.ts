@@ -8,6 +8,13 @@ export interface ResizeSchedulerOptions {
   fit: FitAddon;
   /** True while xterm still has unparsed writes (resizing mid-batch corrupts cursor state). */
   hasPendingWrites: () => boolean;
+  /**
+   * Bytes still queued for xterm, if tracked. Local reflow is only skipped
+   * while a LARGE frame is draining (pi's full redraws are tens of KB);
+   * small incremental updates (spinner etc.) must not block instant local
+   * follow — they would leave the canvas unexpanded after a panel toggle.
+   */
+  pendingWriteBytes?: () => number;
   /** Queue an explicit FIFO write barrier; `onDrained` fires once the parser caught up. */
   queueWriteBarrier: (onDrained: () => void) => void;
   /** Longest the refit waits on the write barrier before proceeding anyway (default 100ms). */
@@ -28,6 +35,8 @@ const SETTLE_FRAMES = 1;
 const DEFAULT_BARRIER_CAP_MS = 100;
 /** While the size keeps changing (drag), refit at most this often. */
 const DRAG_REFIT_INTERVAL_MS = 120;
+/** Writes above this size are treated as full frames: local reflow pauses. */
+const LARGE_WRITE_BYTES = 4096;
 
 /**
  * Shared resize handling for the main TUI terminal and the side terminal.
@@ -136,12 +145,13 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
    */
   const fitLocal = (): void => {
     if (disposed) return;
-    // Skip while a write batch is still draining: the frame being parsed
-    // targets the previous grid, and reflowing under it would interleave
-    // two layouts (half old, half new). The write queue is empty most of
-    // the time during a drag (pi only emits on the throttled resizes), so
-    // this barely affects follow responsiveness.
-    if (options.hasPendingWrites()) return;
+    // Skip only while a LARGE frame is draining: a pi full redraw (tens of
+    // KB, wrapped in synchronized output) must not be reflowed mid-parse or
+    // its rows land on the wrong grid. Small incremental updates (spinner
+    // ticks etc.) drain in milliseconds and must not block the instant
+    // local follow — otherwise a one-shot panel toggle leaves the canvas
+    // unexpanded (black gap) until the throttled PTY refit fires.
+    if ((options.pendingWriteBytes?.() ?? 0) > LARGE_WRITE_BYTES) return;
     cancelPendingRestore();
     const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
     const topLine = terminal.buffer.active.viewportY;
