@@ -7,8 +7,12 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
-import { appendTerminalReplay, replayContent } from "../../lib/terminalReplayBuffer";
-import type { TerminalReplayBuffer } from "../../lib/terminalReplayBuffer";
+import {
+  appendTerminalBuffer,
+  clearTerminalBuffer,
+  getReplayContent,
+  isAwaitingCheckpoint,
+} from "../../lib/terminalReplayStore";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
@@ -57,24 +61,11 @@ function parseWorkspaceFileLink(uri: string): { path: string; line?: number } | 
   return { path, line };
 }
 
-/**
- * Scrollback per session, kept across terminal unmount/remount (switching to
- * another session destroys the xterm instance). A hidden session keeps
- * accumulating output in the background via the app-lifetime feeder below, so
- * switching back replays the latest self-contained TUI frame plus subsequent
- * output. Obsolete full-redraw frames are compacted instead of replayed.
- */
-const buffers = new Map<string, TerminalReplayBuffer>();
-
-export function clearTerminalBuffer(sessionKey: string): void {
-  buffers.delete(sessionKey);
-}
-
-function appendTerminalBuffer(sessionKey: string, data: string): void {
-  buffers.set(sessionKey, appendTerminalReplay(buffers.get(sessionKey), data));
-}
-
 let feederStarted = false;
+
+// Backward-compatible entry point for consumers that historically imported
+// clearTerminalBuffer from this component; the storage lives in the store.
+export { clearTerminalBuffer };
 
 /**
  * Smoothly scroll the terminal to the bottom. xterm has no built-in animated
@@ -301,7 +292,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
         // resizes must straddle a TUI render tick (MIN_RENDER_INTERVAL_MS is
         // 16ms) or the intermediate size is never observed and the redraw is
         // skipped.
-        if (buffers.get(sessionKey)?.awaitingCheckpoint) {
+        if (isAwaitingCheckpoint(sessionKey)) {
           const { cols, rows } = terminal;
           window.ePi.runtime.resize(sessionKey, { cols, rows: rows + 1 });
           window.clearTimeout(shimmyTimer);
@@ -470,7 +461,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       // the scrollback (stale sync, swallowed scroll event) is corrected.
       requestAnimationFrame(syncViewportAfterWrite);
     };
-    const replay = replayContent(buffers.get(sessionKey));
+    const replay = getReplayContent(sessionKey);
     if (replay) {
       markPainted();
       flushWrite(replay, finishReplay);
