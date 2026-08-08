@@ -14,8 +14,8 @@ import {
   isAwaitingCheckpoint,
 } from "../../lib/terminalReplayStore";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
+import { createResizeScheduler } from "../../lib/xtermResizeScheduler";
 import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
-import { restoreViewportAfterSettle } from "../../lib/xtermViewportRestore";
 import { createViewportWatchdog } from "../../lib/xtermViewportWatchdog";
 
 interface TerminalPanelProps {
@@ -105,7 +105,6 @@ function ensureBufferFeeder(): void {
 export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileLink }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
-  const fittedOnceRef = useRef(false);
   const [atBottom, setAtBottom] = useState(true);
   const isDarkRef = useTerminalTheme(hostRef, terminalRef);
   // Keep the latest callback without re-running the mount effect.
@@ -195,92 +194,27 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       painted = true;
       onFirstPaintRef.current?.(sessionKey);
     };
-    let restoreGeneration = 0;
     let pendingWrites = 0;
-    let deferredRefit = false;
-    let resizeBarrierQueued = false;
-    /** When the deferred refit was first blocked by in-flight writes (barrier cap). */
-    let refitBlockedAt = 0;
-    /** RAF handle for the resize settle-detection loop (replaces fixed debounce). */
-    let resizeSettleFrame: number | undefined;
-    /** One-shot flag: the next rAF paints the current screen at the new container width. */
-    let transitionRefreshPending = false;
-    let runResizeBarrier: (() => void) | undefined;
-    // Bump the generation so any in-flight viewport restore from a previous
-    // refit aborts at its next frame check. cancelAnimationFrame cannot stop a
-    // callback that is already executing (it would reschedule itself), so the
-    // generation check inside the restore loop is the real guard.
-    const cancelPendingRestore = () => {
-      restoreGeneration += 1;
-    };
-    const fitTerminal = (immediate = false) => {
-      const host = hostRef.current;
-      if (!host) return;
-      try {
-        // Skip the refit when the character grid did not change (e.g.
-        // sub-pixel width wobble) — resizing repaints the renderer.
-        const dims = fit.proposeDimensions();
-        if (!dims) return;
-        if (dims.cols === terminal.cols && dims.rows === terminal.rows) return;
-      } catch {
-        // The terminal can be measured before its parent is visible.
-        return;
-      }
-      const refit = () => {
-        // xterm parses writes asynchronously. Resizing while a TUI frame is
-        // still queued makes the producer and emulator disagree about cursor
-        // coordinates; the next spinner update can then scroll instead of
-        // replacing its row. Wait until the current write batch is committed —
-        // but cap the wait: under sustained output the barrier could starve
-        // the refit indefinitely, and the TUI's next full frame corrects any
-        // transient mismatch anyway.
-        if (pendingWrites > 0) {
-          if (!deferredRefit) {
-            deferredRefit = true;
-            refitBlockedAt = performance.now();
-          }
-          if (performance.now() - refitBlockedAt < 100) {
-            if (!resizeBarrierQueued) {
-              resizeBarrierQueued = true;
-              // An empty write is an explicit FIFO barrier behind all terminal
-              // data queued so far. This prevents a sustained stream from
-              // starving resize forever while preserving parser ordering.
-              terminal.write("", () => {
-                resizeBarrierQueued = false;
-                if (disposed || !deferredRefit) return;
-                runResizeBarrier?.();
-              });
-            }
-            return;
-          }
-          // Cap exceeded: refit now even with writes in flight.
-        }
-        deferredRefit = false;
-
-        // A previous refit may still have a delayed restoration queued. If it
-        // runs after this refit, its old line number can move the viewport to
-        // the wrong place (including the top) after a second reflow.
-        cancelPendingRestore();
-
-        // Capture the viewport by line, not pixel: reflow re-wraps the whole
-        // scrollback, so a pixel offset no longer maps to the same content
-        // (and the browser/xterm may clamp it to the new scroll height, which
-        // is the "jumps back to top" bug). Line numbers survive reflow.
-        const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
-        const topLine = terminal.buffer.active.viewportY;
-        try {
-          fit.fit();
-        } catch {
-          return;
-        }
-        // Re-assert the bottom immediately: the renderer already repainted at
-        // the new grid, but xterm's own viewport sync only runs on the next
-        // refresh frame — without this the user briefly sees the top of the
-        // reflowed buffer instead of the live tail they were following.
-        if (wasAtBottom) terminal.scrollToBottom();
-        // refit() is coalesced (see fitTerminal below), so this is at most
-        // once per resize pause — one PTY resize, one TUI re-layout.
-        window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
+    /**
+     * Refit the terminal to its container. Panel collapse/expand animates the
+     * width over ~180ms; per-frame settle detection refits within a couple of
+     * frames of the size going stable, and the current screen is repainted at
+     * the new container width while the transition is still running — the
+     * user never sees a frozen old-layout frame. See xtermResizeScheduler.
+     */
+    const resizeScheduler = createResizeScheduler({
+      terminal,
+      fit,
+      hasPendingWrites: () => pendingWrites > 0,
+      queueWriteBarrier: (onDrained) => {
+        terminal.write("", () => {
+          if (disposed) return;
+          onDrained();
+        });
+      },
+      onFitted: ({ cols, rows }) => {
+        // One PTY resize per refit pause — the TUI re-lays out once.
+        window.ePi.runtime.resize(sessionKey, { cols, rows });
         // The replay checkpoint buffer can be invalidated by overflow: a long
         // resume-history dump or an output-heavy run can exceed the cap before
         // the TUI's next full redraw, and pi's TUI only re-emits a full frame
@@ -293,7 +227,6 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
         // 16ms) or the intermediate size is never observed and the redraw is
         // skipped.
         if (isAwaitingCheckpoint(sessionKey)) {
-          const { cols, rows } = terminal;
           window.ePi.runtime.resize(sessionKey, { cols, rows: rows + 1 });
           window.clearTimeout(shimmyTimer);
           shimmyTimer = window.setTimeout(() => {
@@ -301,89 +234,19 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
             window.ePi.runtime.resize(sessionKey, { cols, rows });
           }, 60);
         }
-        // xterm's resize schedules its own viewport sync on a refresh callback
-        // (viewport.queueSync -> _sync on rAF) that runs on a later frame; in
-        // v6 that sync can leave the scrollable on a stale/clamped position
-        // instead of the buffer's ydisp. Restore only once the viewport has
-        // stopped moving on its own, so the restore lands after xterm's sync
-        // instead of racing it. The stale check makes a newer refit (or
-        // unmount) abort the loop at the next frame.
-        const generation = restoreGeneration;
-        restoreViewportAfterSettle({
-          terminal,
-          wasAtBottom,
-          topLine,
-          isStale: () => disposed || generation !== restoreGeneration,
-        });
-      };
-      if (!fittedOnceRef.current || immediate) {
-        // First mount (or an explicit direct refit from the write barrier):
-        // fit immediately so the terminal has a size right away.
-        fittedOnceRef.current = true;
-        refit();
-      } else {
-        // Replace the fixed debounce with per-frame settle detection: the panel
-        // collapse/expand transition animates the width over ~180ms, so the
-        // grid size changes every frame and then goes stable. Refit on the
-        // second stable frame — typically ~2 frames after the transition ends,
-        // versus 150ms of dead time with a debounce. While the transition is
-        // still running, immediately repaint the current screen at the new
-        // container width (WebGL repositions quads, no reflow) so the user
-        // never stares at a frozen old-layout frame.
-        if (resizeSettleFrame !== undefined) cancelAnimationFrame(resizeSettleFrame);
-        let lastCols = -1;
-        let lastRows = -1;
-        let stableFrames = 0;
-        const settleStep = () => {
-          resizeSettleFrame = undefined;
-          if (disposed) return;
-          if (transitionRefreshPending) {
-            transitionRefreshPending = false;
-            terminal.refresh(0, terminal.rows - 1);
-          }
-          let cols = -1;
-          let rows = -1;
-          try {
-            const dims = fit.proposeDimensions();
-            if (dims) {
-              cols = dims.cols;
-              rows = dims.rows;
-            }
-          } catch {
-            // Not measurable this frame; treat as unsettled.
-          }
-          if (cols === lastCols && rows === lastRows) {
-            stableFrames += 1;
-          } else {
-            lastCols = cols;
-            lastRows = rows;
-            stableFrames = 0;
-          }
-          if (stableFrames >= 2) {
-            refit();
-            return;
-          }
-          resizeSettleFrame = requestAnimationFrame(settleStep);
-        };
-        // The repaint-on-transition-start must not double-paint when a settle
-        // loop is already running (its first frame refreshes too).
-        transitionRefreshPending = transitionRefreshPending || resizeSettleFrame === undefined;
-        resizeSettleFrame = requestAnimationFrame(settleStep);
-      }
-    };
-    const resizeObserver = new ResizeObserver(() => fitTerminal());
+      },
+      isDisposed: () => disposed,
+    });
+    const resizeObserver = new ResizeObserver(() => resizeScheduler.schedule());
     resizeObserver.observe(hostRef.current);
-    fittedOnceRef.current = false;
-    fitTerminal();
+    resizeScheduler.refitNow();
 
     // Live font-size updates from the Appearance settings (refit reflows the
     // grid; the skip-if-unchanged guard makes this a no-op when nothing moves).
     const unsubscribeAppearance = subscribeAppearance(() => {
       terminal.options.fontSize = getAppearance().termMain;
-      fitTerminal();
+      resizeScheduler.schedule();
     });
-
-    runResizeBarrier = () => fitTerminal(true);
 
     // pi's TUI emits `ESC[2J ESC[H ESC[3J` full redraws whenever the PTY
     // resizes or its layout changes. Executing `3J` would trim the whole
@@ -473,7 +336,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     return () => {
       disposed = true;
       window.clearTimeout(shimmyTimer);
-      cancelPendingRestore();
+      resizeScheduler.dispose();
       eraseScrollbackGuard.dispose();
       viewportWatchdog.dispose();
       unsubscribeAppearance();
@@ -482,7 +345,6 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       input.dispose();
       scrollSub.dispose();
       terminalRef.current = null;
-      if (resizeSettleFrame !== undefined) cancelAnimationFrame(resizeSettleFrame);
       webgl?.dispose();
       webLinks.dispose();
       resizeObserver.disconnect();
