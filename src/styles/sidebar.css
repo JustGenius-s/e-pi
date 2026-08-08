@@ -844,12 +844,6 @@
   background: var(--accent);
 }
 
-/* Active flyout rows keep the accent background on the action-bar buttons. */
-.project-flyout-session[data-active="true"] .session-activity,
-.project-flyout-session[data-active="true"] .project-flyout-session-label {
-  color: inherit;
-}
-
 .project-flyout-session:hover,
 .project-flyout-session[data-active="true"] {
   background: var(--accent);
