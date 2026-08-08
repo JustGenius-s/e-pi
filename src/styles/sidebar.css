@@ -779,6 +779,11 @@
   color: var(--accent-foreground);
 }
 
+/* Pinned state of the flyout-header pin button. */
+.project-flyout-add.active {
+  color: var(--primary);
+}
+
 .project-flyout-sessions {
   display: flex;
   margin: 0;
@@ -809,6 +814,43 @@
   white-space: nowrap;
   cursor: default;
   transition: background-color 120ms ease;
+}
+
+/* Flyout rows host the same hover action bar (⋯ / pin / archive) as sidebar
+   rows; the <li> wrapper provides the positioning context and hover hooks. */
+.project-flyout-item {
+  position: relative;
+  list-style: none;
+}
+
+.project-flyout-item:hover .session-row-actions,
+.project-flyout-item:has(:focus-visible) .session-row-actions,
+.project-flyout-item .session-row-actions[data-open] {
+  opacity: 1;
+  pointer-events: auto;
+  transition:
+    opacity 120ms ease,
+    pointer-events 0s;
+}
+
+.project-flyout-item:hover .project-flyout-session time,
+.project-flyout-item:hover .project-flyout-session .session-run-dot,
+.project-flyout-item:has(:focus-visible) .project-flyout-session time,
+.project-flyout-item:has(:focus-visible) .project-flyout-session .session-run-dot,
+.project-flyout-item:has(.session-row-actions[data-open]) .project-flyout-session time,
+.project-flyout-item:has(.session-row-actions[data-open]) .project-flyout-session .session-run-dot {
+  visibility: hidden;
+  min-width: 76px;
+}
+
+/* The flyout action bar floats over the popover surface, not the sidebar. */
+.project-flyout-item .session-row-actions {
+  background: color-mix(in oklch, var(--popover) 92%, var(--popover-foreground));
+}
+
+.project-flyout-item .session-row-action:hover {
+  color: var(--popover-foreground);
+  background: var(--accent);
 }
 
 .project-flyout-session:hover,

@@ -639,7 +639,7 @@ export interface EPiApi {
     /** Keep native chrome (titlebar, scrollbars) in step with the app theme. */
     setTheme(theme: "light" | "dark"): Promise<void>;
     /**
-     * macOS: true while the window is in native fullscreen. The menu bar hides
+     * MacOS: true while the window is in native fullscreen. The menu bar hides
      * and the traffic lights move up into the menu-bar row, so the renderer
      * shifts its topbar content to stay aligned. Returns an unsubscribe fn.
      */

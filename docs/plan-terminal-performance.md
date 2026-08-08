@@ -454,6 +454,7 @@ chunk 数量、平均 chunk 字节数、总字节数。
 此前只在工作区验证未提交，已单独提交（此前干净 checkout 无法编译）。
 
 **驱逐回挂留白修复**（A2 兜底失效）：
+
 - `terminalReplayStore` 新增 `evictedSessions` 有界 FIFO 标记（上限 12）。
 - 被驱逐 session 的 `isAwaitingCheckpoint` 返回 true，且其新输出以
   checkpoint-waiting 状态续接（`createAwaitingCheckpointBuffer`）。
