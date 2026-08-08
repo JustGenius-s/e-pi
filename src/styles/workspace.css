@@ -55,7 +55,10 @@
 .terminal-scroll-bottom {
   position: absolute;
   left: 50%;
-  bottom: 12px;
+  /* Raised above the quick-command pill row (which floats over the
+     composer's top edge, i.e. the terminal's bottom strip) so the two
+     never overlap. */
+  bottom: 56px;
   translate: -50% 0;
   z-index: 2;
   display: grid;
@@ -598,17 +601,14 @@
 
 /* Quick commands: a single-line pill row floating above the card's top
    border while the input is empty. Absolute against the composer-wrap
-   (outside the shell, whose overflow:hidden would clip it). The right edge
-   stops before the horizontal center so the row can never cover the
-   terminal's scroll-to-bottom button (centered at 50% in the frame above).
-   Pills never wrap — overflow scrolls horizontally. */
+   (outside the shell, whose overflow:hidden would clip it). Pills never
+   wrap — overflow scrolls horizontally. The scroll-to-bottom button above
+   is raised out of this strip, so no horizontal reservation is needed. */
 .composer-quick-commands {
   position: absolute;
   bottom: calc(100% + 14px);
   /* Align with the input's inner padding (16px) rather than the card edge. */
   left: 14px;
-  /* Keep clear of the centered scroll-to-bottom button (28px wide at 50%). */
-  right: calc(50% + 24px);
   display: flex;
   flex-wrap: nowrap;
   gap: 6px;
