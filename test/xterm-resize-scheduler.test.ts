@@ -285,3 +285,30 @@ it("reflows locally every frame and sends PTY resizes at a throttled rate (drag 
   }
   expect(onFitted).toHaveBeenCalledTimes(3);
 });
+
+it("skips local reflow while writes are draining", () => {
+  const { runFrames } = installFrameRunner();
+  vi.spyOn(performance, "now").mockReturnValue(0);
+  let width = 80;
+  let pending = false;
+  const { fit, onFitted, scheduler } = setup(() => ({ cols: width, rows: 24 }));
+  // Recreate with a hasPendingWrites that we control.
+  const terminal = makeTerminal(80, 24);
+  const fit2 = makeFit(terminal, () => ({ cols: width, rows: 24 }));
+  const onFitted2 = vi.fn();
+  const s2 = createResizeScheduler({
+    terminal: terminal as never,
+    fit: fit2 as never,
+    hasPendingWrites: () => pending,
+    queueWriteBarrier: (cb) => cb(),
+    onFitted: onFitted2 as never,
+  });
+  s2.schedule();
+  width += 2;
+  pending = true; // a pi frame is draining
+  runFrames(1);
+  expect(fit2.fit).not.toHaveBeenCalled(); // local reflow skipped
+  pending = false;
+  runFrames(1); // stable now -> final refit still works
+  expect(onFitted2).toHaveBeenCalledTimes(1);
+});

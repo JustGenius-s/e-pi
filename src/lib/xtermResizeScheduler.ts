@@ -136,6 +136,12 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
    */
   const fitLocal = (): void => {
     if (disposed) return;
+    // Skip while a write batch is still draining: the frame being parsed
+    // targets the previous grid, and reflowing under it would interleave
+    // two layouts (half old, half new). The write queue is empty most of
+    // the time during a drag (pi only emits on the throttled resizes), so
+    // this barely affects follow responsiveness.
+    if (options.hasPendingWrites()) return;
     cancelPendingRestore();
     const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
     const topLine = terminal.buffer.active.viewportY;
