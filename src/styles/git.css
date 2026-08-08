@@ -49,7 +49,9 @@
   color: var(--foreground);
   flex: 0 1 auto;
   font-size: var(--fs-small);
-  min-width: 0;
+  /* A floor so the local branch never shrinks out of existence — below this
+     the name ellipsizes instead of vanishing. */
+  min-width: 4em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -59,7 +61,9 @@
   color: var(--muted-foreground);
   flex: 0 1 auto;
   font-size: var(--fs-mini);
-  min-width: 0;
+  /* Like the local branch: a floor so the remote ref stays visible and
+     ellipsizes when the row is tight. */
+  min-width: 5em;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -71,9 +75,21 @@
   font-size: 11px;
 }
 
-.git-review-upstream em {
-  font-style: normal;
+/* Ahead/behind as separate chips after the upstream ref: never shrink, so
+   the sync state stays visible even when the ref names ellipsize. */
+.git-review-ahead,
+.git-review-behind {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: color-mix(in oklch, var(--muted-foreground) 14%, transparent);
+  font-size: var(--fs-mini);
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
 }
 
 /* Total +/- line changes for the working tree, as a standalone element at

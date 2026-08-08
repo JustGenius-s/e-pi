@@ -293,20 +293,28 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
             {review.status?.branch && review.status.upstream ? (
               <Tooltip delayDuration={1200}>
                 <TooltipTrigger asChild>
-                  <span className="git-review-upstream">
-                    {review.status.upstream}
-                    {review.status.ahead > 0 || review.status.behind > 0 ? (
-                      <em>
-                        {review.status.ahead > 0 ? ` ↑${review.status.ahead}` : ""}
-                        {review.status.behind > 0 ? ` ↓${review.status.behind}` : ""}
-                      </em>
-                    ) : null}
-                  </span>
+                  <span className="git-review-upstream">{review.status.upstream}</span>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" align="start">
                   {review.status.upstream}
                 </TooltipContent>
               </Tooltip>
+            ) : null}
+            {review.status?.branch && review.status.upstream && review.status.ahead > 0 ? (
+              <span
+                className="git-review-ahead"
+                title={`${review.status.ahead} commit${review.status.ahead === 1 ? "" : "s"} ahead of ${review.status.upstream}`}
+              >
+                ↑{review.status.ahead}
+              </span>
+            ) : null}
+            {review.status?.branch && review.status.upstream && review.status.behind > 0 ? (
+              <span
+                className="git-review-behind"
+                title={`${review.status.behind} commit${review.status.behind === 1 ? "" : "s"} behind ${review.status.upstream}`}
+              >
+                ↓{review.status.behind}
+              </span>
             ) : null}
           </div>
         </div>
