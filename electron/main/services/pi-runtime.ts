@@ -1,4 +1,4 @@
-import { existsSync, rmSync, watch } from "node:fs";
+import { existsSync, readFileSync, rmSync, watch, writeFileSync } from "node:fs";
 import type { FSWatcher } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
@@ -20,6 +20,7 @@ import type {
 import { agentConfigToArgs, getAgentConfig } from "./agent-config-service";
 import { debugLog } from "./debug-log";
 import { piCliEntry } from "./pi-agent-loader";
+import { ensureAutoThemeSetting, ensureEpiLightThemeFile } from "./pi-settings-service";
 
 type StateListener = (state: PiRuntimeState) => void;
 type GlobalDataListener = (sessionPath: string, data: string) => void;
@@ -79,6 +80,19 @@ function resolveNodeBinary(): string {
   return process.execPath;
 }
 
+function themeHintPath(): string {
+  return join(app.getPath("userData"), "theme-hint.json");
+}
+
+/** Last theme the renderer reported; defaults to dark when unknown. */
+function readThemeHint(): "dark" | "light" {
+  try {
+    return readFileSync(themeHintPath(), "utf8").trim() === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
 function copyState(state: PiRuntimeState): PiRuntimeState {
   return { ...state };
 }
@@ -117,8 +131,84 @@ export class PiRuntime {
   #globalDataListeners = new Set<GlobalDataListener>();
   #sessionFileListeners = new Set<SessionFileListener>();
   #activeSessionPath: string | undefined;
+  /**
+   * Per-session output batches. The pty emits ~1KB chunks up to thousands of
+   * times per second (measured 2,165 chunks/s under load); forwarding each
+   * one as its own IPC message is a serialization + wake-up tax on the
+   * renderer. Batch per session: flush on an 8ms timer or at a 64KB size
+   * cap, whichever comes first. Input (typing echo) is untouched.
+   */
+  #pendingBatches = new Map<string, { chunks: string[]; bytes: number; timer?: NodeJS.Timeout }>();
+
+  #queueData(sessionPath: string, data: string): void {
+    let batch = this.#pendingBatches.get(sessionPath);
+    if (!batch) {
+      batch = { chunks: [], bytes: 0 };
+      this.#pendingBatches.set(sessionPath, batch);
+    }
+    // Ordering: chunks are pushed in arrival order and joined in the same
+    // order, so the renderer always sees a prefix-consistent stream.
+    batch.chunks.push(data);
+    batch.bytes += data.length;
+    if (batch.bytes >= 64 * 1024) {
+      this.#flushBatch(sessionPath);
+    } else if (batch.timer === undefined) {
+      batch.timer = setTimeout(() => this.#flushBatch(sessionPath), 8);
+      batch.timer.unref?.();
+    }
+  }
+
+  #flushBatch(sessionPath: string): void {
+    const batch = this.#pendingBatches.get(sessionPath);
+    if (!batch || batch.chunks.length === 0) return;
+    this.#pendingBatches.delete(sessionPath);
+    if (batch.timer !== undefined) {
+      clearTimeout(batch.timer);
+      batch.timer = undefined;
+    }
+    const data = batch.chunks.length === 1 ? batch.chunks[0] : batch.chunks.join("");
+    for (const listener of this.#globalDataListeners) listener(sessionPath, data);
+  }
   /** Serializes lifecycle operations (start/stop) per session. */
   #chains = new Map<string, Promise<void>>();
+
+  /**
+   * E-Pi's current theme, injected as COLORFGBG so pi picks the auto-theme
+   * variant. Persisted to userData so the first spawn after a restart (which
+   * happens before the renderer reports the theme) still uses the right
+   * variant.
+   */
+  #themeHint: "dark" | "light";
+
+  constructor() {
+    this.#themeHint = readThemeHint();
+  }
+
+  /** Record E-Pi's current theme for sessions spawned from now on. */
+  setThemeHint(theme: "dark" | "light"): void {
+    this.#themeHint = theme;
+    try {
+      writeFileSync(themeHintPath(), theme, "utf8");
+    } catch {
+      // Persisting the hint is best-effort; the in-memory value still applies.
+    }
+  }
+
+  /**
+   * Hot-switch the TUI theme of every running session via the bridge
+   * command (no restart, no repaint flash). Sessions that are not running
+   * get the theme from their next spawn (COLORFGBG + auto theme setting).
+   */
+  broadcastTuiTheme(theme: "dark" | "light"): void {
+    for (const instance of this.#instances.values()) {
+      if (instance.state.status !== "running") continue;
+      try {
+        this.submit(instance.sessionPath, `/e-pi-theme ${theme}`);
+      } catch {
+        // Session not ready for input yet — its next spawn applies the theme.
+      }
+    }
+  }
 
   get activeSessionPath(): string | undefined {
     return this.#activeSessionPath;
@@ -284,6 +374,12 @@ export class PiRuntime {
   }
 
   async #ensureRunning(sessionPath: string, cwd: string): Promise<void> {
+    // Sessions launched from now on must start with the app's theme variant:
+    // pi reads the auto theme setting ("dark/e-pi-light") plus COLORFGBG at
+    // startup; the contrast-fixed light theme file must exist for pi to
+    // discover it. Idempotent; user-picked themes are left alone.
+    ensureEpiLightThemeFile();
+    ensureAutoThemeSetting();
     let instance = this.#instances.get(sessionPath);
     if (!instance) {
       instance = this.#placeholder(sessionPath, cwd);
@@ -342,6 +438,10 @@ export class PiRuntime {
           ...(nodeBinary === process.execPath ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
           TERM: "xterm-256color",
           COLORTERM: "truecolor",
+          // Lets pi pick the right variant of an auto theme setting
+          // ("dark/light") at launch: fg/bg white on white for light, black
+          // on black for dark.
+          COLORFGBG: this.#themeHint === "light" ? "15;7" : "15;0",
           E_PI: "true",
           // Surface pi's own startup timings (stderr) when profiling startup.
           ...(process.env.E_PI_DEBUG === "1" ? { PI_TIMING: "1" } : {}),
@@ -354,6 +454,23 @@ export class PiRuntime {
         instance.resolveStop = resolve;
       });
       let firstOutput = false;
+      // Debug-only IPC volume probe (E_PI_DEBUG=1): counts PTY chunks per
+      // 10s window to decide whether runtime:data needs batching (see
+      // docs/plan-terminal-performance.md task B3). Zero cost when disabled.
+      let probeBytes = 0;
+      let probeChunks = 0;
+      const probeTimer = setInterval(() => {
+        if (probeChunks === 0 && probeBytes === 0) return;
+        debugLog("[runtime] data-probe", {
+          sessionPath,
+          chunksPer10s: probeChunks,
+          avgChunkBytes: probeChunks > 0 ? Math.round(probeBytes / probeChunks) : 0,
+          totalBytes: probeBytes,
+        });
+        probeChunks = 0;
+        probeBytes = 0;
+      }, 10_000);
+      probeTimer.unref?.();
       child.onData((data) => {
         // A dying process must not paint into the terminal (e.g. pi prints a
         // "To resume this session" farewell on Ctrl-D).
@@ -362,9 +479,15 @@ export class PiRuntime {
           firstOutput = true;
           launchMark("first pty output");
         }
-        for (const listener of this.#globalDataListeners) listener(sessionPath, data);
+        probeChunks += 1;
+        probeBytes += data.length;
+        this.#queueData(sessionPath, data);
       });
       child.onExit(({ exitCode, signal }) => {
+        clearInterval(probeTimer);
+        // Deliver whatever the batch still holds — the last output before the
+        // process died must not be dropped.
+        this.#flushBatch(sessionPath);
         debugLog("[runtime] onExit", {
           sessionPath,
           pid: child.pid,
