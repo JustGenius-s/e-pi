@@ -1,4 +1,4 @@
-import { BadgePlus, Moon, Package, Pin, Plus, Settings2, Sparkles, Sun } from "lucide-react";
+import { BadgePlus, ChevronDown, Moon, Package, Pin, Plus, Settings2, Sparkles, Sun } from "lucide-react";
 import { memo, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -90,6 +90,8 @@ export const SessionSidebar = memo(function SessionSidebar({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   /** Click-controlled open state of the collapsed pinned-chats flyout. */
   const [pinnedFlyoutOpen, setPinnedFlyoutOpen] = useState(false);
+  /** RECENT (default-folder sessions) collapsed by the user. */
+  const [recentCollapsed, setRecentCollapsed] = useState(false);
   /**
    * Projects whose session list was expanded past the 5-row preview via
    * "Show more". Collapsing a project resets its expansion, so re-expanding
@@ -501,10 +503,20 @@ export const SessionSidebar = memo(function SessionSidebar({
                 {regularProjects.map((project) => renderProjectRow(project))}
                 {recentSessions.length > 0 ? (
                   <div className="sidebar-recent">
-                    <div className="sidebar-recent-label">Recent</div>
-                    <SidebarMenu className="sidebar-recent-list">
-                      {recentSessions.map((session) => renderSessionRow(session))}
-                    </SidebarMenu>
+                    <button
+                      type="button"
+                      className={`sidebar-recent-label${recentCollapsed ? " collapsed" : ""}`}
+                      onClick={() => setRecentCollapsed((current) => !current)}
+                      aria-expanded={!recentCollapsed}
+                    >
+                      <ChevronDown size={10} className="sidebar-recent-chevron" aria-hidden="true" />
+                      Recent
+                    </button>
+                    {recentCollapsed ? null : (
+                      <SidebarMenu className="sidebar-recent-list">
+                        {recentSessions.map((session) => renderSessionRow(session))}
+                      </SidebarMenu>
+                    )}
                   </div>
                 ) : null}
               </>
