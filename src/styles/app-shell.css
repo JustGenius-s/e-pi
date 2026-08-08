@@ -62,13 +62,14 @@
 /* Native fullscreen (macOS) hides the menu bar and the traffic lights —
    they only slide back in while the pointer is at the screen edge. The
    topbar content keeps its normal vertical centering; only the brand row's
-   left offset changes: a comfortable margin from the edge instead of the
-   84px reserved for the window controls (dead space in fullscreen). The
-   moment the cursor reaches the top, the menu bar slides out over that
-   exact spot, so restore the 84px offset then (the JS toggles
+   left offset changes: align the logo's left edge with the sidebar row
+   icons below (9px = the menu-button padding), instead of the 84px
+   reserved for the window controls (dead space in fullscreen). The moment
+   the cursor reaches the top, the menu bar slides out over that exact
+   spot, so restore the 84px offset then (the JS toggles
    body[data-top-hover] from mousemove). */
 body[data-fullscreen] .app-topbar .brand-lockup {
-  padding-left: 24px;
+  padding-left: 9px;
 }
 
 body[data-fullscreen][data-top-hover] .app-topbar .brand-lockup {
