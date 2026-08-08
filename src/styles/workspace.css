@@ -619,6 +619,7 @@
 
 .composer-quick-command {
   display: inline-flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 5px;
   padding: 4px 11px;
@@ -627,6 +628,8 @@
   background: color-mix(in oklch, var(--card) 92%, var(--foreground));
   color: var(--foreground);
   font-size: var(--fs-small);
+  /* Keep the pill's own label on a single line; the row scrolls instead. */
+  white-space: nowrap;
   box-shadow: 0 4px 14px color-mix(in oklch, var(--foreground) 14%, transparent);
   cursor: pointer;
   transition:
