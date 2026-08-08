@@ -71,6 +71,20 @@ body[data-fullscreen] .app-topbar .topbar-actions {
   padding-top: 2px;
 }
 
+/* In fullscreen the menu bar and the traffic lights are hidden (they only
+   slide back in while the pointer is at the screen edge), so the 84px
+   reserved for the window controls is dead space — tuck the brand row to
+   the left edge. The moment the cursor reaches the top, the menu bar slides
+   out over that exact spot, so restore the offset then (the JS toggles
+   body[data-top-hover] from mousemove). */
+body[data-fullscreen] .app-topbar .brand-lockup {
+  padding-left: 12px;
+}
+
+body[data-fullscreen][data-top-hover] .app-topbar .brand-lockup {
+  padding-left: 84px;
+}
+
 /* Brand zone: overlays the left sidebar column, so it shares the sidebar's
    width, background and right border (the vertical line that separates the
    brand from the session title). Left padding clears the macOS traffic
