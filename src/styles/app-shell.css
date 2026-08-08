@@ -137,6 +137,24 @@ body[data-fullscreen][data-top-hover] .app-topbar .brand-lockup {
   border-bottom: 1px solid var(--border);
 }
 
+/* Sidebar collapse trigger: far right of the topbar, next to the tool-panel
+   toggle. no-drag lives on the wrapper (Electron's app-region handling is
+   unreliable on native <button> elements — same pattern as the panel toggle). */
+.topbar-sidebar-toggle {
+  display: flex;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.topbar-sidebar-toggle .sidebar-trigger {
+  color: var(--muted-foreground);
+  border-radius: 7px;
+}
+
+.topbar-sidebar-toggle .sidebar-trigger:hover {
+  color: var(--foreground);
+}
+
 /* Session title sits on the left, directly after the brand zone, and grows
    to fill the remaining topbar width (the h2 truncates long titles). No
    explicit app-region: events pass through to the drag region below, so the

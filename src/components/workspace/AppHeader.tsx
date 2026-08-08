@@ -19,7 +19,6 @@ export const AppHeader = memo(function AppHeader({ activeSession, panelOpen, onT
     <header className="app-topbar" data-collapsed={state === "collapsed" ? "" : undefined}>
       <div className="window-drag-region" />
       <div className="brand-lockup">
-        <SidebarTrigger />
         <div className="brand-mark-lockup" aria-label="E-Pi">
           <img className="brand-mark" src="./e-pi-mark.svg" alt="" aria-hidden="true" />
           <span className="brand-name">E-Pi</span>
@@ -37,6 +36,9 @@ export const AppHeader = memo(function AppHeader({ activeSession, panelOpen, onT
           >
             {panelOpen ? <PanelRightOpen size={13} /> : <PanelRightClose size={13} />}
           </IconButton>
+        </div>
+        <div className="topbar-sidebar-toggle">
+          <SidebarTrigger />
         </div>
       </div>
     </header>
