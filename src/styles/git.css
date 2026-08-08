@@ -97,6 +97,23 @@
   font-style: normal;
 }
 
+/* .git-review-meta span/em (higher specificity) would otherwise paint these
+   with the muted/chart colors and add a border-left + padding — restore the
+   file-row green/red with a more specific selector. */
+.git-review-total-stats em {
+  flex: initial;
+  padding-left: 0;
+  border-left: none;
+}
+
+.git-review-total-stats .git-file-stats-add {
+  color: var(--diff-add-base);
+}
+
+.git-review-total-stats .git-file-stats-del {
+  color: var(--diff-del-base);
+}
+
 .git-review-actions {
   display: flex;
   align-items: center;
