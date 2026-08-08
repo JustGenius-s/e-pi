@@ -121,6 +121,34 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
     // reflowed buffer instead of the live tail they were following.
     if (wasAtBottom) terminal.scrollToBottom();
     options.onFitted({ cols: terminal.cols, rows: terminal.rows });
+    restoreAfterRefit(wasAtBottom, topLine);
+  };
+
+  /**
+   * Local-only refit: reflows xterm's buffer at the new grid instantly but
+   * does NOT resize the PTY, so pi never sees it. Used while the size keeps
+   * changing (drag): xterm's sync reflow is pure character rewrapping — far
+   * cheaper than pi's full component-tree re-render — so the layout follows
+   * the drag at frame rate. pi only receives the throttled PTY resizes (see
+   * settleStep) and the final settle refit, which correct any drift.
+   * xterm tolerates resize while its write queue is draining, so no write
+   * barrier is needed here (it would only add latency).
+   */
+  const fitLocal = (): void => {
+    if (disposed) return;
+    cancelPendingRestore();
+    const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
+    const topLine = terminal.buffer.active.viewportY;
+    try {
+      fit.fit();
+    } catch {
+      return;
+    }
+    if (wasAtBottom) terminal.scrollToBottom();
+    restoreAfterRefit(wasAtBottom, topLine);
+  };
+
+  const restoreAfterRefit = (wasAtBottom: boolean, topLine: number): void => {
     // xterm's resize schedules its own viewport sync on a refresh callback
     // (viewport.queueSync -> _sync on rAF) that runs on a later frame; in
     // v6 that sync can leave the scrollable on a stale/clamped position
@@ -183,11 +211,11 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
         lastCols = cols;
         lastRows = rows;
         stableFrames = 0;
-        // The size keeps changing (panel drag / window resize): follow it at
-        // a throttled rate so the TUI reflows while dragging instead of
-        // freezing until release. Each follow costs a full pi redraw
-        // (~50-100ms), so ~8/s keeps the layout visibly tracking without
-        // saturating the pipeline.
+        // The size keeps changing (panel drag / window resize): reflow
+        // xterm locally on every frame so the layout tracks the drag at
+        // frame rate (cheap character rewrapping), and send the PTY resize
+        // at a throttled rate so pi re-renders the authoritative frame.
+        fitLocal();
         const now = performance.now();
         if (now - lastDragRefitAt >= DRAG_REFIT_INTERVAL_MS) {
           lastDragRefitAt = now;

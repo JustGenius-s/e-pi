@@ -103,58 +103,60 @@ describe("createResizeScheduler", () => {
     expect(onFitted).not.toHaveBeenCalled();
   });
 
-  it("refits once after the size is stable for two frames", () => {
+  it("refits once after the size is stable for one frame", () => {
     const { runFrames } = installFrameRunner();
     vi.spyOn(performance, "now").mockReturnValue(0);
     let proposed = { cols: 80, rows: 24 };
-    const { terminal, fit, onFitted, scheduler } = setup(() => proposed);
+    const { terminal, onFitted, scheduler } = setup(() => proposed);
 
     scheduler.schedule();
-    // Frame 1: size changed -> reset settle counter.
+    // Frame 1: size changed -> local reflow only (no PTY resize yet).
     proposed = { cols: 120, rows: 30 };
     runFrames(1);
-    expect(fit.fit).not.toHaveBeenCalled();
+    expect(onFitted).not.toHaveBeenCalled();
 
-    // Frames 2-3: stable -> refit.
-    runFrames(2);
-    expect(fit.fit).toHaveBeenCalledTimes(1);
-    expect(terminal.cols).toBe(120);
+    // Frame 2: stable -> final refit with PTY resize.
+    runFrames(1);
+    expect(onFitted).toHaveBeenCalledTimes(1);
     expect(onFitted).toHaveBeenCalledWith({ cols: 120, rows: 30 });
+    expect(terminal.cols).toBe(120);
 
-    // Settled: the loop stopped (the 4th rAF is the viewport restore's own).
+    // Settled: the loop stopped (remaining rAFs are viewport restore's own).
     runFrames(5);
-    expect(fit.fit).toHaveBeenCalledTimes(1);
+    expect(onFitted).toHaveBeenCalledTimes(1);
   });
 
   it("refits on the first frame when the change already happened before scheduling", () => {
     const { runFrames } = installFrameRunner();
     vi.spyOn(performance, "now").mockReturnValue(0);
-    const { fit, scheduler } = setup(() => ({ cols: 90, rows: 24 }));
+    const { onFitted, scheduler } = setup(() => ({ cols: 90, rows: 24 }));
 
     scheduler.schedule();
-    // Frame 1: proposes the new size (differs from terminal 80x24) -> reset.
-    // Frames 2-3: stable -> refit.
+    // Frame 1: proposes the new size (differs from terminal 80x24) -> local
+    // reflow. Frame 2: stable -> final refit with PTY resize.
     runFrames(3);
-    expect(fit.fit).toHaveBeenCalledTimes(1);
+    expect(onFitted).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps waiting while the size keeps changing", () => {
+  it("sends no PTY resize within the drag interval while the size keeps changing", () => {
     const { runFrames } = installFrameRunner();
     vi.spyOn(performance, "now").mockReturnValue(0);
     let width = 80;
-    const { fit, scheduler } = setup(() => ({ cols: width, rows: 24 }));
+    const { fit, onFitted, scheduler } = setup(() => ({ cols: width, rows: 24 }));
 
     scheduler.schedule();
     for (let i = 0; i < 20; i += 1) {
       width += 2; // changes every frame, like a drag
       runFrames(1);
     }
-    expect(fit.fit).not.toHaveBeenCalled();
+    // Local reflows happened every frame, but no PTY resize within 120ms.
+    expect(fit.fit).toHaveBeenCalledTimes(20);
+    expect(onFitted).not.toHaveBeenCalled();
 
     width += 2;
     runFrames(1); // changed again
-    runFrames(2); // stable now -> refit
-    expect(fit.fit).toHaveBeenCalledTimes(1);
+    runFrames(2); // stable now -> final refit
+    expect(onFitted).toHaveBeenCalledTimes(1);
   });
 
   it("waits on the write barrier but refits anyway after the cap", () => {
@@ -249,12 +251,12 @@ describe("createResizeScheduler", () => {
   });
 });
 
-it("refits at a throttled rate while the size keeps changing (drag follow)", () => {
+it("reflows locally every frame and sends PTY resizes at a throttled rate (drag follow)", () => {
   const { runFrames } = installFrameRunner();
   let width = 80;
   let now = 0;
   vi.spyOn(performance, "now").mockImplementation(() => now);
-  const { fit, scheduler } = setup(() => ({ cols: width, rows: 24 }));
+  const { fit, onFitted, scheduler } = setup(() => ({ cols: width, rows: 24 }));
 
   scheduler.schedule();
   // Drag: the grid changes every frame; time advances ~16ms per frame.
@@ -263,21 +265,23 @@ it("refits at a throttled rate while the size keeps changing (drag follow)", () 
     now += 16;
     runFrames(1);
   }
-  // ~160ms of dragging: 120ms interval -> exactly one follow refit.
-  expect(fit.fit).toHaveBeenCalledTimes(1);
+  // Local reflow every frame; the 10th frame (160ms) also hits the 120ms
+  // throttle -> one PTY resize so far, 11 fit calls (10 local + 1 throttled).
+  expect(fit.fit).toHaveBeenCalledTimes(11);
+  expect(onFitted).toHaveBeenCalledTimes(1);
 
-  // Keep dragging past another interval -> a second follow refit.
+  // Keep dragging past another interval -> a second PTY resize.
   for (let i = 0; i < 8; i += 1) {
     width += 2;
     now += 16;
     runFrames(1);
   }
-  expect(fit.fit).toHaveBeenCalledTimes(2);
+  expect(onFitted).toHaveBeenCalledTimes(2);
 
-  // Release: one stable frame settles and refits exactly once more.
+  // Release: one stable frame settles -> final PTY resize.
   for (let i = 0; i < 3; i += 1) {
     now += 16;
     runFrames(1);
   }
-  expect(fit.fit).toHaveBeenCalledTimes(3);
+  expect(onFitted).toHaveBeenCalledTimes(3);
 });
