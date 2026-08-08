@@ -465,6 +465,20 @@
   text-transform: uppercase;
 }
 
+/* Default-folder sessions, listed flat above the project groups. */
+.sidebar-recent {
+  padding-bottom: 4px;
+}
+
+.sidebar-recent-label {
+  padding: 2px 8px 3px;
+  color: var(--muted-foreground);
+  font-size: var(--fs-mini);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .pinned-sessions-list {
   gap: 1px;
 }

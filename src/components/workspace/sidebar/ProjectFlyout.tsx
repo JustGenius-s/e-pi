@@ -19,7 +19,8 @@ interface ProjectFlyoutProps extends SessionRowCallbacks {
   unseenRuns?: ReadonlySet<string>;
   platform?: NodeJS.Platform;
   onExpand: () => void;
-  projectPinned: boolean;
+  /** Undefined hides the pin button (e.g. the default-folder Home entry). */
+  projectPinned?: boolean;
   toggleProjectPin: (key: string) => void;
 }
 
@@ -58,18 +59,20 @@ export function ProjectFlyout({
       <HoverCardContent side="right" sideOffset={10} align="start" className="project-flyout">
         <div className="project-flyout-header">
           <span className="project-flyout-title">{label}</span>
-          <button
-            type="button"
-            className={`project-flyout-add${projectPinned ? " active" : ""}`}
-            aria-label={projectPinned ? "Unpin workspace" : "Pin workspace"}
-            title={projectPinned ? "Unpin workspace" : "Pin workspace"}
-            onClick={(event) => {
-              event.stopPropagation();
-              toggleProjectPin(project.key);
-            }}
-          >
-            <Pin size={12} fill={projectPinned ? "currentColor" : "none"} />
-          </button>
+          {projectPinned !== undefined ? (
+            <button
+              type="button"
+              className={`project-flyout-add${projectPinned ? " active" : ""}`}
+              aria-label={projectPinned ? "Unpin workspace" : "Pin workspace"}
+              title={projectPinned ? "Unpin workspace" : "Pin workspace"}
+              onClick={(event) => {
+                event.stopPropagation();
+                toggleProjectPin(project.key);
+              }}
+            >
+              <Pin size={12} fill={projectPinned ? "currentColor" : "none"} />
+            </button>
+          ) : null}
         </div>
         <ul className="project-flyout-sessions">
           {/* Pinned chats live in the pinned-chats flyout instead (same

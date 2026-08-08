@@ -161,6 +161,9 @@ export const SessionSidebar = memo(function SessionSidebar({
   const projectGroups = useMemo<ProjectGroup[]>(() => {
     const byKey = new Map<string, ProjectGroup>();
     for (const session of sessions) {
+      // Default-folder sessions are listed under "Recent" instead of being
+      // grouped as their own project.
+      if (homeCwd && session.cwd === homeCwd) continue;
       const cwd = session.cwd || UNKNOWN_FOLDER;
       const project = projectByCwd.get(cwd);
       const key = project?.id ?? cwd;
@@ -186,7 +189,7 @@ export const SessionSidebar = memo(function SessionSidebar({
     const newProjects = [...byKey.keys()].filter((key) => !knownOrder.includes(key));
     groupOrderRef.current = [...newProjects, ...knownOrder.filter((key) => byKey.has(key))];
     return groupOrderRef.current.map((key) => byKey.get(key)!);
-  }, [sessions, projectByCwd]);
+  }, [sessions, projectByCwd, homeCwd]);
 
   // Pinned projects float above the stable group order. Pinned sessions move
   // out of their project groups entirely and render in a dedicated "Pinned"
@@ -210,6 +213,15 @@ export const SessionSidebar = memo(function SessionSidebar({
     () => orderedProjects.filter((project) => !pinnedProjects.has(project.key)),
     [orderedProjects, pinnedProjects],
   );
+
+  /** Default-folder sessions, listed flat under "Recent" (recency order). */
+  const recentSessions = useMemo(
+    () => (homeCwd ? sessions.filter((session) => session.cwd === homeCwd) : []),
+    [sessions, homeCwd],
+  );
+  /** Collapsed-mode flyout entry for the default folder ("Home"). */
+  const homeProject: ProjectGroup | undefined =
+    homeCwd && recentSessions.length > 0 ? { key: homeCwd, cwd: homeCwd, sessions: recentSessions } : undefined;
 
   const toggleProject = (cwd: string) => {
     const closing = !collapsed.has(cwd);
@@ -245,9 +257,8 @@ export const SessionSidebar = memo(function SessionSidebar({
   };
 
   const projectLabel = (project: ProjectGroup) => {
-    const cwd = project.cwd;
-    if (project.primaryRepo) return project.name ?? pathBaseName(cwd);
-    return homeCwd && cwd === homeCwd ? "Home" : pathBaseName(cwd);
+    if (project.primaryRepo) return project.name ?? pathBaseName(project.cwd);
+    return pathBaseName(project.cwd);
   };
 
   /** Callbacks passed to every <SessionRow> (sidebar + flyout variants). */
@@ -376,7 +387,7 @@ export const SessionSidebar = memo(function SessionSidebar({
         <SidebarGroup className="sidebar-session-group">
           {state === "collapsed" ? null : (
             <SidebarGroupLabel>
-              Sessions
+              Projects
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <SidebarGroupAction aria-label="New session or project" title="New session or project">
@@ -473,6 +484,18 @@ export const SessionSidebar = memo(function SessionSidebar({
             ) : null}
             {state === "collapsed" ? (
               <SidebarMenu>
+                {/* The default folder gets its own flyout entry ("Home") —
+                    its sessions live under Recent, not in a project group. */}
+                {homeProject ? (
+                  <SidebarMenuItem key={homeProject.key}>
+                    <ProjectFlyout
+                      project={homeProject}
+                      label={pathBaseName(homeProject.cwd)}
+                      onExpand={() => expandToProject(homeProject.cwd)}
+                      {...flyoutProps}
+                    />
+                  </SidebarMenuItem>
+                ) : null}
                 {/* Pinned projects render in the pinned section above (same
                     grouping as the expanded sidebar). */}
                 {regularProjects.map((project) => (
@@ -493,7 +516,17 @@ export const SessionSidebar = memo(function SessionSidebar({
                 <span className="sidebar-empty-hint">New sessions start in Home.</span>
               </div>
             ) : (
-              regularProjects.map((project) => renderProjectRow(project))
+              <>
+                {recentSessions.length > 0 ? (
+                  <div className="sidebar-recent">
+                    <div className="sidebar-recent-label">Recent</div>
+                    <SidebarMenu className="sidebar-recent-list">
+                      {recentSessions.map((session) => renderSessionRow(session))}
+                    </SidebarMenu>
+                  </div>
+                ) : null}
+                {regularProjects.map((project) => renderProjectRow(project))}
+              </>
             )}
           </SidebarGroupContent>
         </SidebarGroup>
