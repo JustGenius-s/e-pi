@@ -726,10 +726,16 @@
   display: grid;
 }
 
-/* Hover flyout listing a project's sessions (collapsed mode). */
+/* Hover flyout listing a project's sessions (collapsed mode). The list can
+   hold every session of the project — cap the flyout height so a project
+   with many sessions never spills past the viewport bottom, and let the
+   session list scroll inside the remaining space (header stays pinned). */
 .project-flyout {
+  display: flex;
   width: 230px;
+  max-height: min(60vh, 420px);
   padding: 6px;
+  flex-direction: column;
 }
 
 .project-flyout-header {
@@ -777,6 +783,9 @@
   display: flex;
   margin: 0;
   padding: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   flex-direction: column;
   gap: 2px;
   list-style: none;
@@ -838,8 +847,6 @@
   gap: 0;
   padding: 0;
 }
-
-
 
 /* --- Project hover info card --- */
 .project-info-card {
@@ -915,7 +922,6 @@
   font-weight: 600;
   padding: 1px 6px;
 }
-
 
 .project-info-rename {
   align-items: center;
