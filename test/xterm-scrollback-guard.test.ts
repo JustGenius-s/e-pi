@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { Terminal } from "@xterm/xterm";
+import { describe, expect, it } from "vitest";
 
 import { guardEraseScrollback } from "../src/lib/xtermScrollbackGuard";
 

@@ -12,8 +12,8 @@ import type { Terminal } from "@xterm/xterm";
  * The previous guard stripped `3J` from the PTY stream at *queue* time, based
  * on the scroll state at that moment. xterm parses writes asynchronously
  * (setTimeout macrotask), so a chunk queued while the viewport was at the
- * bottom could execute after the user scrolled up — that queue/parse race is
- * the "view jumps to the top" bug that survived the old mitigation.
+ * bottom could execute after the user scrolled up — that queue/parse race let
+ * a `3J` through exactly when it would yank the view to the top.
  *
  * Registering a CSI handler moves the decision to *parse* time, exactly when
  * xterm would execute the trim, with the live viewport state, and the parser
@@ -21,9 +21,8 @@ import type { Terminal } from "@xterm/xterm";
  * sequence is consumed unconditionally:
  *
  * - The viewport can never be yanked to the top by `3J`.
- * - The scrollback survives full redraws, so output the user was reading
- *   stays available. Redraw frames overwrite the visible rows in place (the
- *   `2J` clears them before the repaint), so no stale frames accumulate.
+ * - The scrollback survives full redraws, so output the user was reading stays available. Redraw frames overwrite the
+ *   visible rows in place (the `2J` clears them before the repaint), so no stale frames accumulate.
  * - `2J` / `0J` / other erase-display variants are left untouched.
  */
 export function guardEraseScrollback(terminal: Terminal): { dispose(): void } {
