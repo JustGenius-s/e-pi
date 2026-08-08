@@ -196,6 +196,23 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     };
     let pendingWrites = 0;
     /**
+     * Checkpoint-recovery height shimmy: the replay buffer can be invalidated
+     * by overflow or LRU eviction, and pi's TUI only re-emits a full frame
+     * when the pty size changes. Nudge the height and restore it so the live
+     * frame repaints the current screen and plants a fresh checkpoint. The
+     * two resizes must straddle a TUI render tick (MIN_RENDER_INTERVAL_MS is
+     * 16ms) or the intermediate size is never observed and the redraw is
+     * skipped.
+     */
+    const triggerCheckpointShimmy = (cols: number, rows: number) => {
+      window.ePi.runtime.resize(sessionKey, { cols, rows: rows + 1 });
+      window.clearTimeout(shimmyTimer);
+      shimmyTimer = window.setTimeout(() => {
+        if (disposed) return;
+        window.ePi.runtime.resize(sessionKey, { cols, rows });
+      }, 60);
+    };
+    /**
      * Refit the terminal to its container. Panel collapse/expand animates the
      * width over ~180ms; per-frame settle detection refits within a couple of
      * frames of the size going stable, and the current screen is repainted at
@@ -217,25 +234,13 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
         window.ePi.runtime.resize(sessionKey, { cols, rows });
         // The replay checkpoint buffer can be invalidated by overflow: a long
         // resume-history dump or an output-heavy run can exceed the cap before
-        // the TUI's next full redraw, and pi's TUI only re-emits a full frame
-        // when the pty size changes. On a remount the resize above is usually a
-        // no-op (the pty already has this size), so nothing would ever repaint
-        // the replayed (empty) terminal. Shimmy the height and restore it to
-        // force the TUI into a full redraw: the live frame repaints the current
-        // screen and plants a fresh checkpoint in the replay buffer. The two
-        // resizes must straddle a TUI render tick (MIN_RENDER_INTERVAL_MS is
-        // 16ms) or the intermediate size is never observed and the redraw is
-        // skipped.
+        // the TUI's next full redraw. On a remount the resize above is usually
+        // a no-op (the pty already has this size), so nothing would ever
+        // repaint the replayed (empty) terminal — shimmy the height instead.
         if (isAwaitingCheckpoint(sessionKey)) {
-          window.ePi.runtime.resize(sessionKey, { cols, rows: rows + 1 });
-          window.clearTimeout(shimmyTimer);
-          shimmyTimer = window.setTimeout(() => {
-            if (disposed) return;
-            window.ePi.runtime.resize(sessionKey, { cols, rows });
-          }, 60);
+          triggerCheckpointShimmy(cols, rows);
         }
       },
-      isDisposed: () => disposed,
     });
     const resizeObserver = new ResizeObserver(() => resizeScheduler.schedule());
     resizeObserver.observe(hostRef.current);
@@ -330,6 +335,14 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       flushWrite(replay, finishReplay);
     } else {
       finishReplay();
+    }
+    // A session whose buffer was LRU-evicted (or invalidated) remounts with
+    // an empty replay. The shimmy above only fires inside onFitted, which
+    // never runs when the grid is unchanged (refitNow's guard no-ops) — so
+    // nothing would force pi to repaint and the terminal stays blank. Trigger
+    // the height shimmy right away using the already-fit grid size.
+    if (!replay && isAwaitingCheckpoint(sessionKey)) {
+      triggerCheckpointShimmy(terminal.cols, terminal.rows);
     }
     const input = terminal.onData((data) => window.ePi.runtime.write(sessionKey, data));
 

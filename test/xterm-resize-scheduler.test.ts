@@ -76,7 +76,6 @@ function setup(proposed: () => { cols: number; rows: number }) {
     hasPendingWrites: () => false,
     queueWriteBarrier: (onDrained) => onDrained(),
     onFitted: onFitted as never,
-    isDisposed: () => false,
   });
   return { terminal, fit, onFitted, scheduler };
 }
@@ -172,7 +171,6 @@ describe("createResizeScheduler", () => {
       hasPendingWrites: () => true, // a sustained stream never drains
       queueWriteBarrier,
       onFitted: onFitted as never,
-      isDisposed: () => false,
     });
 
     scheduler.refitNow();
@@ -214,7 +212,6 @@ describe("createResizeScheduler", () => {
       hasPendingWrites: () => pending,
       queueWriteBarrier,
       onFitted: onFitted as never,
-      isDisposed: () => false,
     });
 
     scheduler.refitNow();

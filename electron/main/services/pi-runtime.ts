@@ -19,6 +19,7 @@ import type {
 } from "../../../src/types/contracts";
 import { agentConfigToArgs, getAgentConfig } from "./agent-config-service";
 import { debugLog } from "./debug-log";
+import { OutputBatcher } from "./output-batcher";
 import { piCliEntry } from "./pi-agent-loader";
 import { ensureAutoThemeSetting, ensureEpiLightThemeFile } from "./pi-settings-service";
 
@@ -132,43 +133,13 @@ export class PiRuntime {
   #sessionFileListeners = new Set<SessionFileListener>();
   #activeSessionPath: string | undefined;
   /**
-   * Per-session output batches. The pty emits ~1KB chunks up to thousands of
-   * times per second (measured 2,165 chunks/s under load); forwarding each
-   * one as its own IPC message is a serialization + wake-up tax on the
-   * renderer. Batch per session: flush on an 8ms timer or at a 64KB size
-   * cap, whichever comes first. Input (typing echo) is untouched.
+   * Per-session output batches (8ms / 64KB, see OutputBatcher). Ordering is
+   * preserved per session, and the last chunk before a process exits is
+   * flushed by onExit so it is never dropped.
    */
-  #pendingBatches = new Map<string, { chunks: string[]; bytes: number; timer?: NodeJS.Timeout }>();
-
-  #queueData(sessionPath: string, data: string): void {
-    let batch = this.#pendingBatches.get(sessionPath);
-    if (!batch) {
-      batch = { chunks: [], bytes: 0 };
-      this.#pendingBatches.set(sessionPath, batch);
-    }
-    // Ordering: chunks are pushed in arrival order and joined in the same
-    // order, so the renderer always sees a prefix-consistent stream.
-    batch.chunks.push(data);
-    batch.bytes += data.length;
-    if (batch.bytes >= 64 * 1024) {
-      this.#flushBatch(sessionPath);
-    } else if (batch.timer === undefined) {
-      batch.timer = setTimeout(() => this.#flushBatch(sessionPath), 8);
-      batch.timer.unref?.();
-    }
-  }
-
-  #flushBatch(sessionPath: string): void {
-    const batch = this.#pendingBatches.get(sessionPath);
-    if (!batch || batch.chunks.length === 0) return;
-    this.#pendingBatches.delete(sessionPath);
-    if (batch.timer !== undefined) {
-      clearTimeout(batch.timer);
-      batch.timer = undefined;
-    }
-    const data = batch.chunks.length === 1 ? batch.chunks[0] : batch.chunks.join("");
+  readonly #outputBatcher = new OutputBatcher((sessionPath, data) => {
     for (const listener of this.#globalDataListeners) listener(sessionPath, data);
-  }
+  });
   /** Serializes lifecycle operations (start/stop) per session. */
   #chains = new Map<string, Promise<void>>();
 
@@ -444,7 +415,9 @@ export class PiRuntime {
           COLORFGBG: this.#themeHint === "light" ? "15;7" : "15;0",
           E_PI: "true",
           // Surface pi's own startup timings (stderr) when profiling startup.
-          ...(process.env.E_PI_DEBUG === "1" ? { PI_TIMING: "1" } : {}),
+          // Deliberately a separate switch: E_PI_DEBUG is for E-Pi's own logs
+          // and must never change what the user sees in the terminal.
+          ...(process.env.E_PI_PROFILE_STARTUP === "1" ? { PI_TIMING: "1" } : {}),
         },
       });
 
@@ -454,23 +427,27 @@ export class PiRuntime {
         instance.resolveStop = resolve;
       });
       let firstOutput = false;
-      // Debug-only IPC volume probe (E_PI_DEBUG=1): counts PTY chunks per
-      // 10s window to decide whether runtime:data needs batching (see
-      // docs/plan-terminal-performance.md task B3). Zero cost when disabled.
+      // Debug-only IPC volume probe (E_PI_PROFILE_PTY=1): counts PTY chunks
+      // per 10s window to tune runtime:data batching (task B3). Kept off by
+      // default — a per-chunk counter plus a timer is not free even when the
+      // log itself is disabled.
+      const profilePty = process.env.E_PI_PROFILE_PTY === "1";
       let probeBytes = 0;
       let probeChunks = 0;
-      const probeTimer = setInterval(() => {
-        if (probeChunks === 0 && probeBytes === 0) return;
-        debugLog("[runtime] data-probe", {
-          sessionPath,
-          chunksPer10s: probeChunks,
-          avgChunkBytes: probeChunks > 0 ? Math.round(probeBytes / probeChunks) : 0,
-          totalBytes: probeBytes,
-        });
-        probeChunks = 0;
-        probeBytes = 0;
-      }, 10_000);
-      probeTimer.unref?.();
+      const probeTimer = profilePty
+        ? setInterval(() => {
+            if (probeChunks === 0 && probeBytes === 0) return;
+            debugLog("[runtime] data-probe", {
+              sessionPath,
+              chunksPer10s: probeChunks,
+              avgChunkBytes: probeChunks > 0 ? Math.round(probeBytes / probeChunks) : 0,
+              totalBytes: probeBytes,
+            });
+            probeChunks = 0;
+            probeBytes = 0;
+          }, 10_000)
+        : undefined;
+      probeTimer?.unref?.();
       child.onData((data) => {
         // A dying process must not paint into the terminal (e.g. pi prints a
         // "To resume this session" farewell on Ctrl-D).
@@ -479,15 +456,17 @@ export class PiRuntime {
           firstOutput = true;
           launchMark("first pty output");
         }
-        probeChunks += 1;
-        probeBytes += data.length;
-        this.#queueData(sessionPath, data);
+        if (profilePty) {
+          probeChunks += 1;
+          probeBytes += data.length;
+        }
+        this.#outputBatcher.push(sessionPath, data);
       });
       child.onExit(({ exitCode, signal }) => {
-        clearInterval(probeTimer);
+        if (probeTimer !== undefined) clearInterval(probeTimer);
         // Deliver whatever the batch still holds — the last output before the
         // process died must not be dropped.
-        this.#flushBatch(sessionPath);
+        this.#outputBatcher.flush(sessionPath);
         debugLog("[runtime] onExit", {
           sessionPath,
           pid: child.pid,

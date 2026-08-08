@@ -49,6 +49,16 @@ function makeBuffer(awaitingCheckpoint: boolean, checkpointPrefix: string, state
 
 const EMPTY_REPLAY: TerminalReplayBuffer = makeBuffer(false, "");
 
+/**
+ * Zero-content buffer that demands a full redraw checkpoint before replay.
+ * Used for sessions whose replay cache entry was LRU-evicted while the
+ * process stayed alive: their stream is incomplete, so replaying it could
+ * surface a partial frame — wait for the next authoritative redraw instead.
+ */
+export function createAwaitingCheckpointBuffer(): TerminalReplayBuffer {
+  return makeBuffer(true, "");
+}
+
 /** Last up to `count` characters of the accumulated stream, without joining. */
 function tailChars(state: BufferState, count: number): string {
   let result = "";

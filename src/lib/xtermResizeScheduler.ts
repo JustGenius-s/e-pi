@@ -14,7 +14,6 @@ export interface ResizeSchedulerOptions {
   barrierCapMs?: number;
   /** Called after a successful fit with the new grid size (send the PTY resize here). */
   onFitted: (size: { cols: number; rows: number }) => void;
-  isDisposed: () => boolean;
 }
 
 export interface ResizeScheduler {

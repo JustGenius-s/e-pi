@@ -67,11 +67,56 @@ describe("terminal replay store (LRU eviction)", () => {
     expect(isAwaitingCheckpoint("s1")).toBe(false);
   });
 
-  it("evicted sessions report awaitingCheckpoint=false (empty replay)", () => {
+  it("evicted sessions still report awaitingCheckpoint (remount must force a redraw)", () => {
     setMaxBufferedSessions(1);
     appendTerminalBuffer("s1", frame(1));
     appendTerminalBuffer("s2", frame(2));
     expect(getReplayContent("s1")).toBe("");
+    // The whole point: the shimmy branch in TerminalPanel keys off this flag,
+    // otherwise switching back to s1 would leave a blank terminal.
+    expect(isAwaitingCheckpoint("s1")).toBe(true);
+    expect(isAwaitingCheckpoint("s2")).toBe(false);
+  });
+
+  it("new output for an evicted session clears the eviction marker", () => {
+    setMaxBufferedSessions(1);
+    appendTerminalBuffer("s1", frame(1));
+    appendTerminalBuffer("s2", frame(2)); // evicts s1
+    expect(isAwaitingCheckpoint("s1")).toBe(true);
+    // A live chunk arrives (feeder) — the session resumes in checkpoint-waiting
+    // state: its stream is incomplete, so nothing replays until a full redraw.
+    appendTerminalBuffer("s1", "more output");
+    expect(isAwaitingCheckpoint("s1")).toBe(true);
+    expect(getReplayContent("s1")).toBe("");
+    // A full redraw arrives: recovered, marker cleared.
+    appendTerminalBuffer("s1", frame(3));
     expect(isAwaitingCheckpoint("s1")).toBe(false);
+    expect(getReplayContent("s1")).toContain("frame 3");
+  });
+
+  it("clearTerminalBuffer also clears the eviction marker", () => {
+    setMaxBufferedSessions(1);
+    appendTerminalBuffer("s1", frame(1));
+    appendTerminalBuffer("s2", frame(2)); // evicts s1
+    expect(isAwaitingCheckpoint("s1")).toBe(true);
+    clearTerminalBuffer("s1");
+    expect(isAwaitingCheckpoint("s1")).toBe(false);
+    expect(getReplayContent("s1")).toBe("");
+  });
+
+  it("eviction markers are bounded (FIFO, oldest forgotten first)", () => {
+    setMaxBufferedSessions(1);
+    // Each new session evicts the previous one; 14 sessions -> 13 evictions,
+    // but the marker map is capped, so the very first evictions are forgotten.
+    for (let i = 1; i <= 14; i += 1) {
+      appendTerminalBuffer(`s${i}`, frame(i));
+    }
+    expect(getReplayContent("s14")).toContain("frame 14");
+    // The most recent eviction is still marked...
+    expect(isAwaitingCheckpoint("s13")).toBe(true);
+    // ...but markers beyond the cap were dropped (s1 evicted 13 sessions ago).
+    expect(isAwaitingCheckpoint("s1")).toBe(false);
+    expect(isAwaitingCheckpoint("s2")).toBe(true);
+    expect(isAwaitingCheckpoint("s13")).toBe(true);
   });
 });

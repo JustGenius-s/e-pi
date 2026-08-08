@@ -83,17 +83,31 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
           terminal.scrollToBottom();
         }
       };
+      let pendingWrites = 0;
+      const flushWrite = (data: string, onWritten?: () => void) => {
+        pendingWrites += 1;
+        terminal!.write(data, () => {
+          pendingWrites -= 1;
+          onWritten?.();
+        });
+      };
       resizeScheduler = createResizeScheduler({
         terminal: terminal!,
         fit,
-        // The side terminal has no write-batch tracking; the shell's own
-        // reflow on SIGWINCH handles any transient mismatch.
-        hasPendingWrites: () => false,
-        queueWriteBarrier: (onDrained) => onDrained(),
+        // Same parser-ordering discipline as the main terminal: resizing while
+        // a shell output batch is still queued makes the producer and the
+        // emulator disagree about cursor coordinates, so defer the fit until
+        // the current write batch commits (capped by the scheduler).
+        hasPendingWrites: () => pendingWrites > 0,
+        queueWriteBarrier: (onDrained) => {
+          terminal!.write("", () => {
+            if (disposed) return;
+            onDrained();
+          });
+        },
         onFitted: ({ cols, rows }) => {
           if (id) window.ePi.sideTerminal.resize(id, { cols, rows });
         },
-        isDisposed: () => disposed,
       });
       resizeObserver = new ResizeObserver(() => resizeScheduler!.schedule());
       resizeObserver.observe(hostRef.current);
@@ -106,7 +120,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       });
 
       stopData = window.ePi.sideTerminal.onData((dataId, data) => {
-        if (dataId === id) terminal!.write(data, primeViewportSync);
+        if (dataId === id) flushWrite(data, primeViewportSync);
       });
       inputDisposable = terminal.onData((data) => {
         if (id) window.ePi.sideTerminal.write(id, data);
