@@ -5,9 +5,23 @@
  */
 const SYNC_OPEN_SEQUENCE = "\x1b[?2026h";
 const SYNC_CLOSE_SEQUENCE = "\x1b[?2026l";
-const FULL_REDRAW_SEQUENCE = "\x1b[2J\x1b[H\x1b[3J";
+const MAIN_SCREEN_FULL_REDRAW_SEQUENCE = "\x1b[2J\x1b[H\x1b[3J";
+// TuiAltScreen follows its full clear with an absolute row-1 cursor move and
+// line clear. Including that suffix disambiguates it from TuiMainScreen,
+// whose frame starts with the same `SYNC_OPEN + CSI 2 J` prefix before
+// continuing with `CSI H + CSI 3 J`.
+const ALT_SCREEN_FULL_REDRAW_SEQUENCE = `${SYNC_OPEN_SEQUENCE}\x1b[2J\x1b[1;1H\x1b[2K`;
+/** Modes established by TuiAltScreen.beforeTerminalStart(). */
+const ALT_SCREEN_REPLAY_PROLOGUE =
+  "\x1b[?1049h\x1b[?7l\x1b[?1000h\x1b[?1002h\x1b[?1003h\x1b[?1004h\x1b[?1006h\x1b[?25l";
+const CHECKPOINT_MARKERS = [MAIN_SCREEN_FULL_REDRAW_SEQUENCE, ALT_SCREEN_FULL_REDRAW_SEQUENCE] as const;
+const MAX_CHECKPOINT_MARKER_LENGTH = Math.max(...CHECKPOINT_MARKERS.map((marker) => marker.length));
 
-export const DEFAULT_TERMINAL_REPLAY_LIMIT = 400_000;
+// A long agent transcript can produce a multi-megabyte authoritative redraw
+// even at a modest 80x36 grid. Keep enough headroom for the measured ~4.6MB
+// frame so switching sessions can replay it directly instead of forcing a
+// recovery resize. Live resize checkpoints stream independently of this cap.
+export const DEFAULT_TERMINAL_REPLAY_LIMIT = 8_000_000;
 
 export interface TerminalReplayBuffer {
   /** Self-contained VT stream that is safe to feed to a fresh xterm parser. */
@@ -71,10 +85,10 @@ function tailChars(state: BufferState, count: number): string {
 }
 
 function checkpointPrefixOf(value: string): string {
-  const maxLength = Math.min(value.length, FULL_REDRAW_SEQUENCE.length - 1);
+  const maxLength = Math.min(value.length, MAX_CHECKPOINT_MARKER_LENGTH - 1);
   for (let length = maxLength; length > 0; length -= 1) {
     const suffix = value.slice(-length);
-    if (FULL_REDRAW_SEQUENCE.startsWith(suffix)) return suffix;
+    if (CHECKPOINT_MARKERS.some((marker) => marker.startsWith(suffix))) return suffix;
   }
   return "";
 }
@@ -86,13 +100,22 @@ function checkpointPrefixOf(value: string): string {
  * is balanced and the replay remains atomic.
  */
 function latestCheckpoint(value: string): string | undefined {
-  const clearAt = value.lastIndexOf(FULL_REDRAW_SEQUENCE);
-  if (clearAt < 0) return undefined;
+  const mainClearAt = value.lastIndexOf(MAIN_SCREEN_FULL_REDRAW_SEQUENCE);
+  const altOpenAt = value.lastIndexOf(ALT_SCREEN_FULL_REDRAW_SEQUENCE);
 
-  const openAt = value.lastIndexOf(SYNC_OPEN_SEQUENCE, clearAt);
-  const closeAt = value.lastIndexOf(SYNC_CLOSE_SEQUENCE, clearAt);
-  if (openAt > closeAt) return value.slice(openAt);
-  return SYNC_OPEN_SEQUENCE + value.slice(clearAt);
+  // A regular frame also begins with `SYNC_OPEN + CSI 2 J`; prefer its more
+  // specific main-screen marker when both candidates refer to the same frame.
+  const mainOpenAt = mainClearAt < 0 ? -1 : value.lastIndexOf(SYNC_OPEN_SEQUENCE, mainClearAt);
+  const mainCloseAt = mainClearAt < 0 ? -1 : value.lastIndexOf(SYNC_CLOSE_SEQUENCE, mainClearAt);
+  const mainFrameAt = mainOpenAt > mainCloseAt ? mainOpenAt : mainClearAt;
+
+  if (altOpenAt >= 0 && altOpenAt > mainFrameAt) {
+    return ALT_SCREEN_REPLAY_PROLOGUE + value.slice(altOpenAt);
+  }
+  if (mainClearAt < 0) return undefined;
+
+  if (mainOpenAt > mainCloseAt) return value.slice(mainOpenAt);
+  return SYNC_OPEN_SEQUENCE + value.slice(mainClearAt);
 }
 
 function appendIntoExisting(previous: TerminalReplayBuffer, data: string, maxChars: number): TerminalReplayBuffer {
@@ -114,8 +137,8 @@ function appendIntoExisting(previous: TerminalReplayBuffer, data: string, maxCha
   // A fresh full redraw can only live entirely inside `data` or straddle the
   // segment/data boundary — a full redraw older than the last 10 chars was
   // already checkpointed away. So a bounded window suffices; no full scan.
-  const boundaryWindow = tailChars(state, FULL_REDRAW_SEQUENCE.length - 1) + data;
-  if (newLength <= maxChars && !boundaryWindow.includes(FULL_REDRAW_SEQUENCE)) {
+  const boundaryWindow = tailChars(state, MAX_CHECKPOINT_MARKER_LENGTH - 1) + data;
+  if (newLength <= maxChars && !CHECKPOINT_MARKERS.some((marker) => boundaryWindow.includes(marker))) {
     state.segments.push(data);
     state.length = newLength;
     state.joined = undefined;

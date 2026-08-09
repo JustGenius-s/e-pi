@@ -29,10 +29,16 @@ pi 进程 (PTY)
 
 1. **xterm 版本是 v6.0.0**。`Viewport._sync` 不碰 DOM `scrollTop`，只改内部 `Scrollable._state`。
    v6 引入了 `SmoothScrollingOperation`，已通过 `smoothScrollDuration: 0`（`src/lib/xterm.ts`）关闭 —— **不要恢复**。
-2. **pi TUI 每次权威渲染都发 `\x1b[2J\x1b[H\x1b[3J`（full redraw）**，并用 `\x1b[?2026h/l`（synchronized output）包裹。
-   `3J` 会清空 scrollback，已在 `src/lib/xtermScrollbackGuard.ts` 用parse-time CSI handler 吞掉 —— **不要移除**。
-3. **pi TUI 只在 PTY size 变化时重发full frame**，这是 `TerminalPanel` 里 checkpoint shimmy 的前提。
-4. xterm 的 `write()` 是异步解析（setTimeout macrotask）。`write("", cb)` 是 FIFO barrier。
+2. **主 Agent 固定使用 `--tui-mode fullscreen`**。Pi 只维护并输出当前 terminal-height viewport，权威帧以
+   `\x1b[?2026h` / `\x1b[?2026l`（synchronized output）原子包裹；alt-screen checkpoint 以
+   `\x1b[2J\x1b[1;1H\x1b[2K` 开始。replay buffer 仍兼容旧 main-screen
+   `\x1b[2J\x1b[H\x1b[3J` marker；对应的 `3J` guard **不要移除**。
+3. **fullscreen 下滚动、拖选与链接命中由 Pi 管理**。鼠标事件经 xterm 的 SGR mouse mode 回传；拖选完成后
+   Pi 发 `OSC 52; c;<base64>`，renderer 必须校验、限长、UTF-8 解码后写系统剪贴板。
+4. **pi TUI 只在 PTY size 变化时重发full frame**，这是 `TerminalPanel` 里 checkpoint shimmy 的前提。
+5. xterm 的 `write()` 是异步解析（setTimeout macrotask）。`write("", cb)` 是 FIFO barrier。
+6. resize snapshot 的外层可以随容器裁剪/补背景，**内层 canvas 必须保持源 renderer 的原生 CSS
+   width/height**。禁止 `width: 100%; height: 100%`，否则快速反向 resize 会把旧画面整体拉伸或压缩。
 
 验证命令（每个任务完成后都要全过）：
 
@@ -155,8 +161,8 @@ export function replayContent(buffer: TerminalReplayBuffer | undefined): string;
 
 `src/components/workspace/TerminalPanel.tsx:67` 的 `const buffers = new Map<string, TerminalReplayBuffer>()`
 只在 `clearTerminalBuffer`（调用点：`src/App.tsx:507`、`src/hooks/useSessionRuntime.ts:45`）被删除，
-这两处都只在 reload /冷启动路径触发。开N 个 session 跑一天 = N × 最多 400KB 常驻，
-且后台 session 的 feeder 一直在写。
+这两处都只在 reload /冷启动路径触发。后台 session 的 feeder 会一直写入；当前单 session
+为了容纳实测约 4.6MB 的权威帧，replay 上限为 8MB，因此必须用 session 级 LRU 控制总量。
 
 ### 方案
 
@@ -315,37 +321,37 @@ export const Composer = memo(function Composer({ ... }: ComposerProps) { ... });
 
 ---
 
-## 任务 B5：抽出共享 resize scheduler，让侧终端与主终端一致
+## 任务 B5：共享 resize transaction，让侧终端与主终端一致
 
 ### 问题
 
-`TerminalPanel.tsx` 现在用 rAF settle 检测（2帧稳定后 refit），而
-`SideTerminalView.tsx:121` 仍是 `fitTimer = window.setTimeout(fitTerminal, 120)` 固定防抖。
-两个组件里 resize + viewport 恢复逻辑大量重复，且侧终端在收起面板时仍会卡一下。
+旧实现会在每次 ResizeObserver 回调里重建 settle 闭包，导致拖动节流状态被反复清零。
+180ms 面板动画实际可能产生一帧一次的 `fit + PTY SIGWINCH`，pi 的旧尺寸帧又会与
+xterm 的新尺寸 reflow 交错，表现为闪动、黑色空隙和长时间停留在旧排版。
 
 ### 方案
 
-新建 `src/lib/xtermResizeScheduler.ts`，导出：
+`src/lib/xtermResizeScheduler.ts` 使用持久 resize transaction：
 
 ```ts
 export interface ResizeSchedulerOptions {
   terminal: Terminal;
   fit: FitAddon;
-  /** 返回 true 表示当前有未解析完的 write（主终端传() => pendingWrites > 0；侧终端传 () => false）。 */
+  /** 返回 true 表示当前有未解析完的 write。 */
   hasPendingWrites: () => boolean;
-  /** 排一个 FIFO barrier，drain 后回调（主终端用 terminal.write("", cb)）。 */
+  /** 排一个 FIFO barrier，drain 后允许一次本地 resize。 */
   queueWriteBarrier: (onDrained: () => void) => void;
-  /** barrier 最长等待时间（ms），超时后强行 refit。默认 100。 */
-  barrierCapMs?: number;
-  /** refit 完成后调用，用于发PTY resize / checkpoint shimmy。 */
+  onResizeStart?: () => void;
+  onResizeCommit?: (size: { cols: number; rows: number }) => void;
+  onResizeCancel?: () => void;
+  /** 只在 transaction 停稳后调用一次。 */
   onFitted: (size: { cols: number; rows: number }) => void;
-  isDisposed: () => boolean;
 }
 
 export interface ResizeScheduler {
-  /** ResizeObserver 回调里调用：启动/重启 settle 检测。 */
+  /** ResizeObserver 回调只增加 epoch，不取消或重建已有 rAF。 */
   schedule(): void;
-  /** 立即 refit（首次挂载 / barrier drain 后）。 */
+  /** 首次挂载时立即 fit，并确保 PTY 收到真实尺寸。 */
   refitNow(): void;
   dispose(): void;
 }
@@ -353,30 +359,38 @@ export interface ResizeScheduler {
 export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeScheduler;
 ```
 
-把 `TerminalPanel.tsx` 当前 `fitTerminal` 里的这些逻辑搬进去（**行为不变，只是搬家**）：
+主 TUI 额外使用 `terminalResizeOutputGate.ts`：
 
-- grid 未变化则早退的 `proposeDimensions` 守卫
-- 带 100ms 上限的 write barrier
-- rAF settle 检测（2 帧稳定）
-- transition 首帧 `terminal.refresh(0, rows - 1)`
-- refit 后 `wasAtBottom ? scrollToBottom()` 与 `restoreViewportAfterSettle` 调用
+1. `pi-runtime.ts` 固定传 `--tui-mode fullscreen`，从源头把重排成本限制在当前 viewport，避免长会话按新宽度重传和解析整段历史。
+2. 首次真实 grid 变化时冻结可见 PTY 输出。
+3. 每个可测量的新 grid 都先执行 xterm 本地 reflow，并立即把最新 PTY size 发给 Pi；尚未确认的旧 resize 可被抢占，
+   不使用 debounce 等待“最终尺寸”。
+4. bridge 为每个 full redraw 标记实际 grid；旧尺寸帧在进入 xterm 前被丢弃，最新权威帧确认后才允许事务停稳。
+5. 等待完整的 `CSI ? 2026 h ... CSI ? 2026 l` 权威帧，连续两帧没有新尺寸后释放视觉 guard。
+6. 检测到 full-redraw marker 后，把多 MB 权威帧按 IPC chunk 流式写入隐藏的 live xterm，不再缓存整帧。
+7. resize 开始前把最后完整画面放进 front buffer；提交后冻结 front，让权威帧在其后解析。只有包含 `CSI ? 2026 l` 的 write callback 确认 parser 已处理完整帧后，才强制 full refresh、复制完成帧并在下一 rAF 揭幕。
+8. tracking 阶段的 render 只写隐藏 back buffer，完整复制成功后才交换；复制失败继续保留旧 front，避免暴露已清空或只画了一半的 canvas。
+9. snapshot 使用“覆盖当前 screen 的 root + 保持源 renderer 原生 CSS 尺寸的 inner canvas”；容器变化只裁剪/露出背景，不缩放旧字形。`.xterm` 建立独立 stacking context，snapshot 不得覆盖 composer 快捷按钮。
+10. resize barrier 会闭合已解析但尚未结束的 synchronized-output 帧，避免 IPC 分片恰好卡在 `2026h/l` 之间时预览无法绘制。
 
-`TerminalPanel` 的 `onFitted` 回调里保留：`window.ePi.runtime.resize(...)` + checkpoint shimmy。
-`SideTerminalView` 的 `onFitted` 里只需 `window.ePi.sideTerminal.resize(id, size)`。
-
-**风险控制**：这是纯重构，**必须在A1/B4 都合并且验证稳定之后再做**。
-重构完成后手动回归：主终端拖拽面板宽度、收起/展开面板、切换 session、切换字号（Appearance 设置）、
-侧终端开关与面板宽度变化，各测一遍确认无回归。
+这样跳跃尺寸变化和渐进尺寸变化使用同一个协议；区别仅是 transaction 持续时间。
 
 ### 测试
 
 `createResizeScheduler` 是纯逻辑 + 注入依赖，可以像 `test/xterm-viewport-watchdog.test.ts` 那样
 用 fake terminal + stub `requestAnimationFrame` 测：
 
-- 尺寸连续变化时不refit，稳定 2 帧后 refit 一次
-- `hasPendingWrites` 恒为 true 时，100ms 内不 refit、超过后强行 refit
+- 每帧都调用 `schedule()` 时只维持一个 transaction，期间 PTY resize 为 0
+- 跳跃变化在下一帧本地 fit 并立即提交 PTY resize，不等待安静窗口
+- 像素仍在变化但 cols 暂时相同时，不得误判为 settle
+- parser barrier drain 后允许一次有序的本地 fit
+- visual guard 的 back buffer 完整复制成功后才交换；复制异常时旧 front 必须保持可见
+- snapshot inner canvas 的 CSS width/height 必须等于源 renderer 的原生尺寸，不得为百分比
+- 输出 gate 能识别跨 IPC chunk 的 full-redraw marker 和同步帧结束符
+- 2MB 以上权威帧必须持续流入隐藏 live xterm，且结束符 parser callback 前不得揭开 front buffer
+- 快速连续 resize 时，旧 transaction 的迟到 callback 不得结束新 transaction
+- fullscreen replay 必须合成 alt-screen prologue；拖选 OSC 52 必须拒绝错误 target、畸形 base64、非法 UTF-8 与超限 payload
 - `dispose` 后不再有任何 refit
-- 首帧调用了 `terminal.refresh`
 
 ---
 
@@ -489,3 +503,43 @@ attachments / theme 导出）。需该工作线补齐提交后，仓库才能整
 6. sidebar "Reload session" —— 终端正确重绘，不留白
 7. 开7+ 个 session 后切回第一个（验证 A2 驱逐兜底）—— 应被 pi full frame 填满，不留白
 8. 修改 Appearance 字号 —— 主终端与侧终端都正确 reflow
+
+## 动态尺寸重排最终实现与验收（2026-08-09）
+
+本轮目标不是只让 xterm 的网格先变宽，而是让 **Pi 的权威语义排版** 在跳跃切换和连续拖动中都实时跟随，
+同时任何半帧、旧尺寸帧和清屏中间态都不能暴露给用户。最终流水线由四层共同保证：
+
+1. `xtermResizeScheduler` 每个可测量的新 grid 都立即本地 fit，并以 latest-wins 方式抢占尚未确认的旧 resize；
+   只有 xterm parser FIFO 中确有旧 write 时才等待 barrier，不再用 debounce 延迟 PTY resize。
+2. bridge 在 fullscreen full redraw 后写入带 `cols×rows` 的私有 APC 标签，使用规范 `ST` 终止；
+   resize 事务只接受与目标 grid 精确匹配的标签，未标记或迟到的旧尺寸完整帧都在进入 xterm 前被拒绝。
+3. `terminalResizeVisualGuard` 使用不缩放字形的双缓冲 snapshot。新 grid 的本地 preview 和 Pi 权威帧都在隐藏 live renderer
+   中完成，只在完整 render 后交换，快速反向期间始终只有一张完整画面可见。
+4. pnpm patch `patches/@earendil-works__pi-tui@0.84.0.patch` 将 fullscreen transcript 布局虚拟化：resize 首帧只计算
+   可见尾部和 overscan，历史高度先估算，再以可取消的 idle slice 水合；切换宽度会取消旧宽度任务，滚动状态按 transcript block 锚定。
+
+### 真实会话结果
+
+测试会话：`2026-08-08T04-27-20-952Z_019fdfa0-1ff8-7850-9242-d296fef460ab.jsonl`，约 4.9MB。
+
+| 场景                              | 清理后的正式 patch 结果                                                    |
+| --------------------------------- | -------------------------------------------------------------------------- |
+| 跳跃 `92→156`                     | 权威帧 `19.5ms`                                                            |
+| 跳跃 `156→92`                     | 权威帧 `6.1ms`                                                             |
+| 渐进 `92→100→…→156`，每 16ms 一次 | 每步 `6.9–8.1ms`，最终 `8.0ms`                                             |
+| 快速反向 `92→156→96→152→…→108`    | 每步 `6.2–9.0ms`，最终 `6.9ms`                                             |
+| tmux 真实屏幕 `92→156`            | `37.9ms` 抓屏与 3 秒稳定画面逐字节一致                                     |
+| tmux 真实屏幕 `156→92`            | `36.9ms` 抓屏与 3 秒稳定画面逐字节一致                                     |
+| Electron 右栏连续拖动 320px       | `.xterm-screen` 每个 20px 步进持续跟随；过程保持 1 个 snapshot，稳定后释放 |
+| Electron 30ms 间隔快速开合 12 次  | 反向过程中保持 1 个 snapshot；最终 grid 稳定且 snapshot 归零               |
+
+原始 Pi 对同一长会话的一次语义 resize 约需 `1.8–3s`。现在跳跃、渐进和快速反向三条路径均不积压旧尺寸工作，
+且早期屏幕已经等于最终稳定屏幕，不再依赖等待 2–3 秒后“追上”排版。
+
+### 自动化与构建
+
+- `pnpm lint`：0 error，仅仓库既有 `no-await-in-loop` warning。
+- `pnpm typecheck`：通过。
+- resize 聚焦套件：5 files、47 tests 全部通过。
+- bundled Node 22 完整 Vitest：31 files、265 tests 全部通过。
+- bundled Node 22 `pnpm build`：主进程、preload 和 renderer 生产构建通过。
