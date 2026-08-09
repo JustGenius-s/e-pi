@@ -11,10 +11,8 @@ interface FakeTerminal {
   cols: number;
   rows: number;
   buffer: { active: FakeBuffer };
-  refresh: ReturnType<typeof vi.fn>;
   scrollToBottom: ReturnType<typeof vi.fn>;
-  write: ReturnType<typeof vi.fn>;
-  onFitted: ReturnType<typeof vi.fn>;
+  scrollToLine: ReturnType<typeof vi.fn>;
 }
 
 function makeTerminal(cols = 80, rows = 24, viewportY = 0, baseY = 0): FakeTerminal {
@@ -23,12 +21,12 @@ function makeTerminal(cols = 80, rows = 24, viewportY = 0, baseY = 0): FakeTermi
     cols,
     rows,
     buffer: { active: buffer },
-    refresh: vi.fn(),
     scrollToBottom: vi.fn(() => {
       buffer.viewportY = buffer.baseY;
     }),
-    write: vi.fn((_data: string, cb?: () => void) => cb?.()),
-    onFitted: vi.fn(),
+    scrollToLine: vi.fn((line: number) => {
+      buffer.viewportY = line;
+    }),
   };
 }
 
@@ -36,9 +34,9 @@ function makeFit(terminal: FakeTerminal, proposed: () => { cols: number; rows: n
   return {
     proposeDimensions: vi.fn(proposed),
     fit: vi.fn(() => {
-      const dims = proposed();
-      terminal.cols = dims.cols;
-      terminal.rows = dims.rows;
+      const dimensions = proposed();
+      terminal.cols = dimensions.cols;
+      terminal.rows = dimensions.rows;
     }),
   };
 }
@@ -46,38 +44,90 @@ function makeFit(terminal: FakeTerminal, proposed: () => { cols: number; rows: n
 type FrameCallback = () => void;
 
 function installFrameRunner() {
-  let queue: FrameCallback[] = [];
+  let queue = new Map<number, FrameCallback>();
   let nextId = 1;
-  const raf = vi.fn((callback: FrameCallback) => queue.push(callback) || nextId++);
-  vi.stubGlobal("requestAnimationFrame", raf);
-  vi.stubGlobal("cancelAnimationFrame", vi.fn());
+  vi.stubGlobal(
+    "requestAnimationFrame",
+    vi.fn((callback: FrameCallback) => {
+      const id = nextId;
+      nextId += 1;
+      queue.set(id, callback);
+      return id;
+    }),
+  );
+  vi.stubGlobal(
+    "cancelAnimationFrame",
+    vi.fn((id: number) => queue.delete(id)),
+  );
   return {
-    raf,
     runFrames(count: number) {
-      for (let i = 0; i < count; i += 1) {
+      for (let index = 0; index < count; index += 1) {
         const pending = queue;
-        queue = [];
-        for (const callback of pending) callback();
+        queue = new Map();
+        for (const callback of pending.values()) callback();
       }
     },
     scheduledFrames() {
-      return queue.length;
+      return queue.size;
     },
   };
 }
 
-function setup(proposed: () => { cols: number; rows: number }) {
-  const terminal = makeTerminal(80, 24);
+function setup(proposed: () => { cols: number; rows: number }, terminal = makeTerminal()) {
   const fit = makeFit(terminal, proposed);
+  const onResizeStart = vi.fn();
+  const onResizePreviewReady = vi.fn();
+  const onResizeCommit = vi.fn();
+  const onResizeCancel = vi.fn();
+  const onResizeSettled = vi.fn();
   const onFitted = vi.fn();
+  let pendingWrites = false;
+  let barrier: (() => void) | undefined;
+  const queueWriteBarrier = vi.fn((callback: () => void) => {
+    barrier = callback;
+  });
   const scheduler = createResizeScheduler({
     terminal: terminal as never,
     fit: fit as never,
-    hasPendingWrites: () => false,
-    queueWriteBarrier: (onDrained) => onDrained(),
-    onFitted: onFitted as never,
+    hasPendingWrites: () => pendingWrites,
+    queueWriteBarrier,
+    onResizeStart,
+    onResizePreviewReady,
+    onResizeCommit,
+    onResizeCancel,
+    onResizeSettled,
+    onFitted,
   });
-  return { terminal, fit, onFitted, scheduler };
+  return {
+    terminal,
+    fit,
+    scheduler,
+    onResizeStart,
+    onResizePreviewReady,
+    onResizeCommit,
+    onResizeCancel,
+    onResizeSettled,
+    onFitted,
+    queueWriteBarrier,
+    setPendingWrites(value: boolean) {
+      pendingWrites = value;
+    },
+    drainBarrier() {
+      barrier?.();
+      barrier = undefined;
+    },
+  };
+}
+
+function initialize(result: ReturnType<typeof setup>): void {
+  result.scheduler.refitNow();
+  result.fit.fit.mockClear();
+  result.onResizeStart.mockClear();
+  result.onResizePreviewReady.mockClear();
+  result.onResizeCommit.mockClear();
+  result.onResizeCancel.mockClear();
+  result.onResizeSettled.mockClear();
+  result.onFitted.mockClear();
 }
 
 afterEach(() => {
@@ -86,240 +136,259 @@ afterEach(() => {
 });
 
 describe("createResizeScheduler", () => {
-  it("refits immediately on refitNow when the grid changed", () => {
+  it("asserts the initial PTY size even when xterm already has that grid", () => {
     installFrameRunner();
-    const { terminal, fit, onFitted, scheduler } = setup(() => ({ cols: 100, rows: 30 }));
-    scheduler.refitNow();
-    expect(fit.fit).toHaveBeenCalledTimes(1);
-    expect(terminal.cols).toBe(100);
-    expect(onFitted).toHaveBeenCalledWith({ cols: 100, rows: 30 });
+    const result = setup(() => ({ cols: 80, rows: 24 }));
+
+    result.scheduler.refitNow();
+
+    expect(result.fit.fit).not.toHaveBeenCalled();
+    expect(result.onFitted).toHaveBeenCalledOnce();
+    expect(result.onFitted).toHaveBeenCalledWith({ cols: 80, rows: 24 });
   });
 
-  it("skips the fit when the grid did not change", () => {
+  it("fits and asserts a changed initial grid immediately", () => {
     installFrameRunner();
-    const { fit, onFitted, scheduler } = setup(() => ({ cols: 80, rows: 24 }));
-    scheduler.refitNow();
-    expect(fit.fit).not.toHaveBeenCalled();
-    expect(onFitted).not.toHaveBeenCalled();
+    const result = setup(() => ({ cols: 100, rows: 30 }));
+
+    result.scheduler.refitNow();
+
+    expect(result.fit.fit).toHaveBeenCalledOnce();
+    expect(result.terminal).toMatchObject({ cols: 100, rows: 30 });
+    expect(result.onFitted).toHaveBeenCalledWith({ cols: 100, rows: 30 });
   });
 
-  it("refits once after the size is stable for one frame", () => {
+  it("sends a jump resize on the first animation frame without waiting to settle", () => {
     const { runFrames } = installFrameRunner();
-    vi.spyOn(performance, "now").mockReturnValue(0);
     let proposed = { cols: 80, rows: 24 };
-    const { terminal, onFitted, scheduler } = setup(() => proposed);
+    const result = setup(() => proposed);
+    initialize(result);
 
-    scheduler.schedule();
-    // Frame 1: size changed -> local reflow only (no PTY resize yet).
     proposed = { cols: 120, rows: 30 };
+    result.scheduler.schedule();
     runFrames(1);
-    expect(onFitted).not.toHaveBeenCalled();
 
-    // Frame 2: stable -> final refit with PTY resize.
-    runFrames(1);
-    expect(onFitted).toHaveBeenCalledTimes(1);
-    expect(onFitted).toHaveBeenCalledWith({ cols: 120, rows: 30 });
-    expect(terminal.cols).toBe(120);
-
-    // Settled: the loop stopped (remaining rAFs are viewport restore's own).
-    runFrames(5);
-    expect(onFitted).toHaveBeenCalledTimes(1);
+    expect(result.fit.fit).toHaveBeenCalledOnce();
+    expect(result.onResizeStart).toHaveBeenCalledOnce();
+    expect(result.onResizePreviewReady).toHaveBeenCalledOnce();
+    expect(result.onResizeCommit).toHaveBeenCalledWith({ cols: 120, rows: 30 });
+    expect(result.onFitted).toHaveBeenCalledWith({ cols: 120, rows: 30 });
   });
 
-  it("refits on the first frame when the change already happened before scheduling", () => {
-    const { runFrames } = installFrameRunner();
-    vi.spyOn(performance, "now").mockReturnValue(0);
-    const { onFitted, scheduler } = setup(() => ({ cols: 90, rows: 24 }));
+  it("preempts a slow checkpoint and follows every measurable drag update", () => {
+    const { runFrames, scheduledFrames } = installFrameRunner();
+    let cols = 80;
+    const result = setup(() => ({ cols, rows: 24 }));
+    initialize(result);
 
-    scheduler.schedule();
-    // Frame 1: proposes the new size (differs from terminal 80x24) -> local
-    // reflow. Frame 2: stable -> final refit with PTY resize.
-    runFrames(3);
-    expect(onFitted).toHaveBeenCalledTimes(1);
-  });
+    cols = 82;
+    result.scheduler.schedule();
+    runFrames(1);
+    expect(result.onFitted).toHaveBeenLastCalledWith({ cols: 82, rows: 24 });
 
-  it("sends no PTY resize within the drag interval while the size keeps changing", () => {
-    const { runFrames } = installFrameRunner();
-    vi.spyOn(performance, "now").mockReturnValue(0);
-    let width = 80;
-    const { fit, onFitted, scheduler } = setup(() => ({ cols: width, rows: 24 }));
-
-    scheduler.schedule();
-    for (let i = 0; i < 20; i += 1) {
-      width += 2; // changes every frame, like a drag
+    for (const next of [84, 88, 94, 100]) {
+      cols = next;
+      result.scheduler.schedule();
       runFrames(1);
     }
-    // Local reflows happened every frame, but no PTY resize within 120ms.
-    expect(fit.fit).toHaveBeenCalledTimes(20);
-    expect(onFitted).not.toHaveBeenCalled();
+    expect(result.fit.fit).toHaveBeenCalledTimes(5);
+    expect(result.onResizeStart).toHaveBeenCalledTimes(5);
+    expect(result.onResizeCommit).toHaveBeenCalledTimes(5);
+    expect(result.onFitted).toHaveBeenCalledTimes(5);
+    expect(result.onFitted).toHaveBeenLastCalledWith({ cols: 100, rows: 24 });
+    expect(scheduledFrames()).toBe(0);
 
-    width += 2;
-    runFrames(1); // changed again
-    runFrames(2); // stable now -> final refit
-    expect(onFitted).toHaveBeenCalledTimes(1);
+    expect(result.scheduler.acknowledgeResize()).toBe(true);
+    runFrames(2);
+    expect(result.onResizeSettled).toHaveBeenCalledOnce();
   });
 
-  it("waits on the write barrier but refits anyway after the cap", () => {
+  it("immediately reverses before the old direction is acknowledged", () => {
     const { runFrames } = installFrameRunner();
-    const terminal = makeTerminal(80, 24);
-    const fit = makeFit(terminal, () => ({ cols: 110, rows: 30 }));
-    const onFitted = vi.fn();
-    let drained: (() => void) | undefined;
-    const queueWriteBarrier = vi.fn((cb: () => void) => {
-      drained = cb;
-    });
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
+    let cols = 80;
+    const result = setup(() => ({ cols, rows: 24 }));
+    initialize(result);
 
-    const scheduler = createResizeScheduler({
-      terminal: terminal as never,
-      fit: fit as never,
-      hasPendingWrites: () => true, // a sustained stream never drains
-      queueWriteBarrier,
-      onFitted: onFitted as never,
-    });
-
-    scheduler.refitNow();
-    expect(queueWriteBarrier).toHaveBeenCalledTimes(1);
-    expect(fit.fit).not.toHaveBeenCalled();
-
-    // Within the cap (100ms): still deferred even after many frames.
-    now = 50;
-    runFrames(10);
-    expect(fit.fit).not.toHaveBeenCalled();
-
-    // Past the cap: the next refit attempt proceeds despite pending writes.
-    now = 150;
-    scheduler.refitNow();
-    expect(fit.fit).toHaveBeenCalledTimes(1);
-    expect(onFitted).toHaveBeenCalledWith({ cols: 110, rows: 30 });
-
-    // A late barrier drain must not double-fit (deferredRefit cleared).
-    drained?.();
-    expect(fit.fit).toHaveBeenCalledTimes(1);
-  });
-
-  it("refits when the barrier drains before the cap", () => {
-    installFrameRunner();
-    const terminal = makeTerminal(80, 24);
-    const fit = makeFit(terminal, () => ({ cols: 110, rows: 30 }));
-    const onFitted = vi.fn();
-    let drained: (() => void) | undefined;
-    const queueWriteBarrier = vi.fn((cb: () => void) => {
-      drained = cb;
-    });
-    let pending = true;
-    let now = 0;
-    vi.spyOn(performance, "now").mockImplementation(() => now);
-
-    const scheduler = createResizeScheduler({
-      terminal: terminal as never,
-      fit: fit as never,
-      hasPendingWrites: () => pending,
-      queueWriteBarrier,
-      onFitted: onFitted as never,
-    });
-
-    scheduler.refitNow();
-    expect(fit.fit).not.toHaveBeenCalled();
-
-    pending = false; // parser drained
-    now = 20;
-    drained?.();
-    expect(fit.fit).toHaveBeenCalledTimes(1);
-    expect(onFitted).toHaveBeenCalledWith({ cols: 110, rows: 30 });
-  });
-
-  it("repaints the current screen on the first settle frame", () => {
-    const { runFrames } = installFrameRunner();
-    const { terminal, scheduler } = setup(() => ({ cols: 80, rows: 24 }));
-
-    scheduler.schedule();
+    cols = 130;
+    result.scheduler.schedule();
     runFrames(1);
-    expect(terminal.refresh).toHaveBeenCalledWith(0, 23);
+    cols = 80;
+    result.scheduler.schedule();
+    runFrames(1);
+
+    expect(result.onFitted).toHaveBeenCalledTimes(2);
+    expect(result.onFitted).toHaveBeenLastCalledWith({ cols: 80, rows: 24 });
+    expect(result.scheduler.acknowledgeResize()).toBe(true);
+    runFrames(2);
+    expect(result.onResizeSettled).toHaveBeenCalledOnce();
+  });
+
+  it("ignores duplicate or stale checkpoint acknowledgements", () => {
+    const { runFrames } = installFrameRunner();
+    let cols = 80;
+    const result = setup(() => ({ cols, rows: 24 }));
+    initialize(result);
+
+    cols = 100;
+    result.scheduler.schedule();
+    runFrames(1);
+
+    expect(result.scheduler.acknowledgeResize()).toBe(true);
+    expect(result.scheduler.acknowledgeResize()).toBe(false);
+  });
+
+  it("keeps the guard active until the acknowledged target is quiet", () => {
+    const { runFrames } = installFrameRunner();
+    let cols = 80;
+    const result = setup(() => ({ cols, rows: 24 }));
+    initialize(result);
+
+    cols = 100;
+    result.scheduler.schedule();
+    runFrames(1);
+    result.scheduler.acknowledgeResize();
+
+    runFrames(1);
+    expect(result.onResizeSettled).not.toHaveBeenCalled();
+    runFrames(1);
+    expect(result.onResizeSettled).toHaveBeenCalledOnce();
+    expect(result.onResizeCancel).not.toHaveBeenCalled();
+  });
+
+  it("freezes output before a parser barrier and sends the latest measured grid", () => {
+    const { runFrames } = installFrameRunner();
+    let cols = 80;
+    const result = setup(() => ({ cols, rows: 24 }));
+    initialize(result);
+    result.setPendingWrites(true);
+
+    cols = 100;
+    result.scheduler.schedule();
+    runFrames(1);
+    expect(result.onResizeStart).toHaveBeenCalledOnce();
+    expect(result.queueWriteBarrier).toHaveBeenCalledOnce();
+    expect(result.fit.fit).not.toHaveBeenCalled();
+
+    cols = 120;
+    result.scheduler.schedule();
+    runFrames(1);
+    result.drainBarrier();
+    runFrames(1);
+
+    expect(result.fit.fit).toHaveBeenCalledOnce();
+    expect(result.onFitted).toHaveBeenCalledWith({ cols: 120, rows: 24 });
+  });
+
+  it("waits only for the parser barrier when preempting a frame already queued in xterm", () => {
+    const { runFrames } = installFrameRunner();
+    let cols = 80;
+    const result = setup(() => ({ cols, rows: 24 }));
+    initialize(result);
+
+    cols = 100;
+    result.scheduler.schedule();
+    runFrames(1);
+    expect(result.onFitted).toHaveBeenLastCalledWith({ cols: 100, rows: 24 });
+
+    result.setPendingWrites(true);
+    cols = 120;
+    result.scheduler.schedule();
+    runFrames(1);
+    expect(result.queueWriteBarrier).toHaveBeenCalledOnce();
+    expect(result.fit.fit).toHaveBeenCalledOnce();
+
+    cols = 140;
+    result.scheduler.schedule();
+    runFrames(1);
+    result.setPendingWrites(false);
+    result.drainBarrier();
+    runFrames(1);
+
+    expect(result.fit.fit).toHaveBeenCalledTimes(2);
+    expect(result.onFitted).toHaveBeenCalledTimes(2);
+    expect(result.onFitted).toHaveBeenLastCalledWith({ cols: 140, rows: 24 });
+  });
+
+  it("cancels a prepared step that reverses before its parser barrier", () => {
+    const { runFrames } = installFrameRunner();
+    let cols = 80;
+    const result = setup(() => ({ cols, rows: 24 }));
+    initialize(result);
+    result.setPendingWrites(true);
+
+    cols = 100;
+    result.scheduler.schedule();
+    runFrames(1);
+    cols = 80;
+    result.scheduler.schedule();
+    runFrames(1);
+    result.drainBarrier();
+    runFrames(1);
+
+    expect(result.onResizeCancel).toHaveBeenCalledOnce();
+    expect(result.onResizeCommit).not.toHaveBeenCalled();
+    expect(result.onFitted).not.toHaveBeenCalled();
+  });
+
+  it("retries a transient fit failure without opening a second step", () => {
+    const { runFrames } = installFrameRunner();
+    let cols = 80;
+    const result = setup(() => ({ cols, rows: 24 }));
+    initialize(result);
+    result.fit.fit.mockImplementationOnce(() => {
+      throw new Error("renderer is being replaced");
+    });
+
+    cols = 100;
+    result.scheduler.schedule();
+    runFrames(1);
+    expect(result.onResizeStart).toHaveBeenCalledOnce();
+    expect(result.onFitted).not.toHaveBeenCalled();
+
+    runFrames(1);
+    expect(result.fit.fit).toHaveBeenCalledTimes(2);
+    expect(result.onResizeStart).toHaveBeenCalledOnce();
+    expect(result.onFitted).toHaveBeenCalledWith({ cols: 100, rows: 24 });
+  });
+
+  it("keeps a scrolled viewport anchored across each hidden fit", () => {
+    const { runFrames } = installFrameRunner();
+    let cols = 80;
+    const terminal = makeTerminal(80, 24, 40, 100);
+    const result = setup(() => ({ cols, rows: 24 }), terminal);
+    initialize(result);
+    result.fit.fit.mockImplementation(() => {
+      terminal.cols = cols;
+      terminal.buffer.active.viewportY = 0;
+    });
+
+    cols = 100;
+    result.scheduler.schedule();
+    runFrames(1);
+
+    expect(terminal.scrollToLine).toHaveBeenCalledWith(40);
+  });
+
+  it("never queues more than one measurement frame", () => {
+    const { scheduledFrames } = installFrameRunner();
+    const result = setup(() => ({ cols: 100, rows: 24 }));
+
+    for (let index = 0; index < 20; index += 1) result.scheduler.schedule();
+
+    expect(scheduledFrames()).toBe(1);
   });
 
   it("does nothing after dispose", () => {
     const { runFrames } = installFrameRunner();
-    const { fit, scheduler } = setup(() => ({ cols: 100, rows: 30 }));
+    const result = setup(() => ({ cols: 100, rows: 30 }));
 
-    scheduler.dispose();
-    scheduler.refitNow();
-    scheduler.schedule();
+    result.scheduler.dispose();
+    result.scheduler.refitNow();
+    result.scheduler.schedule();
+    expect(result.scheduler.acknowledgeResize()).toBe(false);
     runFrames(10);
-    expect(fit.fit).not.toHaveBeenCalled();
+
+    expect(result.fit.fit).not.toHaveBeenCalled();
+    expect(result.onFitted).not.toHaveBeenCalled();
   });
-});
-
-it("reflows locally every frame and sends PTY resizes at a throttled rate (drag follow)", () => {
-  const { runFrames } = installFrameRunner();
-  let width = 80;
-  let now = 0;
-  vi.spyOn(performance, "now").mockImplementation(() => now);
-  const { fit, onFitted, scheduler } = setup(() => ({ cols: width, rows: 24 }));
-
-  scheduler.schedule();
-  // Drag: the grid changes every frame; time advances ~16ms per frame.
-  for (let i = 0; i < 10; i += 1) {
-    width += 2;
-    now += 16;
-    runFrames(1);
-  }
-  // Local reflow every frame; the 10th frame (160ms) also hits the 120ms
-  // throttle -> one PTY resize so far, 11 fit calls (10 local + 1 throttled).
-  expect(fit.fit).toHaveBeenCalledTimes(11);
-  expect(onFitted).toHaveBeenCalledTimes(1);
-
-  // Keep dragging past another interval -> a second PTY resize.
-  for (let i = 0; i < 8; i += 1) {
-    width += 2;
-    now += 16;
-    runFrames(1);
-  }
-  expect(onFitted).toHaveBeenCalledTimes(2);
-
-  // Release: one stable frame settles -> final PTY resize.
-  for (let i = 0; i < 3; i += 1) {
-    now += 16;
-    runFrames(1);
-  }
-  expect(onFitted).toHaveBeenCalledTimes(3);
-});
-
-it("skips local reflow only while a large frame is draining", () => {
-  const { runFrames } = installFrameRunner();
-  vi.spyOn(performance, "now").mockReturnValue(0);
-  let width = 80;
-  let pendingBytes = 0;
-  const terminal = makeTerminal(80, 24);
-  const fit2 = makeFit(terminal, () => ({ cols: width, rows: 24 }));
-  const onFitted2 = vi.fn();
-  const s2 = createResizeScheduler({
-    terminal: terminal as never,
-    fit: fit2 as never,
-    hasPendingWrites: () => pendingBytes > 0,
-    pendingWriteBytes: () => pendingBytes,
-    queueWriteBarrier: (cb) => cb(),
-    onFitted: onFitted2 as never,
-  });
-  s2.schedule();
-  width += 2;
-
-  // Small incremental update (spinner tick): must NOT block local reflow —
-  // otherwise a one-shot panel toggle leaves the canvas unexpanded.
-  pendingBytes = 512;
-  runFrames(1);
-  expect(fit2.fit).toHaveBeenCalledTimes(1);
-
-  // Large frame draining: local reflow pauses.
-  pendingBytes = 32 * 1024;
-  width += 2;
-  runFrames(1);
-  expect(fit2.fit).toHaveBeenCalledTimes(1);
-
-  // Frame drained: local reflow resumes.
-  pendingBytes = 0;
-  width += 2;
-  runFrames(1);
-  expect(fit2.fit).toHaveBeenCalledTimes(2);
 });

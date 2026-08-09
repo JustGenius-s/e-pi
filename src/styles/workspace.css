@@ -142,6 +142,10 @@
 
 .terminal-panel .xterm {
   height: 100%;
+  /* Keep xterm's internal resize snapshot in this stacking context. Without
+     isolation its high renderer-layer z-index can escape the terminal and
+     cover the quick-command pills that intentionally overlap the bottom edge. */
+  isolation: isolate;
 }
 
 .terminal-panel .xterm-viewport {

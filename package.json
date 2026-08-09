@@ -94,7 +94,10 @@
     "onlyBuiltDependencies": [
       "electron",
       "node-pty"
-    ]
+    ],
+    "patchedDependencies": {
+      "@earendil-works/pi-tui@0.84.0": "patches/@earendil-works__pi-tui@0.84.0.patch"
+    }
   },
   "build": {
     "appId": "works.earendil.e-pi",

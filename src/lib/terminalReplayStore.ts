@@ -10,7 +10,8 @@ import type { TerminalReplayBuffer } from "./terminalReplayBuffer";
  * replayed.
  *
  * Bounded by `maxBufferedSessions` (LRU): sessions not touched in a while are
- * evicted so a long-running multi-session app does not accumulate N × 400KB.
+ * evicted so a long-running multi-session app does not retain an unbounded
+ * number of multi-megabyte terminal snapshots.
  * An evicted session's terminal still works — the checkpoint-recovery shimmy
  * forces pi to repaint a full frame on the next pty resize.
  */

@@ -7,14 +7,13 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
-import {
-  appendTerminalBuffer,
-  clearTerminalBuffer,
-  getReplayContent,
-  isAwaitingCheckpoint,
-} from "../../lib/terminalReplayStore";
+import { decodeOsc52Clipboard } from "../../lib/terminalOsc52";
+import { appendTerminalBuffer, clearTerminalBuffer, getReplayContent } from "../../lib/terminalReplayStore";
+import { createTerminalResizeOutputGate } from "../../lib/terminalResizeOutputGate";
+import { createTerminalResizeVisualGuard } from "../../lib/terminalResizeVisualGuard";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 import { createResizeScheduler } from "../../lib/xtermResizeScheduler";
+import type { ResizeScheduler } from "../../lib/xtermResizeScheduler";
 import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 import { createViewportWatchdog } from "../../lib/xtermViewportWatchdog";
 
@@ -29,6 +28,7 @@ interface TerminalPanelProps {
 }
 
 const LOCATION_FRAGMENT_PATTERN = /^#L([1-9]\d*)(?:-L?([1-9]\d*))?$/i;
+const SYNCHRONIZED_OUTPUT_CLOSE = "\x1b[?2026l";
 
 /**
  * Parse an OSC 8 link uri as a workspace file reference: `file:///abs/path`
@@ -130,16 +130,18 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
-    // Warp-style GPU rendering: glyphs are cached in a texture atlas, so a
-    // resize only repositions quads instead of clearing and repainting the
-    // whole canvas — no intermediate frames, no reflow flicker.
+    // GPU rendering keeps glyph work cheap during repeated local reflows. A
+    // visual double buffer covers the live renderer while FitAddon replaces
+    // its canvases, so cleared and partially composed frames stay invisible.
     let webgl: WebglAddon | undefined;
     try {
-      webgl = new WebglAddon();
+      // Preserve the drawing buffer so the resize visual guard can copy the
+      // last fully composed frame before FitAddon clears the live canvas.
+      webgl = new WebglAddon(true);
       terminal.loadAddon(webgl);
     } catch {
-      // WebGL unavailable (headless/software rendering) — xterm falls back
-      // to its canvas renderer, which still works, just with repaint flicker.
+      // WebGL unavailable (headless/software rendering): the canvas renderer
+      // is protected by the same visual double-buffer transaction.
     }
     // pi's TUI emits OSC 8 hyperlinks (URLs in tool output, package pages,
     // …). xterm does not handle links on its own, so register the official
@@ -161,6 +163,15 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     terminal.loadAddon(webLinks);
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
+    // Fullscreen Pi owns mouse selection and sends the selected UTF-8 text as
+    // OSC 52. Accept only the clipboard target and a bounded, canonical base64
+    // payload before crossing the preload boundary into Electron's clipboard.
+    const osc52Clipboard = terminal.parser.registerOscHandler(52, (data) => {
+      const text = decodeOsc52Clipboard(data);
+      if (text !== null) void window.ePi.app.copyText(text).catch(() => undefined);
+      return true;
+    });
+    const resizeVisualGuard = createTerminalResizeVisualGuard(terminal);
 
     const scrollSub = terminal.onScroll(() => {
       setAtBottom(terminal.buffer.active.viewportY >= terminal.buffer.active.baseY);
@@ -187,8 +198,10 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
      */
     let disposed = false;
     let painted = false;
-    /** Pending second half of the checkpoint-recovery height shimmy. */
-    let shimmyTimer: number | undefined = undefined;
+    let resizeShimmyFinalSize: { cols: number; rows: number } | undefined;
+    let handleSkippedResizeCheckpoint = (): void => undefined;
+    let replaying = true;
+    let queuedLiveData = "";
     /** Initial writes (replay + queued live chunks) all committed and rendered. */
     let initialWritesSettled = false;
     /**
@@ -202,7 +215,11 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
      */
     const replay = getReplayContent(sessionKey);
     let waitingForFirstFrame = replay.length === 0;
-    let waitingForCheckpoint = replay.length === 0 && isAwaitingCheckpoint(sessionKey);
+    // Any empty replay is incomplete, including a full renderer reload where
+    // the module-level replay store was recreated. Bootstrap it with the same
+    // atomic checkpoint handshake used after LRU/overflow invalidation.
+    let waitingForCheckpoint = replay.length === 0;
+    let bootstrapCheckpointPending = replay.length === 0;
     const markPainted = (): void => {
       if (painted || disposed) return;
       painted = true;
@@ -226,24 +243,53 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       });
     };
     let pendingWrites = 0;
-    /** Bytes still queued for xterm; >4KB means a full frame is draining. */
-    let pendingWriteBytes = 0;
+    const flushWrite = (data: string, onWritten?: () => void) => {
+      pendingWrites += 1;
+      terminal.write(data, () => {
+        pendingWrites -= 1;
+        onWritten?.();
+        settleInitialWrites();
+      });
+    };
+    let resizeScheduler: ResizeScheduler | undefined;
+    const resizeOutputGate = createTerminalResizeOutputGate({
+      write: (data, onWritten) => flushWrite(data, onWritten),
+      onCheckpointRecovered: () => {
+        resizeShimmyFinalSize = undefined;
+        if (waitingForCheckpoint) waitingForCheckpoint = false;
+        // The write callback is parser-ordered, but the canvas render lands on
+        // a later frame. Atomically capture that complete frame before either
+        // advancing the single-flight resize pipeline or revealing xterm.
+        resizeVisualGuard.presentAfterRender(() => {
+          const acknowledged = resizeScheduler?.acknowledgeResize() ?? false;
+          if (!acknowledged) resizeVisualGuard.release();
+        });
+        requestAnimationFrame(syncViewportAfterWrite);
+        settleInitialWrites();
+      },
+      onCheckpointSkipped: () => handleSkippedResizeCheckpoint(),
+    });
+
     /**
-     * Checkpoint-recovery height shimmy: the replay buffer can be invalidated
-     * by overflow or LRU eviction, and pi's TUI only re-emits a full frame
-     * when the pty size changes. Nudge the height and restore it so the live
-     * frame repaints the current screen and plants a fresh checkpoint. The
-     * two resizes must straddle a TUI render tick (MIN_RENDER_INTERVAL_MS is
-     * 16ms) or the intermediate size is never observed and the redraw is
-     * skipped.
+     * Force a checkpoint without ever displaying the intermediate height.
+     * The output gate discards the complete rows+1 frame first; only after that
+     * handshake do we restore the final size and wait for its authoritative
+     * frame. This cannot collapse into a single coalesced SIGWINCH.
      */
-    const triggerCheckpointShimmy = (cols: number, rows: number) => {
+    const triggerAtomicCheckpointShimmy = (cols: number, rows: number): void => {
+      resizeShimmyFinalSize = { cols, rows };
+      resizeOutputGate.commit({
+        expectedSize: { cols, rows: rows + 1 },
+        skipCompleteFrames: 1,
+      });
       window.ePi.runtime.resize(sessionKey, { cols, rows: rows + 1 });
-      window.clearTimeout(shimmyTimer);
-      shimmyTimer = window.setTimeout(() => {
-        if (disposed) return;
-        window.ePi.runtime.resize(sessionKey, { cols, rows });
-      }, 60);
+    };
+    handleSkippedResizeCheckpoint = () => {
+      const finalSize = resizeShimmyFinalSize;
+      if (disposed || !finalSize) return;
+      resizeShimmyFinalSize = undefined;
+      resizeOutputGate.commit({ expectedSize: finalSize });
+      window.ePi.runtime.resize(sessionKey, finalSize);
     };
     /**
      * Refit the terminal to its container. Panel collapse/expand animates the
@@ -252,33 +298,58 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
      * the new container width while the transition is still running — the
      * user never sees a frozen old-layout frame. See xtermResizeScheduler.
      */
-    const resizeScheduler = createResizeScheduler({
+    resizeScheduler = createResizeScheduler({
       terminal,
       fit,
-      hasPendingWrites: () => pendingWrites > 0,
-      pendingWriteBytes: () => pendingWriteBytes,
+      // A synchronized frame can be between IPC chunks even after xterm's
+      // write queue drains. Treat that open frame as pending too, then place
+      // a synthetic close behind all already-queued bytes. New live bytes are
+      // gated from onResizeStart onward, so the barrier is finite and always
+      // leaves the renderer able to paint the local preview.
+      hasPendingWrites: () => pendingWrites > 0 || terminal.modes.synchronizedOutputMode,
       queueWriteBarrier: (onDrained) => {
-        terminal.write("", () => {
+        terminal.write(SYNCHRONIZED_OUTPUT_CLOSE, () => {
           if (disposed) return;
           onDrained();
         });
       },
-      onFitted: ({ cols, rows }) => {
-        // One PTY resize per refit pause — the TUI re-lays out once.
-        window.ePi.runtime.resize(sessionKey, { cols, rows });
-        // The replay checkpoint buffer can be invalidated by overflow: a long
-        // resume-history dump or an output-heavy run can exceed the cap before
-        // the TUI's next full redraw. On a remount the resize above is usually
-        // a no-op (the pty already has this size), so nothing would ever
-        // repaint the replayed (empty) terminal — shimmy the height instead.
-        if (isAwaitingCheckpoint(sessionKey)) {
-          triggerCheckpointShimmy(cols, rows);
+      onResizeStart: () => {
+        resizeShimmyFinalSize = undefined;
+        resizeVisualGuard.begin();
+        resizeOutputGate.begin();
+      },
+      onResizePreviewReady: () => {
+        resizeVisualGuard.track();
+      },
+      onResizeCommit: (size) => {
+        resizeOutputGate.commit({ expectedSize: size });
+      },
+      onResizeCancel: () => {
+        const result = resizeOutputGate.cancel();
+        if (result === "needs-checkpoint") {
+          resizeVisualGuard.hold();
+          triggerAtomicCheckpointShimmy(terminal.cols, terminal.rows);
+        } else {
+          resizeVisualGuard.endAfterRender();
         }
+      },
+      onResizeSettled: () => {
+        resizeVisualGuard.release();
+      },
+      onFitted: ({ cols, rows }) => {
+        if (bootstrapCheckpointPending) {
+          bootstrapCheckpointPending = false;
+          resizeVisualGuard.begin();
+          resizeVisualGuard.hold();
+          triggerAtomicCheckpointShimmy(cols, rows);
+          return;
+        }
+        // Every measurable animation frame can supersede an older resize. The
+        // tagged output gate drops late Pi frames before they reach xterm.
+        window.ePi.runtime.resize(sessionKey, { cols, rows });
       },
     });
     const resizeObserver = new ResizeObserver(() => resizeScheduler.schedule());
-    resizeObserver.observe(hostRef.current);
-    resizeScheduler.refitNow();
 
     // Live font-size updates from the Appearance settings (refit reflows the
     // grid; the skip-if-unchanged guard makes this a no-op when nothing moves).
@@ -294,17 +365,6 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     // at parse time: a queue-time stream filter would race with xterm's
     // asynchronous parser (see xtermScrollbackGuard).
     const eraseScrollbackGuard = guardEraseScrollback(terminal);
-    const flushWrite = (data: string, onWritten?: () => void) => {
-      pendingWrites += 1;
-      pendingWriteBytes += data.length;
-      terminal.write(data, () => {
-        pendingWrites -= 1;
-        pendingWriteBytes -= data.length;
-        onWritten?.();
-        settleInitialWrites();
-      });
-    };
-
     // Re-sync after a process restart (sidebar "Reload session"): the new
     // pty spawns at pi's default 120x36 grid, while this xterm keeps its
     // real size — so the fit guard below sees no change and never sends a
@@ -344,31 +404,30 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     // the app-lifetime feeder has already appended each event by the time this
     // listener sees it. Live chunks arriving while xterm parses the snapshot
     // are queued and appended afterwards, preventing both gaps and reordering.
-    let replaying = true;
-    let queuedLiveData = "";
     const stopData = window.ePi.runtime.onAnyData((path, data) => {
       if (disposed || path !== sessionKey) return;
       if (replaying) queuedLiveData += data;
-      else flushWrite(data);
+      else resizeOutputGate.push(data);
       // A full frame (fresh first render, or the shimmy-triggered redraw)
       // arrived — the terminal can now paint the complete picture, so the
       // loading overlay may lift once this chunk is committed.
-      if (waitingForCheckpoint && !isAwaitingCheckpoint(sessionKey)) {
-        waitingForCheckpoint = false;
-        settleInitialWrites();
-      }
       if (waitingForFirstFrame) {
         waitingForFirstFrame = false;
         settleInitialWrites();
       }
     });
+    // Subscribe before the first PTY resize. A fresh/empty replay uses that
+    // resize to start its atomic checkpoint handshake; installing the listener
+    // afterwards could miss the very frame needed to send the final size.
+    resizeObserver.observe(hostRef.current);
+    resizeScheduler.refitNow();
     const finishReplay = () => {
       if (disposed) return;
       replaying = false;
       if (queuedLiveData) {
         const queued = queuedLiveData;
         queuedLiveData = "";
-        flushWrite(queued);
+        resizeOutputGate.push(queued);
       }
       // With an empty replay the overlay stays until the first real frame
       // arrives (see waitingForFirstFrame / waitingForCheckpoint above).
@@ -383,20 +442,13 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     } else {
       finishReplay();
     }
-    // A session whose buffer was LRU-evicted (or invalidated) remounts with
-    // an empty replay. The shimmy above only fires inside onFitted, which
-    // never runs when the grid is unchanged (refitNow's guard no-ops) — so
-    // nothing would force pi to repaint and the terminal stays blank. Trigger
-    // the height shimmy right away using the already-fit grid size.
-    if (!replay && isAwaitingCheckpoint(sessionKey)) {
-      triggerCheckpointShimmy(terminal.cols, terminal.rows);
-    }
     const input = terminal.onData((data) => window.ePi.runtime.write(sessionKey, data));
 
     return () => {
       disposed = true;
-      window.clearTimeout(shimmyTimer);
-      resizeScheduler.dispose();
+      resizeScheduler?.dispose();
+      resizeVisualGuard.dispose();
+      resizeOutputGate.dispose();
       eraseScrollbackGuard.dispose();
       viewportWatchdog.dispose();
       unsubscribeAppearance();
@@ -405,6 +457,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       input.dispose();
       scrollSub.dispose();
       terminalRef.current = null;
+      osc52Clipboard.dispose();
       webgl?.dispose();
       webLinks.dispose();
       resizeObserver.disconnect();

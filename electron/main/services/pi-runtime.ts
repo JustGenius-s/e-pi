@@ -389,7 +389,21 @@ export class PiRuntime {
 
     try {
       const nodeBinary = resolveNodeBinary();
-      const args = [resolvePiEntry(), "--session", sessionPath, "--extension", resolveBridgePath()];
+      const args = [
+        resolvePiEntry(),
+        "--session",
+        sessionPath,
+        "--extension",
+        resolveBridgePath(),
+        // E-Pi owns the outer composer and terminal viewport. Pi's regular
+        // main-screen renderer rebuilds and retransmits the entire session
+        // history whenever the PTY width changes; long sessions therefore
+        // spend seconds parsing an obsolete layout. Fullscreen mode keeps the
+        // document in pi and emits only the terminal-height viewport, with
+        // synchronized atomic frames and application-owned scrolling.
+        "--tui-mode",
+        "fullscreen",
+      ];
       // E-Pi-managed Pi Agent settings (system prompt, thinking level, context
       // files). Re-read on every launch so `reloadAll` picks up saved changes.
       const agentArgs = agentConfigToArgs(await getAgentConfig());
