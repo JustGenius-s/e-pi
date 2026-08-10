@@ -252,6 +252,12 @@ export interface ResizeTerminalRequest {
   rows: number;
 }
 
+export interface SideTerminalStatus {
+  cwd: string;
+  foregroundProcess: string;
+  interactive: boolean;
+}
+
 export type ModelAuthType = "api_key" | "oauth";
 
 export interface ModelRecord {
@@ -791,6 +797,7 @@ export interface EPiApi {
   };
   sideTerminal: {
     spawn(cwd: string): Promise<string>;
+    status(id: string): Promise<SideTerminalStatus | undefined>;
     write(id: string, data: string): void;
     resize(id: string, size: ResizeTerminalRequest): void;
     kill(id: string): void;

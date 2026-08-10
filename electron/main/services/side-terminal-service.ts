@@ -4,10 +4,19 @@ import type { IPty } from "node-pty";
 import * as pty from "node-pty";
 
 import { debugLog } from "./debug-log";
+import { isInteractiveForeground } from "./side-terminal-interactive";
 
 interface SideTerminal {
   pty: IPty;
   cwd: string;
+  /** Shell binary this pty was spawned with (used for foreground detection). */
+  shell: string;
+}
+
+interface SideTerminalStatus {
+  cwd: string;
+  foregroundProcess: string;
+  interactive: boolean;
 }
 
 /**
@@ -21,6 +30,20 @@ export class SideTerminalService {
 
   onData(listener: (id: string, data: string) => void): void {
     this.#listener = listener;
+  }
+
+  getStatus(id: string): SideTerminalStatus | undefined {
+    const terminal = this.#terminals.get(id);
+    if (!terminal) return undefined;
+    // pty.process resolves the FOREGROUND process group of the terminal
+    // (tcgetpgrp → p_comm on macOS, /proc/<pgrp>/cmdline on Linux), so while a
+    // program like vim/ssh owns the tty this reports its name. Only known
+    // keystroke-driven programs flip the renderer into raw-input mode — a
+    // long-running plain command (sleep, a build) must not.
+    const processName = terminal.pty.process.trim();
+    const interactive = isInteractiveForeground(processName);
+    const foregroundProcess = processName.split(/[\\/]/).pop()?.replace(/^-+/, "").trim() || processName;
+    return { cwd: terminal.cwd, foregroundProcess, interactive };
   }
 
   spawn(cwd: string): string {
@@ -40,7 +63,7 @@ export class SideTerminalService {
       debugLog("[side-terminal] exit", { id, exitCode });
       this.#terminals.delete(id);
     });
-    this.#terminals.set(id, { pty: terminal, cwd });
+    this.#terminals.set(id, { pty: terminal, cwd, shell });
     debugLog("[side-terminal] spawned", { id, cwd });
     return id;
   }

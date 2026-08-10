@@ -48,6 +48,7 @@ import type {
   ResizeTerminalRequest,
   SetDefaultModelRequest,
   SessionSummary,
+  SideTerminalStatus,
   SkillAddPathRequest,
   SkillCreateRequest,
   SkillMutation,
@@ -247,6 +248,7 @@ const api: EPiApi = {
   },
   sideTerminal: {
     spawn: (cwd: string) => ipcRenderer.invoke("side-terminal:spawn", cwd) as Promise<string>,
+    status: (id: string) => ipcRenderer.invoke("side-terminal:status", id) as Promise<SideTerminalStatus | undefined>,
     write: (id: string, data: string) => ipcRenderer.send("side-terminal:write", id, data),
     resize: (id: string, size: ResizeTerminalRequest) => ipcRenderer.send("side-terminal:resize", id, size),
     kill: (id: string) => ipcRenderer.send("side-terminal:kill", id),
