@@ -73,7 +73,11 @@ function installFrameRunner() {
   };
 }
 
-function setup(proposed: () => { cols: number; rows: number }, terminal = makeTerminal()) {
+function setup(
+  proposed: () => { cols: number; rows: number },
+  terminal = makeTerminal(),
+  prepareResizeVisual?: (onReady: () => void) => void,
+) {
   const fit = makeFit(terminal, proposed);
   const onResizeStart = vi.fn();
   const onResizePreviewReady = vi.fn();
@@ -92,6 +96,7 @@ function setup(proposed: () => { cols: number; rows: number }, terminal = makeTe
     hasPendingWrites: () => pendingWrites,
     queueWriteBarrier,
     onResizeStart,
+    prepareResizeVisual,
     onResizePreviewReady,
     onResizeCommit,
     onResizeCancel,
@@ -173,6 +178,51 @@ describe("createResizeScheduler", () => {
     expect(result.onResizePreviewReady).toHaveBeenCalledOnce();
     expect(result.onResizeCommit).toHaveBeenCalledWith({ cols: 120, rows: 30 });
     expect(result.onFitted).toHaveBeenCalledWith({ cols: 120, rows: 30 });
+  });
+
+  it("keeps a jump resize on the first scheduler frame when its visual snapshot is ready", () => {
+    const { runFrames } = installFrameRunner();
+    let proposed = { cols: 80, rows: 24 };
+    const prepareResizeVisual = vi.fn((onReady: () => void) => onReady());
+    const result = setup(() => proposed, makeTerminal(), prepareResizeVisual);
+    initialize(result);
+
+    proposed = { cols: 120, rows: 30 };
+    result.scheduler.schedule();
+    runFrames(1);
+
+    expect(prepareResizeVisual).toHaveBeenCalledOnce();
+    expect(result.fit.fit).toHaveBeenCalledOnce();
+    expect(result.onFitted).toHaveBeenCalledWith({ cols: 120, rows: 30 });
+  });
+
+  it("waits for an asynchronous visual snapshot and then fits the latest target", () => {
+    const { runFrames } = installFrameRunner();
+    let cols = 80;
+    let releaseVisual: (() => void) | undefined;
+    const prepareResizeVisual = vi.fn((onReady: () => void) => {
+      releaseVisual = onReady;
+    });
+    const result = setup(() => ({ cols, rows: 24 }), makeTerminal(), prepareResizeVisual);
+    initialize(result);
+
+    cols = 100;
+    result.scheduler.schedule();
+    runFrames(1);
+    expect(result.fit.fit).not.toHaveBeenCalled();
+
+    cols = 120;
+    result.scheduler.schedule();
+    runFrames(1);
+    expect(prepareResizeVisual).toHaveBeenCalledOnce();
+    expect(result.onResizeStart).toHaveBeenCalledOnce();
+    expect(result.fit.fit).not.toHaveBeenCalled();
+
+    releaseVisual?.();
+    runFrames(1);
+
+    expect(result.fit.fit).toHaveBeenCalledOnce();
+    expect(result.onFitted).toHaveBeenCalledWith({ cols: 120, rows: 24 });
   });
 
   it("preempts a slow checkpoint and follows every measurable drag update", () => {

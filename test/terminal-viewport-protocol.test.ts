@@ -1,6 +1,6 @@
 import { Container, ScrollView, TuiAltScreen, VStack } from "@earendil-works/pi-tui";
 import type { Terminal } from "@earendil-works/pi-tui/dist/terminal.js";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createPiViewportWheelBatcher,
@@ -60,7 +60,34 @@ function viewportPayload(output: string): string {
   return output.slice(start + prefix.length, end);
 }
 
+beforeEach(() => {
+  process.env.E_PI_TUI_OPTIMIZATIONS = "true";
+});
+
+afterEach(() => {
+  delete process.env.E_PI_TUI_OPTIMIZATIONS;
+});
+
 describe("Pi fullscreen viewport protocol", () => {
+  it("keeps stock pi-tui wheel behavior and emits no E-Pi viewport OSC while disabled", () => {
+    process.env.E_PI_TUI_OPTIMIZATIONS = "false";
+    const terminal = new FakeTerminal();
+    const document = new Container();
+    for (let index = 0; index < 48; index += 1) document.addChild(new SingleLineBlock(`line-${index}`));
+    const scrollView = new ScrollView(document, { follow: "end", primary: true });
+    const tui = new TuiAltScreen(terminal, false, undefined, { mouse: true });
+    tui.setLayoutRoot(scrollView);
+    tui.start();
+    tui.renderNow();
+
+    expect(terminal.writes.at(-1)).not.toContain("\x1b]6973;");
+    expect(scrollView.scrollTop).toBe(40);
+    terminal.emitInput("\x1b[<64;1;1M");
+    tui.renderNow();
+    expect(scrollView.scrollTop).toBe(39);
+    tui.stop({ preserveScreen: true });
+  });
+
   it("round-trips valid states and rejects malformed or contradictory states", () => {
     const payload = encodePiViewportStatePayload({ scrollTop: 12, maxScrollTop: 40, followingEnd: false });
     expect(decodePiViewportStatePayload(payload)).toEqual({ scrollTop: 12, maxScrollTop: 40, followingEnd: false });

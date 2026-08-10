@@ -2,7 +2,7 @@ import type { IDisposable, Terminal } from "@xterm/xterm";
 
 export interface TerminalResizeVisualGuard {
   /** Cover the live renderer with its last fully composed frame. */
-  begin(): void;
+  begin(onReady?: () => void): void;
   /** Refresh the front buffer from a complete local reflow. */
   track(): void;
   /** Freeze the current front while a hidden authoritative frame parses. */
@@ -19,7 +19,7 @@ export interface TerminalResizeVisualGuard {
 }
 
 const SNAPSHOT_CLASS = "xterm-resize-snapshot";
-type GuardPhase = "inactive" | "tracking" | "holding" | "presenting" | "ending" | "releasing";
+type GuardPhase = "inactive" | "priming" | "tracking" | "holding" | "presenting" | "ending" | "releasing";
 
 interface SnapshotBuffer {
   root: HTMLDivElement;
@@ -47,6 +47,7 @@ export function createTerminalResizeVisualGuard(terminal: Terminal): TerminalRes
   let releaseFrame: number | undefined;
   let releaseGeneration = 0;
   let captureAttempts = 0;
+  let readyCallback: (() => void) | undefined;
   let presentedCallback: (() => void) | undefined;
 
   const getScreen = (): HTMLElement | undefined =>
@@ -93,7 +94,23 @@ export function createTerminalResizeVisualGuard(terminal: Terminal): TerminalRes
     captureFrame = undefined;
     releaseFrame = undefined;
     captureAttempts = 0;
+    readyCallback = undefined;
     presentedCallback = undefined;
+  };
+
+  const hasWebglSource = (): boolean => {
+    const screen = getScreen();
+    if (!screen) return false;
+    const sources = Array.from(screen.querySelectorAll<HTMLCanvasElement>("canvas"));
+    for (const source of sources) {
+      if (source === frontBuffer?.canvas || source === backBuffer?.canvas) continue;
+      try {
+        if (source.getContext?.("webgl2")) return true;
+      } catch {
+        // A non-WebGL renderer may have already claimed this canvas.
+      }
+    }
+    return false;
   };
 
   const ensureBuffers = (screen: HTMLElement): [SnapshotBuffer, SnapshotBuffer] => {
@@ -203,43 +220,63 @@ export function createTerminalResizeVisualGuard(terminal: Terminal): TerminalRes
     callback?.();
   };
 
+  const finishPrimingWithoutCapture = (): void => {
+    const callback = readyCallback;
+    readyCallback = undefined;
+    phase = "inactive";
+    releaseBuffers();
+    callback?.();
+  };
+
+  const captureRenderedFrame = (generation: number): void => {
+    if (disposed || generation !== releaseGeneration) return;
+    if (phase !== "priming" && phase !== "tracking" && phase !== "presenting" && phase !== "ending") {
+      return;
+    }
+    if (!capture()) {
+      if (phase === "tracking") return;
+      captureAttempts += 1;
+      if (captureAttempts <= 4) {
+        try {
+          terminal.refresh(0, Math.max(0, terminal.rows - 1));
+        } catch {
+          if (phase === "priming") finishPrimingWithoutCapture();
+          else finishPresentationWithoutCapture(generation);
+        }
+        return;
+      }
+      // Never let a lost WebGL context stall either the resize scheduler or
+      // the authoritative-frame pipeline.
+      if (phase === "priming") finishPrimingWithoutCapture();
+      else finishPresentationWithoutCapture(generation);
+      return;
+    }
+
+    captureAttempts = 0;
+    if (phase === "priming") {
+      const callback = readyCallback;
+      readyCallback = undefined;
+      phase = "tracking";
+      callback?.();
+      return;
+    }
+    if (phase === "tracking") return;
+    if (phase === "ending") {
+      scheduleRelease(generation);
+      return;
+    }
+    const callback = presentedCallback;
+    presentedCallback = undefined;
+    phase = "holding";
+    callback?.();
+  };
+
   const queueCapture = (): void => {
     if (captureFrame !== undefined || disposed) return;
     const generation = releaseGeneration;
     captureFrame = requestAnimationFrame(() => {
       captureFrame = undefined;
-      if (disposed || generation !== releaseGeneration) return;
-      if (phase === "tracking") {
-        capture();
-        return;
-      }
-      if (phase !== "presenting" && phase !== "ending") return;
-      if (!capture()) {
-        captureAttempts += 1;
-        if (captureAttempts <= 4) {
-          try {
-            terminal.refresh(0, Math.max(0, terminal.rows - 1));
-          } catch {
-            finishPresentationWithoutCapture(generation);
-          }
-          return;
-        }
-        // Never let a lost WebGL context stall the resize pipeline. The live
-        // renderer has parsed a complete synchronized frame; keep the old
-        // front for another step, or reveal the live renderer on final release.
-        finishPresentationWithoutCapture(generation);
-        return;
-      }
-
-      captureAttempts = 0;
-      if (phase === "ending") {
-        scheduleRelease(generation);
-        return;
-      }
-      const callback = presentedCallback;
-      presentedCallback = undefined;
-      phase = "holding";
-      callback?.();
+      captureRenderedFrame(generation);
     });
   };
 
@@ -268,18 +305,54 @@ export function createTerminalResizeVisualGuard(terminal: Terminal): TerminalRes
   renderSubscription = terminal.onRender(({ start, end }) => {
     if (disposed) return;
     if (start !== 0 || end < terminal.rows - 1) return;
-    if (phase === "tracking" || phase === "presenting" || phase === "ending") queueCapture();
+    if (phase !== "priming" && phase !== "tracking" && phase !== "presenting" && phase !== "ending") return;
+    // A non-preserved WebGL drawing buffer is only guaranteed to be readable
+    // in the render task that produced it. Copy there, and only while a resize
+    // transaction is active. Canvas fallback buffers remain readable later.
+    if (hasWebglSource()) captureRenderedFrame(releaseGeneration);
+    else queueCapture();
   });
 
   return {
-    begin() {
-      if (disposed || phase === "tracking") return;
+    begin(onReady) {
+      if (disposed) {
+        onReady?.();
+        return;
+      }
+      if (phase === "priming") {
+        const previous = readyCallback;
+        readyCallback = () => {
+          previous?.();
+          onReady?.();
+        };
+        return;
+      }
+      if (phase === "tracking") {
+        onReady?.();
+        return;
+      }
       cancelPendingWork();
       if (phase === "inactive") {
-        phase = "tracking";
-        capture();
+        // Canvas renderers retain their bitmap and can be copied immediately.
+        // WebGL uses the default non-preserved buffer for smooth streaming, so
+        // prime a fresh full render and capture it synchronously from onRender.
+        if (!hasWebglSource()) {
+          phase = "tracking";
+          if (capture()) {
+            onReady?.();
+            return;
+          }
+        }
+        phase = "priming";
+        readyCallback = onReady;
+        try {
+          terminal.refresh(0, Math.max(0, terminal.rows - 1));
+        } catch {
+          finishPrimingWithoutCapture();
+        }
       } else {
         phase = "holding";
+        onReady?.();
       }
     },
 

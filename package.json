@@ -135,6 +135,14 @@
         "to": "e-pi-light.json"
       },
       {
+        "from": "patches/@earendil-works__pi-coding-agent@0.84.0.patch",
+        "to": "pi-compatibility/pi-coding-agent.patch"
+      },
+      {
+        "from": "patches/@earendil-works__pi-tui@0.84.0.patch",
+        "to": "pi-compatibility/pi-tui.patch"
+      },
+      {
         "from": "resources/node",
         "to": "node"
       }

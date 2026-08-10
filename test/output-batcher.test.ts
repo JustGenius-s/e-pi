@@ -53,6 +53,42 @@ describe("OutputBatcher", () => {
     expect(onFlush).toHaveBeenCalledTimes(1);
   });
 
+  it("flushes a complete synchronized TUI frame immediately", () => {
+    vi.useFakeTimers();
+    const { batcher, onFlush } = setup();
+    batcher.push("s1", "\x1b[?2026hframe");
+    expect(onFlush).not.toHaveBeenCalled();
+
+    batcher.push("s1", "\x1b[?2026l");
+
+    expect(onFlush).toHaveBeenCalledOnce();
+    expect(onFlush).toHaveBeenCalledWith("s1", "\x1b[?2026hframe\x1b[?2026l");
+    vi.advanceTimersByTime(100);
+    expect(onFlush).toHaveBeenCalledOnce();
+  });
+
+  it("recognizes a synchronized frame close split across PTY chunks", () => {
+    vi.useFakeTimers();
+    const { batcher, onFlush } = setup();
+    batcher.push("s1", "frame\x1b[?20");
+    batcher.push("s1", "26");
+    expect(onFlush).not.toHaveBeenCalled();
+
+    batcher.push("s1", "l");
+
+    expect(onFlush).toHaveBeenCalledOnce();
+    expect(onFlush).toHaveBeenCalledWith("s1", "frame\x1b[?2026l");
+  });
+
+  it("keeps synchronized frames on the stock timer when the optimization is disabled", () => {
+    vi.useFakeTimers();
+    const { batcher, onFlush } = setup({ flushSynchronizedFrames: () => false });
+    batcher.push("s1", "frame\x1b[?2026l");
+    expect(onFlush).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(8);
+    expect(onFlush).toHaveBeenCalledWith("s1", "frame\x1b[?2026l");
+  });
+
   it("restarts a fresh timer after an early flush", () => {
     vi.useFakeTimers();
     const { batcher, onFlush } = setup();

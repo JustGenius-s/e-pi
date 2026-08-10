@@ -350,7 +350,9 @@ class EmptyComponent implements Component {
 
 class DesktopEditor extends CustomEditor {
   override render(): string[] {
-    return [""];
+    // E-Pi owns the visible composer. Keep the editor mounted for keyboard
+    // routing, but give fullscreen layout no phantom terminal row to reserve.
+    return process.env.E_PI_TUI_OPTIMIZATIONS === "true" ? [] : [""];
   }
 }
 
@@ -364,7 +366,7 @@ const imageMime: Record<string, string> = {
 };
 
 export default function ePiBridge(pi: ExtensionAPI): void {
-  installResizeFrameMarkers();
+  if (process.env.E_PI_TUI_OPTIMIZATIONS === "true") installResizeFrameMarkers();
 
   pi.registerCommand("e-pi-theme", {
     description: "Sync the TUI theme with E-Pi's light/dark mode",
