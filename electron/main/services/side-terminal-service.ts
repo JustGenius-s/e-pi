@@ -49,7 +49,14 @@ export class SideTerminalService {
   spawn(cwd: string): string {
     const id = randomUUID();
     const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/zsh");
-    const terminal = pty.spawn(shell, [], {
+    // Spawn as a LOGIN shell so the full PATH chain runs: /etc/zprofile
+    // (path_helper) and ~/.zprofile (brew shellenv) are skipped by plain
+    // interactive shells, so an Electron-launched app would otherwise give
+    // .zshrc a PATH without /opt/homebrew/bin — fnm/nvm/… then break. This
+    // matches how Terminal.app spawns shells. On Windows there is no login
+    // concept; keep the bare invocation.
+    const args = process.platform === "win32" ? [] : ["-l"];
+    const terminal = pty.spawn(shell, args, {
       name: "xterm-256color",
       cols: 80,
       rows: 24,
