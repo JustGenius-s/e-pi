@@ -8,6 +8,13 @@ export interface ResizeSchedulerOptions {
   fit: FitAddon;
   /** True while xterm still has unparsed writes (resizing mid-batch corrupts cursor state). */
   hasPendingWrites: () => boolean;
+  /**
+   * Bytes still queued for xterm, if tracked. Local reflow is only skipped
+   * while a LARGE frame is draining (pi's full redraws are tens of KB);
+   * small incremental updates (spinner etc.) must not block instant local
+   * follow — they would leave the canvas unexpanded after a panel toggle.
+   */
+  pendingWriteBytes?: () => number;
   /** Queue an explicit FIFO write barrier; `onDrained` fires once the parser caught up. */
   queueWriteBarrier: (onDrained: () => void) => void;
   /** Longest the refit waits on the write barrier before proceeding anyway (default 100ms). */
@@ -24,8 +31,12 @@ export interface ResizeScheduler {
   dispose(): void;
 }
 
-const SETTLE_FRAMES = 2;
+const SETTLE_FRAMES = 1;
 const DEFAULT_BARRIER_CAP_MS = 100;
+/** While the size keeps changing (drag), refit at most this often. */
+const DRAG_REFIT_INTERVAL_MS = 120;
+/** Writes above this size are treated as full frames: local reflow pauses. */
+const LARGE_WRITE_BYTES = 4096;
 
 /**
  * Shared resize handling for the main TUI terminal and the side terminal.
@@ -119,6 +130,41 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
     // reflowed buffer instead of the live tail they were following.
     if (wasAtBottom) terminal.scrollToBottom();
     options.onFitted({ cols: terminal.cols, rows: terminal.rows });
+    restoreAfterRefit(wasAtBottom, topLine);
+  };
+
+  /**
+   * Local-only refit: reflows xterm's buffer at the new grid instantly but
+   * does NOT resize the PTY, so pi never sees it. Used while the size keeps
+   * changing (drag): xterm's sync reflow is pure character rewrapping — far
+   * cheaper than pi's full component-tree re-render — so the layout follows
+   * the drag at frame rate. pi only receives the throttled PTY resizes (see
+   * settleStep) and the final settle refit, which correct any drift.
+   * xterm tolerates resize while its write queue is draining, so no write
+   * barrier is needed here (it would only add latency).
+   */
+  const fitLocal = (): void => {
+    if (disposed) return;
+    // Skip only while a LARGE frame is draining: a pi full redraw (tens of
+    // KB, wrapped in synchronized output) must not be reflowed mid-parse or
+    // its rows land on the wrong grid. Small incremental updates (spinner
+    // ticks etc.) drain in milliseconds and must not block the instant
+    // local follow — otherwise a one-shot panel toggle leaves the canvas
+    // unexpanded (black gap) until the throttled PTY refit fires.
+    if ((options.pendingWriteBytes?.() ?? 0) > LARGE_WRITE_BYTES) return;
+    cancelPendingRestore();
+    const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
+    const topLine = terminal.buffer.active.viewportY;
+    try {
+      fit.fit();
+    } catch {
+      return;
+    }
+    if (wasAtBottom) terminal.scrollToBottom();
+    restoreAfterRefit(wasAtBottom, topLine);
+  };
+
+  const restoreAfterRefit = (wasAtBottom: boolean, topLine: number): void => {
     // xterm's resize schedules its own viewport sync on a refresh callback
     // (viewport.queueSync -> _sync on rAF) that runs on a later frame; in
     // v6 that sync can leave the scrollable on a stale/clamped position
@@ -156,6 +202,7 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
     let lastCols = -1;
     let lastRows = -1;
     let stableFrames = 0;
+    let lastDragRefitAt = 0;
     const settleStep = (): void => {
       resizeSettleFrame = undefined;
       if (disposed) return;
@@ -180,6 +227,16 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
         lastCols = cols;
         lastRows = rows;
         stableFrames = 0;
+        // The size keeps changing (panel drag / window resize): reflow
+        // xterm locally on every frame so the layout tracks the drag at
+        // frame rate (cheap character rewrapping), and send the PTY resize
+        // at a throttled rate so pi re-renders the authoritative frame.
+        fitLocal();
+        const now = performance.now();
+        if (now - lastDragRefitAt >= DRAG_REFIT_INTERVAL_MS) {
+          lastDragRefitAt = now;
+          refit();
+        }
       }
       if (stableFrames >= SETTLE_FRAMES) {
         refit();
