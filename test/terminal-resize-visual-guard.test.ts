@@ -15,7 +15,9 @@ interface CanvasRecord {
   context: FakeContext;
 }
 
-function createHarness() {
+function createHarness(options: { webgl?: boolean } = {}) {
+  const webglFinish = vi.fn();
+  const webglContext = { finish: webglFinish };
   const createSource = (width: number, height: number) =>
     ({
       width,
@@ -24,7 +26,10 @@ function createHarness() {
         width: `${width / 2}px`,
         height: `${height / 2}px`,
       },
-    }) as HTMLCanvasElement;
+      getContext: options.webgl
+        ? vi.fn((contextId: string) => (contextId === "webgl2" ? webglContext : null))
+        : undefined,
+    }) as unknown as HTMLCanvasElement;
   const source = createSource(320, 180);
   const children: HTMLElement[] = [source];
   const canvases: HTMLCanvasElement[] = [source];
@@ -115,6 +120,7 @@ function createHarness() {
     overlays,
     renderDispose,
     terminal,
+    webglFinish,
     addSource(width: number, height: number) {
       const extraSource = createSource(width, height);
       children.push(extraSource);
@@ -141,6 +147,24 @@ afterEach(() => {
 });
 
 describe("createTerminalResizeVisualGuard", () => {
+  it("primes a non-preserved WebGL snapshot inside the render task", () => {
+    const harness = createHarness({ webgl: true });
+    const guard = createTerminalResizeVisualGuard(harness.terminal);
+    const ready = vi.fn();
+
+    guard.begin(ready);
+
+    expect(harness.terminal.refresh).toHaveBeenCalledWith(0, 23);
+    expect(harness.visibleOverlay()).toBeUndefined();
+    expect(ready).not.toHaveBeenCalled();
+
+    harness.render();
+
+    expect(harness.visibleOverlay()).toBeDefined();
+    expect(harness.webglFinish).toHaveBeenCalledOnce();
+    expect(ready).toHaveBeenCalledOnce();
+  });
+
   it("shows a complete front buffer when a resize begins", () => {
     const harness = createHarness();
     const guard = createTerminalResizeVisualGuard(harness.terminal);

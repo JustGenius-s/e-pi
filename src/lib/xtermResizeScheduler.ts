@@ -12,6 +12,8 @@ export interface ResizeSchedulerOptions {
   queueWriteBarrier: (onDrained: () => void) => void;
   /** Freeze output and cover the live renderer before one authoritative step. */
   onResizeStart?: () => void;
+  /** Continue only after the current complete frame is safe to cover the fit. */
+  prepareResizeVisual?: (onReady: () => void) => void;
   /** The hidden xterm grid now matches the step target and can be snapshotted. */
   onResizePreviewReady?: () => void;
   /** Arm the output gate before the PTY receives this resize. */
@@ -66,6 +68,8 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
 
   let transactionActive = false;
   let stepPreparing = false;
+  let visualPermit = options.prepareResizeVisual === undefined;
+  let visualGeneration = 0;
   let transactionWasAtBottom = true;
   let transactionTopLine = 0;
 
@@ -161,12 +165,25 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
     if (stepPreparing) return;
     stepPreparing = true;
     options.onResizeStart?.();
+    visualPermit = options.prepareResizeVisual === undefined;
+    if (options.prepareResizeVisual) {
+      const generation = ++visualGeneration;
+      let synchronous = true;
+      options.prepareResizeVisual(() => {
+        if (disposed || !stepPreparing || generation !== visualGeneration) return;
+        visualPermit = true;
+        if (!synchronous) ensureFrame();
+      });
+      synchronous = false;
+    }
   };
 
   const finishTransaction = (cancelled: boolean): void => {
     if (!transactionActive) return;
     transactionActive = false;
     stepPreparing = false;
+    visualPermit = options.prepareResizeVisual === undefined;
+    visualGeneration += 1;
     quietFrames = 0;
     unmeasurableFrames = 0;
     cancelPendingRestore();
@@ -177,7 +194,8 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
 
   const fitAndSendLatest = (target: TerminalSize): "sent" | "waiting" | "retry" | "cancelled" => {
     prepareStep();
-    if (!acquireParserPermit()) return "waiting";
+    const parserPermit = acquireParserPermit();
+    if (!visualPermit || !parserPermit) return "waiting";
 
     if (!sameSize(currentSize(), target)) {
       try {
@@ -199,6 +217,8 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
     }
 
     stepPreparing = false;
+    visualPermit = options.prepareResizeVisual === undefined;
+    visualGeneration += 1;
     inFlightSize = size;
     quietFrames = 0;
     // Gate first, then SIGWINCH: no byte from the new frame can race ahead of
@@ -260,6 +280,19 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
   const schedule = (): void => {
     if (disposed) return;
     observationEpoch += 1;
+    // Prime an on-demand WebGL snapshot before registering the scheduler's
+    // animation frame. xterm's refresh callback then runs first in that same
+    // frame, allowing a jump resize to remain a one-frame operation without
+    // preserving the drawing buffer during normal streaming.
+    if (options.prepareResizeVisual && !stepPreparing) {
+      const target = propose();
+      if (target) {
+        const latestPtySize = inFlightSize ?? committedSize;
+        const gridDiffers = !sameSize(currentSize(), target);
+        const ptyDiffers = latestPtySize === undefined || !sameSize(latestPtySize, target);
+        if (gridDiffers || ptyDiffers) prepareStep();
+      }
+    }
     ensureFrame();
   };
 
@@ -314,6 +347,8 @@ export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeSc
       frame = undefined;
       inFlightSize = undefined;
       stepPreparing = false;
+      visualPermit = options.prepareResizeVisual === undefined;
+      visualGeneration += 1;
       cancelPendingRestore();
     },
   };

@@ -31,6 +31,7 @@ const MAX_EVICTED_SESSIONS = 12;
 /** Insertion order is LRU order: Map guarantees iteration = insertion order. */
 const buffers = new Map<string, TerminalReplayBuffer>();
 const evictedSessions = new Map<string, true>();
+const modeResetSessions = new Map<string, true>();
 
 let maxBufferedSessions = MAX_BUFFERED_SESSIONS;
 
@@ -81,6 +82,30 @@ export function isAwaitingCheckpoint(sessionKey: string): boolean {
 export function clearTerminalBuffer(sessionKey: string): void {
   buffers.delete(sessionKey);
   evictedSessions.delete(sessionKey);
+  modeResetSessions.delete(sessionKey);
+}
+
+/** Drop every cached terminal frame before changing the Pi rendering mode. */
+export function clearAllTerminalBuffers(): void {
+  const sessions = new Set([...buffers.keys(), ...evictedSessions.keys()]);
+  buffers.clear();
+  evictedSessions.clear();
+  modeResetSessions.clear();
+  for (const sessionKey of sessions) {
+    evictedSessions.set(sessionKey, true);
+    modeResetSessions.set(sessionKey, true);
+  }
+  while (evictedSessions.size > MAX_EVICTED_SESSIONS) {
+    const oldest = evictedSessions.keys().next();
+    if (oldest.done) break;
+    evictedSessions.delete(oldest.value);
+  }
+}
+
+/** Consume the one-shot marker used to remount a session after a TUI mode change. */
+export function consumeTerminalModeReset(sessionKey: string): boolean {
+  const marked = modeResetSessions.delete(sessionKey);
+  return marked;
 }
 
 /** Test hook: shrink/restore the LRU cap. */

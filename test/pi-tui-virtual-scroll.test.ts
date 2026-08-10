@@ -1,6 +1,6 @@
-import { Container, ScrollView, stripTerminalSequences, Text, VStack } from "@earendil-works/pi-tui";
+import { Container, ScrollView, Spacer, stripTerminalSequences, Text, VStack } from "@earendil-works/pi-tui";
 import { renderLayoutFrame } from "@earendil-works/pi-tui/dist/layout.js";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 class CountingBlock {
   readonly calls = new Map<number, number>();
@@ -19,6 +19,19 @@ class CountingBlock {
   render(width: number): string[] {
     this.calls.set(width, (this.calls.get(width) ?? 0) + 1);
     return this.expected(width);
+  }
+
+  invalidate(): void {}
+}
+
+class VolatileBlock {
+  readonly ePiVirtualRenderVolatile = true;
+  calls = 0;
+  text = "before";
+
+  render(): string[] {
+    this.calls += 1;
+    return [this.text];
   }
 
   invalidate(): void {}
@@ -47,11 +60,26 @@ function expectedTail(blocks: CountingBlock[], width: number, height: number): s
   return blocks.flatMap((block) => block.expected(width)).slice(-height);
 }
 
+beforeEach(() => {
+  process.env.E_PI_TUI_OPTIMIZATIONS = "true";
+});
+
 afterEach(() => {
   vi.useRealTimers();
+  delete process.env.E_PI_TUI_OPTIMIZATIONS;
 });
 
 describe("patched pi-tui virtual transcript layout", () => {
+  it("uses Pi's stock full transcript layout while the patch is disabled", () => {
+    process.env.E_PI_TUI_OPTIMIZATIONS = "false";
+    const { blocks, scrollView } = makeTranscript(40, () => 1);
+
+    const frame = renderLayoutFrame(scrollView, 80, 8, () => undefined);
+
+    expect(visibleText(frame.lines)).toEqual(expectedTail(blocks, 80, 8));
+    expect(blocks.every((block) => block.calls.get(80) === 1)).toBe(true);
+  });
+
   it("renders the authoritative tail at a new width without laying out the full history", () => {
     const { blocks, scrollView } = makeTranscript(120, (width, id) => {
       return width < 60 ? (id % 3) + 1 : (id % 2) + 1;
@@ -107,6 +135,33 @@ describe("patched pi-tui virtual transcript layout", () => {
     expect(blocks[0].calls.get(96)).toBe(1);
     expect(blocks.every((block) => block.calls.get(96) === 1)).toBe(true);
 
+    scrollView.invalidate();
+  });
+
+  it("defers offscreen hydration while foreground frames keep arriving", () => {
+    vi.useFakeTimers();
+    const { blocks, scrollView } = makeTranscript(100, () => 1);
+    const requestRender = vi.fn();
+    const render = () => renderLayoutFrame(scrollView, 80, 12, requestRender);
+    const renderedBlockCalls = () => blocks.reduce((total, block) => total + (block.calls.get(80) ?? 0), 0);
+
+    render();
+    const initialCalls = renderedBlockCalls();
+    for (let frame = 0; frame < 8; frame += 1) {
+      vi.advanceTimersByTime(499);
+      render();
+    }
+
+    expect(renderedBlockCalls()).toBe(initialCalls);
+    expect(requestRender).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(500);
+    expect(renderedBlockCalls()).toBe(initialCalls + 1);
+    expect(requestRender).toHaveBeenCalledOnce();
+
+    render();
+    vi.advanceTimersByTime(499);
+    expect(renderedBlockCalls()).toBe(initialCalls + 1);
     scrollView.invalidate();
   });
 
@@ -197,6 +252,20 @@ describe("patched pi-tui virtual transcript layout", () => {
     scrollView.invalidate();
   });
 
+  it("re-renders volatile E-Pi widgets without invalidating cached transcript blocks", () => {
+    const document = new Container();
+    for (let index = 0; index < 38; index += 1) document.addChild(new CountingBlock(index, () => 1));
+    const widget = new VolatileBlock();
+    document.addChild(widget);
+    const scrollView = new ScrollView(document, { follow: "end", primary: true });
+
+    expect(visibleText(renderLayoutFrame(scrollView, 80, 6, () => undefined).lines)).toContain("before");
+    widget.text = "after";
+    expect(visibleText(renderLayoutFrame(scrollView, 80, 6, () => undefined).lines)).toContain("after");
+    expect(widget.calls).toBe(2);
+    scrollView.invalidate();
+  });
+
   it("keeps the fullscreen dock fixed while the working status scrolls with the transcript", () => {
     const document = new Container();
     for (let index = 0; index < 40; index += 1) document.addChild(new CountingBlock(index, () => 1));
@@ -220,6 +289,59 @@ describe("patched pi-tui virtual transcript layout", () => {
     const scrolled = visibleText(renderLayoutFrame(root, 80, 8, () => undefined).lines);
     expect(scrolled).not.toContain("Working... 0:42");
     expect(scrolled.at(-1)).toBe("EDITOR");
+    scrollView.invalidate();
+  });
+
+  it("scrolls E-Pi information widgets with the transcript while keeping interactive UI docked", () => {
+    const document = new Container();
+    const blocks = Array.from({ length: 20 }, (_, id) => new CountingBlock(id, () => 1));
+    for (const block of blocks) document.addChild(block);
+    const pending = new Container();
+    const status = new Container();
+    const widgetAbove = new Container();
+    const widgetBelow = new Container();
+    const fullscreenTranscript = new Container();
+    fullscreenTranscript.addChild(document);
+    fullscreenTranscript.addChild(status);
+    fullscreenTranscript.addChild(pending);
+    fullscreenTranscript.addChild(widgetAbove);
+    fullscreenTranscript.addChild(widgetBelow);
+    fullscreenTranscript.addChild(new Spacer(4));
+    const scrollView = new ScrollView(fullscreenTranscript, { follow: "end", primary: true });
+    const editor = new Container();
+    const footer = new Container();
+    const dock = new VStack([
+      { component: editor, shrink: 1, minSize: 0 },
+      { component: footer, shrink: 1, minSize: 0 },
+    ]);
+    const root = new VStack([
+      { component: scrollView, basis: 0, grow: 1, shrink: 1, minSize: 1 },
+      { component: dock, basis: "auto", grow: 0, shrink: 1, minSize: 0 },
+    ]);
+
+    expect(visibleText(renderLayoutFrame(root, 80, 8, () => undefined).lines)).toEqual([
+      ...expectedTail(blocks, 80, 4),
+      "",
+      "",
+      "",
+      "",
+    ]);
+
+    widgetAbove.addChild(new Text("TODOS", 0, 0));
+    const atBottom = visibleText(renderLayoutFrame(root, 80, 8, () => undefined).lines);
+    expect(atBottom.at(-5)).toBe("TODOS");
+    expect(atBottom.slice(-4)).toEqual(["", "", "", ""]);
+
+    scrollView.scrollBy(-8);
+    const scrolled = visibleText(renderLayoutFrame(root, 80, 8, () => undefined).lines);
+    expect(scrolled).not.toContain("TODOS");
+
+    editor.addChild(new Text("PERMISSION", 0, 0));
+    scrollView.scrollToEnd();
+    const withInteractiveUi = visibleText(renderLayoutFrame(root, 80, 8, () => undefined).lines);
+    expect(withInteractiveUi.at(-1)).toBe("PERMISSION");
+    expect(withInteractiveUi.at(-6)).toBe("TODOS");
+    expect(withInteractiveUi.slice(-5, -1)).toEqual(["", "", "", ""]);
     scrollView.invalidate();
   });
 });

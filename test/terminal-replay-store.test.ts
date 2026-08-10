@@ -2,7 +2,9 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   appendTerminalBuffer,
+  clearAllTerminalBuffers,
   clearTerminalBuffer,
+  consumeTerminalModeReset,
   getReplayContent,
   isAwaitingCheckpoint,
   setMaxBufferedSessions,
@@ -102,6 +104,18 @@ describe("terminal replay store (LRU eviction)", () => {
     clearTerminalBuffer("s1");
     expect(isAwaitingCheckpoint("s1")).toBe(false);
     expect(getReplayContent("s1")).toBe("");
+  });
+
+  it("marks mode-reset sessions for one forced fresh frame without reusing their replay", () => {
+    appendTerminalBuffer("mode-reset", frame(1));
+
+    clearAllTerminalBuffers();
+
+    expect(getReplayContent("mode-reset")).toBe("");
+    expect(isAwaitingCheckpoint("mode-reset")).toBe(true);
+    expect(consumeTerminalModeReset("mode-reset")).toBe(true);
+    expect(consumeTerminalModeReset("mode-reset")).toBe(false);
+    clearTerminalBuffer("mode-reset");
   });
 
   it("eviction markers are bounded (FIFO, oldest forgotten first)", () => {

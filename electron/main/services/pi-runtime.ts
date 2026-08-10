@@ -18,6 +18,7 @@ import type {
   WaitingUserState,
 } from "../../../src/types/contracts";
 import { agentConfigToArgs, getAgentConfig } from "./agent-config-service";
+import { isTuiOptimizationsEnabled } from "./app-settings-service";
 import { debugLog } from "./debug-log";
 import { OutputBatcher } from "./output-batcher";
 import { piCliEntry } from "./pi-agent-loader";
@@ -137,9 +138,12 @@ export class PiRuntime {
    * preserved per session, and the last chunk before a process exits is
    * flushed by onExit so it is never dropped.
    */
-  readonly #outputBatcher = new OutputBatcher((sessionPath, data) => {
-    for (const listener of this.#globalDataListeners) listener(sessionPath, data);
-  });
+  readonly #outputBatcher = new OutputBatcher(
+    (sessionPath, data) => {
+      for (const listener of this.#globalDataListeners) listener(sessionPath, data);
+    },
+    { flushSynchronizedFrames: isTuiOptimizationsEnabled },
+  );
   /** Serializes lifecycle operations (start/stop) per session. */
   #chains = new Map<string, Promise<void>>();
 
@@ -389,21 +393,17 @@ export class PiRuntime {
 
     try {
       const nodeBinary = resolveNodeBinary();
-      const args = [
-        resolvePiEntry(),
-        "--session",
-        sessionPath,
-        "--extension",
-        resolveBridgePath(),
+      const tuiOptimizationsEnabled = isTuiOptimizationsEnabled();
+      const args = [resolvePiEntry(), "--session", sessionPath, "--extension", resolveBridgePath()];
+      if (tuiOptimizationsEnabled) {
         // E-Pi owns the outer composer and terminal viewport. Pi's regular
         // main-screen renderer rebuilds and retransmits the entire session
         // history whenever the PTY width changes; long sessions therefore
         // spend seconds parsing an obsolete layout. Fullscreen mode keeps the
         // document in pi and emits only the terminal-height viewport, with
         // synchronized atomic frames and application-owned scrolling.
-        "--tui-mode",
-        "fullscreen",
-      ];
+        args.push("--tui-mode", "fullscreen");
+      }
       // E-Pi-managed Pi Agent settings (system prompt, thinking level, context
       // files). Re-read on every launch so `reloadAll` picks up saved changes.
       const agentArgs = agentConfigToArgs(await getAgentConfig());
@@ -428,6 +428,7 @@ export class PiRuntime {
           // on black for dark.
           COLORFGBG: this.#themeHint === "light" ? "15;7" : "15;0",
           E_PI: "true",
+          E_PI_TUI_OPTIMIZATIONS: tuiOptimizationsEnabled ? "true" : "false",
           // Surface pi's own startup timings (stderr) when profiling startup.
           // Deliberately a separate switch: E_PI_DEBUG is for E-Pi's own logs
           // and must never change what the user sees in the terminal.

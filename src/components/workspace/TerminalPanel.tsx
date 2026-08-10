@@ -7,8 +7,9 @@ import { useEffect, useRef, useState } from "react";
 
 import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
+import { ensureTerminalBufferFeeder } from "../../lib/terminalBufferFeeder";
 import { decodeOsc52Clipboard } from "../../lib/terminalOsc52";
-import { appendTerminalBuffer, clearTerminalBuffer, getReplayContent } from "../../lib/terminalReplayStore";
+import { clearTerminalBuffer, getReplayContent } from "../../lib/terminalReplayStore";
 import { createTerminalResizeOutputGate } from "../../lib/terminalResizeOutputGate";
 import { createTerminalResizeVisualGuard } from "../../lib/terminalResizeVisualGuard";
 import {
@@ -24,9 +25,12 @@ import { createResizeScheduler } from "../../lib/xtermResizeScheduler";
 import type { ResizeScheduler } from "../../lib/xtermResizeScheduler";
 import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 import { createViewportWatchdog } from "../../lib/xtermViewportWatchdog";
+import { StockTerminalPanel } from "./StockTerminalPanel";
 
-interface TerminalPanelProps {
+export interface TerminalPanelProps {
   sessionKey: string;
+  /** Whether Pi reserves the bottom fade area inside its optimized transcript. */
+  tuiOptimizationsEnabled?: boolean;
   /** Focus the terminal while it is interactive (e.g. a trust prompt on a freshly created session). */
   autoFocus?: boolean;
   /** Fired once when the terminal first receives output for this session (replay or live). */
@@ -69,8 +73,6 @@ function parseWorkspaceFileLink(uri: string): { path: string; line?: number } | 
   return { path, line };
 }
 
-let feederStarted = false;
-
 // Backward-compatible entry point for consumers that historically imported
 // clearTerminalBuffer from this component; the storage lives in the store.
 export { clearTerminalBuffer };
@@ -99,18 +101,13 @@ function animateScrollToBottom(terminal: Terminal): void {
   requestAnimationFrame(step);
 }
 
-/**
- * App-lifetime subscription: buffer every session's output regardless of which
- * terminal is visible, so nothing is lost while a session runs in the
- * background. Only starts once the first TerminalPanel mounts.
- */
-function ensureBufferFeeder(): void {
-  if (feederStarted) return;
-  feederStarted = true;
-  window.ePi.runtime.onAnyData((sessionPath, data) => appendTerminalBuffer(sessionPath, data));
-}
-
-export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileLink }: TerminalPanelProps) {
+function OptimizedTerminalPanel({
+  sessionKey,
+  tuiOptimizationsEnabled = true,
+  autoFocus,
+  onFirstPaint,
+  onOpenFileLink,
+}: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const scrollToBottomRef = useRef<() => void>(() => undefined);
@@ -124,7 +121,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
 
   useEffect(() => {
     if (!hostRef.current) return;
-    ensureBufferFeeder();
+    ensureTerminalBufferFeeder();
 
     // xterm paints its own canvas, so use the rendered workspace color instead
     // of leaving the terminal on a separate hard-coded background.
@@ -139,14 +136,12 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
-    // GPU rendering keeps glyph work cheap during repeated local reflows. A
-    // visual double buffer covers the live renderer while FitAddon replaces
-    // its canvases, so cleared and partially composed frames stay invisible.
+    // GPU rendering keeps glyph work cheap during streaming and repeated local
+    // reflows. The resize guard captures only while a resize transaction is
+    // active, so normal output keeps WebGL's fast non-preserved back buffer.
     let webgl: WebglAddon | undefined;
     try {
-      // Preserve the drawing buffer so the resize visual guard can copy the
-      // last fully composed frame before FitAddon clears the live canvas.
-      webgl = new WebglAddon(true);
+      webgl = new WebglAddon();
       terminal.loadAddon(webgl);
     } catch {
       // WebGL unavailable (headless/software rendering): the canvas renderer
@@ -375,9 +370,9 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       },
       onResizeStart: () => {
         resizeShimmyFinalSize = undefined;
-        resizeVisualGuard.begin();
         resizeOutputGate.begin();
       },
+      prepareResizeVisual: (onReady) => resizeVisualGuard.begin(onReady),
       onResizePreviewReady: () => {
         resizeVisualGuard.track();
       },
@@ -399,8 +394,8 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       onFitted: ({ cols, rows }) => {
         if (bootstrapCheckpointPending) {
           bootstrapCheckpointPending = false;
-          resizeVisualGuard.begin();
-          resizeVisualGuard.hold();
+          // The workspace loading veil already covers an empty replay. Avoid
+          // priming a resize snapshot before the first real frame exists.
           triggerAtomicCheckpointShimmy(cols, rows);
           return;
         }
@@ -534,7 +529,13 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
 
   return (
     <>
-      <div className="terminal-panel" ref={hostRef} aria-label="Pi terminal output" />
+      <div
+        className="terminal-panel"
+        data-bottom-inset={tuiOptimizationsEnabled ? "tui" : undefined}
+        ref={hostRef}
+        aria-label="Pi terminal output"
+      />
+      <div className="terminal-bottom-fade" aria-hidden="true" />
       <button
         type="button"
         className="terminal-scroll-bottom"
@@ -549,4 +550,10 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       </button>
     </>
   );
+}
+
+/** Select the complete stock or optimized terminal pipeline at mount time. */
+export function TerminalPanel(props: TerminalPanelProps) {
+  if (props.tuiOptimizationsEnabled === false) return <StockTerminalPanel {...props} />;
+  return <OptimizedTerminalPanel {...props} />;
 }

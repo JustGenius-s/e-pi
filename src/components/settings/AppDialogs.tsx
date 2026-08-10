@@ -240,7 +240,12 @@ export function AppDialogs({
               />
             </TabsContent>
             <TabsContent value="general">
-              <PiAgentSettings active={settingsOpen} piVersion={appInfo?.piVersion} onUpdated={onAppInfoChange} />
+              <PiAgentSettings
+                active={settingsOpen}
+                piVersion={appInfo?.piVersion}
+                tuiOptimizationsEnabled={appInfo?.tuiOptimizationsEnabled}
+                onUpdated={onAppInfoChange}
+              />
               <CommonSettings defaultCwd={appInfo?.defaultCwd} onChanged={onAppInfoChange} />
             </TabsContent>
           </Tabs>
