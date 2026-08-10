@@ -15,7 +15,7 @@ import { TerminalPanel } from "@/components/workspace/TerminalPanel";
 import { ToolPanel } from "@/components/workspace/ToolPanel";
 import type { PanelState, PanelTab, PanelView } from "@/components/workspace/ToolPanel";
 import { WorkspaceOverlayHost } from "@/components/workspace/WorkspaceOverlayHost";
-import { clearTerminalBuffer } from "@/lib/terminalReplayStore";
+import { clearAllTerminalBuffers, clearTerminalBuffer } from "@/lib/terminalReplayStore";
 
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSessionRuntime } from "./hooks/useSessionRuntime";
@@ -83,6 +83,20 @@ export function App() {
   /** Open tool-panel tabs plus the active one; review is a singleton. */
   const [panel, setPanel] = useState<PanelState>({ tabs: [], activeId: undefined });
   const overlays = useWorkspaceOverlays();
+
+  const handleAppInfoChange = useCallback(async () => {
+    const previousMode = appInfo?.tuiOptimizationsEnabled !== false;
+    const nextInfo = await refreshAppInfo();
+    const nextMode = nextInfo?.tuiOptimizationsEnabled !== false;
+    if (nextInfo && previousMode !== nextMode) {
+      // A fullscreen transcript and a stock main-screen transcript are not
+      // replay-compatible. Discard every cached frame after all processes have
+      // restarted, then let the newly mounted terminal receive a fresh frame.
+      clearAllTerminalBuffers();
+      setPaintedPaths(new Set());
+      setTerminalEpoch((current) => current + 1);
+    }
+  }, [appInfo, refreshAppInfo]);
 
   // Dev hot-reload restores the open editor/preview overlays.
   useEffect(() => {
@@ -632,7 +646,10 @@ export function App() {
         />
 
         <div className="app-main">
-          <SidebarInset className="workspace">
+          <SidebarInset
+            className="workspace"
+            data-tui-optimizations={appInfo?.tuiOptimizationsEnabled !== false ? "true" : "false"}
+          >
             {" "}
             <div className="terminal-frame">
               {loading ? (
@@ -642,8 +659,9 @@ export function App() {
                 </div>
               ) : activeSession ? (
                 <TerminalPanel
-                  key={`${activeSession.path}:${terminalEpoch}`}
+                  key={`${activeSession.path}:${terminalEpoch}:${appInfo?.tuiOptimizationsEnabled === false ? "stock" : "optimized"}`}
                   sessionKey={activeSession.path}
+                  tuiOptimizationsEnabled={appInfo?.tuiOptimizationsEnabled !== false}
                   autoFocus={activePath === justCreatedPath && runtimeState?.status === "starting"}
                   onFirstPaint={handleFirstPaint}
                   onOpenFileLink={handleOpenFileLink}
@@ -743,7 +761,7 @@ export function App() {
         settingsOpen={settingsOpen}
         onSettingsOpenChange={setSettingsOpen}
         appInfo={appInfo}
-        onAppInfoChange={() => void refreshAppInfo()}
+        onAppInfoChange={() => void handleAppInfoChange()}
       />
 
       <PackagePanel open={packageOpen} cwd={activeCwd} onOpenChange={setPackageOpen} onReloadPi={onReloadPi} />

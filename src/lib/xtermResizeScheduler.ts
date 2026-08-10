@@ -6,257 +6,349 @@ import { restoreViewportAfterSettle } from "./xtermViewportRestore";
 export interface ResizeSchedulerOptions {
   terminal: Terminal;
   fit: FitAddon;
-  /** True while xterm still has unparsed writes (resizing mid-batch corrupts cursor state). */
+  /** True while xterm still has writes ahead of a FIFO barrier. */
   hasPendingWrites: () => boolean;
-  /**
-   * Bytes still queued for xterm, if tracked. Local reflow is only skipped
-   * while a LARGE frame is draining (pi's full redraws are tens of KB);
-   * small incremental updates (spinner etc.) must not block instant local
-   * follow — they would leave the canvas unexpanded after a panel toggle.
-   */
-  pendingWriteBytes?: () => number;
-  /** Queue an explicit FIFO write barrier; `onDrained` fires once the parser caught up. */
+  /** Queue a FIFO parser barrier; the callback runs after earlier writes parse. */
   queueWriteBarrier: (onDrained: () => void) => void;
-  /** Longest the refit waits on the write barrier before proceeding anyway (default 100ms). */
-  barrierCapMs?: number;
-  /** Called after a successful fit with the new grid size (send the PTY resize here). */
-  onFitted: (size: { cols: number; rows: number }) => void;
+  /** Freeze output and cover the live renderer before one authoritative step. */
+  onResizeStart?: () => void;
+  /** Continue only after the current complete frame is safe to cover the fit. */
+  prepareResizeVisual?: (onReady: () => void) => void;
+  /** The hidden xterm grid now matches the step target and can be snapshotted. */
+  onResizePreviewReady?: () => void;
+  /** Arm the output gate before the PTY receives this resize. */
+  onResizeCommit?: (size: TerminalSize) => void;
+  /** A prepared step collapsed back to the acknowledged PTY grid. */
+  onResizeCancel?: () => void;
+  /** The latest acknowledged grid stayed stable for two paint frames. */
+  onResizeSettled?: () => void;
+  /** Send one authoritative PTY resize. */
+  onFitted: (size: TerminalSize) => void;
+}
+
+export interface TerminalSize {
+  cols: number;
+  rows: number;
 }
 
 export interface ResizeScheduler {
-  /** Call from the ResizeObserver: restart settle detection (refits ~2 stable frames later). */
+  /** Record the latest container/font measurement. */
   schedule(): void;
-  /** Fit immediately if the grid changed (first mount, write-barrier drain). */
+  /** Fit and assert the initial PTY grid immediately. */
   refitNow(): void;
+  /** A full frame for the latest PTY resize was atomically presented. */
+  acknowledgeResize(): boolean;
   dispose(): void;
 }
 
-const SETTLE_FRAMES = 1;
-const DEFAULT_BARRIER_CAP_MS = 100;
-/** While the size keeps changing (drag), refit at most this often. */
-const DRAG_REFIT_INTERVAL_MS = 120;
-/** Writes above this size are treated as full frames: local reflow pauses. */
-const LARGE_WRITE_BYTES = 4096;
+/** Quiet time only controls snapshot release; it never delays a PTY resize. */
+const QUIET_FRAMES = 2;
+const MAX_UNMEASURABLE_FRAMES = 60;
 
 /**
- * Shared resize handling for the main TUI terminal and the side terminal.
+ * Preemptible latest-wins resize coordination for a fullscreen TUI.
  *
- * The panel collapse/expand transition animates the container width over
- * ~180ms, so the grid size changes every frame and then goes stable. Instead
- * of a fixed debounce (which adds dead time after the transition), watch the
- * proposed grid per frame and refit once it has been stable for two frames —
- * typically ~33ms after the size settles. While the transition is still
- * running, repaint the current screen at the new container width (WebGL
- * repositions glyph quads, no reflow) so the user never stares at a frozen
- * old-layout frame.
- *
- * Refits respect xterm's asynchronous parser: resizing while a write batch
- * is in flight makes the producer and emulator disagree about cursor
- * coordinates. A write barrier defers the fit until the parser drains, but
- * the wait is capped so a sustained output stream cannot starve the resize
- * forever (the TUI's resize-triggered full redraw heals any transient
- * mismatch).
+ * The first measurable grid change is fitted and sent to the PTY on the next
+ * animation frame. Later ResizeObserver notifications can supersede a resize
+ * whose authoritative Pi frame has not arrived yet: xterm locally refits to
+ * the newest grid, the output gate changes its expected frame tag, and another
+ * PTY resize is sent immediately. A late frame for an older grid is discarded
+ * before it reaches xterm. If an old frame already entered xterm's FIFO parser,
+ * a short parser barrier is the only thing allowed to delay the next fit.
  */
 export function createResizeScheduler(options: ResizeSchedulerOptions): ResizeScheduler {
   const { terminal, fit } = options;
-  const barrierCapMs = options.barrierCapMs ?? DEFAULT_BARRIER_CAP_MS;
 
   let disposed = false;
-  let restoreGeneration = 0;
-  let deferredRefit = false;
-  let refitBlockedAt = 0;
-  let resizeBarrierQueued = false;
-  let resizeSettleFrame: number | undefined;
-  let transitionRefreshPending = false;
+  let frame: number | undefined;
+  let observationEpoch = 0;
+  let processedEpoch = -1;
+  let quietFrames = 0;
+  let unmeasurableFrames = 0;
 
-  // Bump the generation so any in-flight viewport restore from a previous
-  // refit aborts at its next frame check. cancelAnimationFrame cannot stop a
-  // callback that is already executing (it would reschedule itself), so the
-  // generation check inside the restore loop is the real guard.
+  let transactionActive = false;
+  let stepPreparing = false;
+  let visualPermit = options.prepareResizeVisual === undefined;
+  let visualGeneration = 0;
+  let transactionWasAtBottom = true;
+  let transactionTopLine = 0;
+
+  /** Last grid whose authoritative frame has been presented. */
+  let committedSize: TerminalSize | undefined;
+  /** Latest PTY resize awaiting an authoritative frame. */
+  let inFlightSize: TerminalSize | undefined;
+  let restoreGeneration = 0;
+
+  let barrierQueued = false;
+  let barrierPermit = false;
+  let immediateRefitPending = false;
+
+  const sameSize = (left: TerminalSize, right: TerminalSize): boolean =>
+    left.cols === right.cols && left.rows === right.rows;
+
+  const currentSize = (): TerminalSize => ({ cols: terminal.cols, rows: terminal.rows });
+
   const cancelPendingRestore = (): void => {
     restoreGeneration += 1;
   };
 
-  const refit = (): void => {
-    // xterm parses writes asynchronously. Resizing while a TUI frame is still
-    // queued makes the producer and emulator disagree about cursor
-    // coordinates; the next spinner update can then scroll instead of
-    // replacing its row. Wait until the current write batch is committed —
-    // but cap the wait: under sustained output the barrier could starve the
-    // refit indefinitely, and the TUI's next full frame corrects any
-    // transient mismatch anyway.
-    if (options.hasPendingWrites()) {
-      if (!deferredRefit) {
-        deferredRefit = true;
-        refitBlockedAt = performance.now();
-      }
-      if (performance.now() - refitBlockedAt < barrierCapMs) {
-        if (!resizeBarrierQueued) {
-          resizeBarrierQueued = true;
-          // An empty write is an explicit FIFO barrier behind all terminal
-          // data queued so far. This prevents a sustained stream from
-          // starving resize forever while preserving parser ordering.
-          options.queueWriteBarrier(() => {
-            resizeBarrierQueued = false;
-            if (disposed || !deferredRefit) return;
-            refitNow();
-          });
-        }
-        return;
-      }
-      // Cap exceeded: refit now even with writes in flight.
+  const restoreAnchorNow = (): void => {
+    if (transactionWasAtBottom) {
+      terminal.scrollToBottom();
+    } else if (terminal.buffer.active.viewportY !== transactionTopLine) {
+      terminal.scrollToLine(transactionTopLine);
     }
-    deferredRefit = false;
-
-    // A previous refit may still have a delayed restoration queued. If it
-    // runs after this refit, its old line number can move the viewport to
-    // the wrong place (including the top) after a second reflow.
-    cancelPendingRestore();
-
-    // Capture the viewport by line, not pixel: reflow re-wraps the whole
-    // scrollback, so a pixel offset no longer maps to the same content
-    // (and the browser/xterm may clamp it to the new scroll height, which
-    // is the "jumps back to top" bug). Line numbers survive reflow.
-    const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
-    const topLine = terminal.buffer.active.viewportY;
-    try {
-      fit.fit();
-    } catch {
-      return;
-    }
-    // Re-assert the bottom immediately: the renderer already repainted at
-    // the new grid, but xterm's own viewport sync only runs on the next
-    // refresh frame — without this the user briefly sees the top of the
-    // reflowed buffer instead of the live tail they were following.
-    if (wasAtBottom) terminal.scrollToBottom();
-    options.onFitted({ cols: terminal.cols, rows: terminal.rows });
-    restoreAfterRefit(wasAtBottom, topLine);
   };
 
-  /**
-   * Local-only refit: reflows xterm's buffer at the new grid instantly but
-   * does NOT resize the PTY, so pi never sees it. Used while the size keeps
-   * changing (drag): xterm's sync reflow is pure character rewrapping — far
-   * cheaper than pi's full component-tree re-render — so the layout follows
-   * the drag at frame rate. pi only receives the throttled PTY resizes (see
-   * settleStep) and the final settle refit, which correct any drift.
-   * xterm tolerates resize while its write queue is draining, so no write
-   * barrier is needed here (it would only add latency).
-   */
-  const fitLocal = (): void => {
-    if (disposed) return;
-    // Skip only while a LARGE frame is draining: a pi full redraw (tens of
-    // KB, wrapped in synchronized output) must not be reflowed mid-parse or
-    // its rows land on the wrong grid. Small incremental updates (spinner
-    // ticks etc.) drain in milliseconds and must not block the instant
-    // local follow — otherwise a one-shot panel toggle leaves the canvas
-    // unexpanded (black gap) until the throttled PTY refit fires.
-    if ((options.pendingWriteBytes?.() ?? 0) > LARGE_WRITE_BYTES) return;
-    cancelPendingRestore();
-    const wasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
-    const topLine = terminal.buffer.active.viewportY;
-    try {
-      fit.fit();
-    } catch {
-      return;
-    }
-    if (wasAtBottom) terminal.scrollToBottom();
-    restoreAfterRefit(wasAtBottom, topLine);
-  };
-
-  const restoreAfterRefit = (wasAtBottom: boolean, topLine: number): void => {
-    // xterm's resize schedules its own viewport sync on a refresh callback
-    // (viewport.queueSync -> _sync on rAF) that runs on a later frame; in
-    // v6 that sync can leave the scrollable on a stale/clamped position
-    // instead of the buffer's ydisp. Restore only once the viewport has
-    // stopped moving on its own, so the restore lands after xterm's sync
-    // instead of racing it. The stale check makes a newer refit (or
-    // unmount) abort the loop at the next frame.
+  const restoreAnchorAfterSettle = (): void => {
     const generation = restoreGeneration;
     restoreViewportAfterSettle({
       terminal,
-      wasAtBottom,
-      topLine,
+      wasAtBottom: transactionWasAtBottom,
+      topLine: transactionTopLine,
       isStale: () => disposed || generation !== restoreGeneration,
     });
   };
 
-  const refitNow = (): void => {
-    if (disposed) return;
+  const ensureFrame = (): void => {
+    if (disposed || frame !== undefined) return;
+    frame = requestAnimationFrame(settleStep);
+  };
+
+  const queueParserBarrier = (): void => {
+    if (barrierQueued || disposed) return;
+    barrierQueued = true;
+    options.queueWriteBarrier(() => {
+      barrierQueued = false;
+      if (disposed) return;
+      // The barrier grants one parser-ordered geometry change. Output arriving
+      // behind it is already isolated by onResizeStart's output gate.
+      barrierPermit = true;
+      if (immediateRefitPending) {
+        immediateRefitPending = false;
+        refitNow();
+      }
+      ensureFrame();
+    });
+  };
+
+  const acquireParserPermit = (): boolean => {
+    if (barrierPermit) {
+      barrierPermit = false;
+      return true;
+    }
+    if (!options.hasPendingWrites()) return true;
+    queueParserBarrier();
+    return false;
+  };
+
+  const propose = (): TerminalSize | undefined => {
     try {
-      // Skip the refit when the character grid did not change (e.g.
-      // sub-pixel width wobble) — resizing repaints the renderer.
-      const dims = fit.proposeDimensions();
-      if (!dims) return;
-      if (dims.cols === terminal.cols && dims.rows === terminal.rows) return;
+      const dimensions = fit.proposeDimensions();
+      if (!dimensions || dimensions.cols <= 0 || dimensions.rows <= 0) return undefined;
+      return { cols: dimensions.cols, rows: dimensions.rows };
     } catch {
-      // The terminal can be measured before its parent is visible.
+      return undefined;
+    }
+  };
+
+  const beginTransaction = (): void => {
+    if (transactionActive) return;
+    transactionActive = true;
+    transactionWasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
+    transactionTopLine = terminal.buffer.active.viewportY;
+    cancelPendingRestore();
+  };
+
+  const prepareStep = (): void => {
+    beginTransaction();
+    if (stepPreparing) return;
+    stepPreparing = true;
+    options.onResizeStart?.();
+    visualPermit = options.prepareResizeVisual === undefined;
+    if (options.prepareResizeVisual) {
+      const generation = ++visualGeneration;
+      let synchronous = true;
+      options.prepareResizeVisual(() => {
+        if (disposed || !stepPreparing || generation !== visualGeneration) return;
+        visualPermit = true;
+        if (!synchronous) ensureFrame();
+      });
+      synchronous = false;
+    }
+  };
+
+  const finishTransaction = (cancelled: boolean): void => {
+    if (!transactionActive) return;
+    transactionActive = false;
+    stepPreparing = false;
+    visualPermit = options.prepareResizeVisual === undefined;
+    visualGeneration += 1;
+    quietFrames = 0;
+    unmeasurableFrames = 0;
+    cancelPendingRestore();
+    restoreAnchorAfterSettle();
+    if (cancelled) options.onResizeCancel?.();
+    else options.onResizeSettled?.();
+  };
+
+  const fitAndSendLatest = (target: TerminalSize): "sent" | "waiting" | "retry" | "cancelled" => {
+    prepareStep();
+    const parserPermit = acquireParserPermit();
+    if (!visualPermit || !parserPermit) return "waiting";
+
+    if (!sameSize(currentSize(), target)) {
+      try {
+        fit.fit();
+      } catch {
+        return "retry";
+      }
+      restoreAnchorNow();
+    }
+
+    const size = currentSize();
+    options.onResizePreviewReady?.();
+
+    // The container may have reversed while a parser barrier was draining.
+    // Flush the held output instead of sending a redundant round trip.
+    if (!inFlightSize && committedSize && sameSize(size, committedSize)) {
+      finishTransaction(true);
+      return "cancelled";
+    }
+
+    stepPreparing = false;
+    visualPermit = options.prepareResizeVisual === undefined;
+    visualGeneration += 1;
+    inFlightSize = size;
+    quietFrames = 0;
+    // Gate first, then SIGWINCH: no byte from the new frame can race ahead of
+    // the checkpoint expectation.
+    options.onResizeCommit?.(size);
+    options.onFitted(size);
+    return "sent";
+  };
+
+  function settleStep(): void {
+    frame = undefined;
+    if (disposed) return;
+
+    const epoch = observationEpoch;
+    if (epoch === processedEpoch) quietFrames += 1;
+    else {
+      processedEpoch = epoch;
+      quietFrames = 0;
+    }
+
+    const target = propose();
+    if (!target) {
+      unmeasurableFrames += 1;
+      if (transactionActive && unmeasurableFrames >= MAX_UNMEASURABLE_FRAMES) {
+        finishTransaction(true);
+        return;
+      }
+      if (transactionActive || stepPreparing) ensureFrame();
       return;
     }
-    refit();
-  };
+    unmeasurableFrames = 0;
+
+    const gridDiffers = !sameSize(currentSize(), target);
+    const latestPtySize = inFlightSize ?? committedSize;
+    const ptyDiffers = latestPtySize === undefined || !sameSize(latestPtySize, target);
+    if (gridDiffers || ptyDiffers || stepPreparing) {
+      quietFrames = 0;
+      const result = fitAndSendLatest(target);
+      if (result === "retry") ensureFrame();
+      // A parser barrier callback resumes "waiting". A sent step resumes on
+      // either a newer observation (preemption) or its checkpoint callback.
+      return;
+    }
+
+    // The latest grid is already fitted and asserted. Its checkpoint controls
+    // presentation and settle; quiet observations must never release the guard
+    // while that authoritative frame is still outstanding.
+    if (inFlightSize) return;
+
+    if (!transactionActive) return;
+    if (observationEpoch !== epoch) quietFrames = 0;
+    if (quietFrames >= QUIET_FRAMES) {
+      finishTransaction(false);
+      return;
+    }
+    ensureFrame();
+  }
 
   const schedule = (): void => {
     if (disposed) return;
-    if (resizeSettleFrame !== undefined) cancelAnimationFrame(resizeSettleFrame);
-    let lastCols = -1;
-    let lastRows = -1;
-    let stableFrames = 0;
-    let lastDragRefitAt = 0;
-    const settleStep = (): void => {
-      resizeSettleFrame = undefined;
-      if (disposed) return;
-      if (transitionRefreshPending) {
-        transitionRefreshPending = false;
-        terminal.refresh(0, terminal.rows - 1);
+    observationEpoch += 1;
+    // Prime an on-demand WebGL snapshot before registering the scheduler's
+    // animation frame. xterm's refresh callback then runs first in that same
+    // frame, allowing a jump resize to remain a one-frame operation without
+    // preserving the drawing buffer during normal streaming.
+    if (options.prepareResizeVisual && !stepPreparing) {
+      const target = propose();
+      if (target) {
+        const latestPtySize = inFlightSize ?? committedSize;
+        const gridDiffers = !sameSize(currentSize(), target);
+        const ptyDiffers = latestPtySize === undefined || !sameSize(latestPtySize, target);
+        if (gridDiffers || ptyDiffers) prepareStep();
       }
-      let cols = -1;
-      let rows = -1;
-      try {
-        const dims = fit.proposeDimensions();
-        if (dims) {
-          cols = dims.cols;
-          rows = dims.rows;
-        }
-      } catch {
-        // Not measurable this frame; treat as unsettled.
-      }
-      if (cols === lastCols && rows === lastRows) {
-        stableFrames += 1;
-      } else {
-        lastCols = cols;
-        lastRows = rows;
-        stableFrames = 0;
-        // The size keeps changing (panel drag / window resize): reflow
-        // xterm locally on every frame so the layout tracks the drag at
-        // frame rate (cheap character rewrapping), and send the PTY resize
-        // at a throttled rate so pi re-renders the authoritative frame.
-        fitLocal();
-        const now = performance.now();
-        if (now - lastDragRefitAt >= DRAG_REFIT_INTERVAL_MS) {
-          lastDragRefitAt = now;
-          refit();
-        }
-      }
-      if (stableFrames >= SETTLE_FRAMES) {
-        refit();
+    }
+    ensureFrame();
+  };
+
+  const refitNow = (): void => {
+    if (disposed) return;
+    const target = propose();
+    if (!target) return;
+
+    const gridChanged = !sameSize(currentSize(), target);
+    if (gridChanged) {
+      if (!acquireParserPermit()) {
+        immediateRefitPending = true;
         return;
       }
-      resizeSettleFrame = requestAnimationFrame(settleStep);
-    };
-    // The repaint-on-transition-start must not double-paint when a settle
-    // loop is already running (its first frame refreshes too).
-    transitionRefreshPending = transitionRefreshPending || resizeSettleFrame === undefined;
-    resizeSettleFrame = requestAnimationFrame(settleStep);
+      transactionWasAtBottom = terminal.buffer.active.viewportY >= terminal.buffer.active.baseY;
+      transactionTopLine = terminal.buffer.active.viewportY;
+      cancelPendingRestore();
+      try {
+        fit.fit();
+      } catch {
+        ensureFrame();
+        return;
+      }
+      restoreAnchorNow();
+      restoreAnchorAfterSettle();
+    }
+
+    const size = currentSize();
+    // Initial mount must always assert its real grid, even when xterm's 80x24
+    // default happens to equal the measured dimensions.
+    if (committedSize === undefined || !sameSize(size, committedSize)) {
+      options.onFitted(size);
+      committedSize = size;
+    }
   };
 
   return {
     schedule,
     refitNow,
+    acknowledgeResize() {
+      if (disposed || !inFlightSize) return false;
+      committedSize = inFlightSize;
+      inFlightSize = undefined;
+      quietFrames = 0;
+      restoreAnchorNow();
+      ensureFrame();
+      return true;
+    },
     dispose() {
       disposed = true;
-      if (resizeSettleFrame !== undefined) cancelAnimationFrame(resizeSettleFrame);
-      resizeSettleFrame = undefined;
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = undefined;
+      inFlightSize = undefined;
+      stepPreparing = false;
+      visualPermit = options.prepareResizeVisual === undefined;
+      visualGeneration += 1;
       cancelPendingRestore();
     },
   };

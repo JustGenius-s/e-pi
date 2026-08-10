@@ -36,13 +36,15 @@ export function useSessionRuntime() {
     }
   }, []);
 
-  const refreshAppInfo = useCallback(async () => {
+  const refreshAppInfo = useCallback(async (): Promise<AppInfo | undefined> => {
     try {
       const info = await window.ePi.app.getInfo();
       setHomeDir(info.homeDir);
       setAppInfo(info);
+      return info;
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
+      return undefined;
     }
   }, []);
 

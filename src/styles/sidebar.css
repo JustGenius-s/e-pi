@@ -708,19 +708,10 @@
 }
 
 /* Right tool panel opens/closes by resizing the grid column, which resizes
-   the terminal next door. With the 180ms width animation the ResizeObserver
-   refits the xterm every frame (repaint + PTY SIGWINCH + scroll-restore
-   races, visible as a flash and the scrollbar jumping to the top). Snap to
-   the target width instead so the terminal refits exactly once. Rail drags
-   already force transition:none above, so this only changes the toggle
-   animation, not drag behavior. */
-/* Right tool panel opens/closes by resizing the grid column, which resizes
-   the terminal next door. The width transition was dropped when every
-   animation frame caused a full xterm refit + PTY SIGWINCH (flicker,
-   scrollbar jump); the scheduler now reflows xterm locally per frame and
-   throttles PTY resizes, so the 180ms animation is smooth again — same
-   behavior as the left sidebar. Rail drags still force transition:none
-   below, so dragging tracks the pointer 1:1. */
+   the terminal next door. During the 180ms animation xterm reflows a guarded
+   local preview and Pi receives latest-wins grid updates; tagged old-size
+   frames are discarded before presentation. Rail drags still force
+   transition:none above, so direct dragging tracks the pointer 1:1. */
 .sidebar-root[data-side="right"] .sidebar-container {
   border-right: none;
   border-left: 1px solid var(--sidebar-border);

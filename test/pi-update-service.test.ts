@@ -1,13 +1,16 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, describe, expect, it } from "vitest";
 
 // The sandbox package dir replaces the real pnpm-store location so a test run
 // never touches the working install. Both the service under test and this test
 // read the override from the environment.
-process.env.PI_PACKAGE_DIR = join(mkdtempSync(join(tmpdir(), "e-pi-pkg-")), "pi-coding-agent");
+const packageRoot = mkdtempSync(join(tmpdir(), "e-pi-pkg-"));
+const fixtureRoot = mkdtempSync(join(tmpdir(), "e-pi-update-fixture-"));
+process.env.PI_PACKAGE_DIR = join(packageRoot, "pi-coding-agent");
+process.env.E_PI_UPDATE_FIXTURE_ROOT = fixtureRoot;
 
 // The service imports electron's `net` at module load, so stub the whole
 // module before importing it.
@@ -20,7 +23,9 @@ vi.mock("electron", () => ({
       }
       if (url.endsWith("0.84.0.tgz")) {
         const { execFileSync } = await import("node:child_process");
-        const data = execFileSync("tar", ["-czf", "-", "-C", join(__dirname, "fixtures"), "package"]);
+        const root = process.env.E_PI_UPDATE_FIXTURE_ROOT;
+        if (!root) throw new Error("Missing update fixture root.");
+        const data = execFileSync("tar", ["-czf", "-", "-C", root, "package"]);
         return {
           ok: true,
           arrayBuffer: async () => data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength),
@@ -31,9 +36,19 @@ vi.mock("electron", () => ({
   },
 }));
 
+vi.mock("../electron/main/services/pi-compatibility-service", () => ({
+  applyPiCompatibilityPatches: vi.fn(),
+}));
+
 import { vi } from "vitest";
 
-import { applyPiUpdate, versionGt } from "../electron/main/services/pi-update-service";
+import { applyPiCompatibilityPatches } from "../electron/main/services/pi-compatibility-service";
+import {
+  applyPiUpdate,
+  PI_COMPATIBILITY_REQUIRED_PREFIX,
+  resetPiUpdateCacheForTests,
+  versionGt,
+} from "../electron/main/services/pi-update-service";
 
 /** Minimal fixture package that mimics the registry tarball layout. */
 const FIXTURE_PKG = {
@@ -52,12 +67,12 @@ const FIXTURE_PKG = {
 };
 
 function writeFixture(): void {
-  const root = join(__dirname, "fixtures");
-  rmSync(root, { recursive: true, force: true });
-  mkdirSync(join(root, "package", "dist"), { recursive: true });
-  writeFileSync(join(root, "package", "package.json"), JSON.stringify(FIXTURE_PKG, null, 2));
-  writeFileSync(join(root, "package", "dist", "cli.js"), "console.log('pi 0.84.0');\n");
-  writeFileSync(join(root, "package", "index.js"), "export const VERSION = '0.84.0';\n");
+  const packageDir = join(fixtureRoot, "package");
+  rmSync(packageDir, { recursive: true, force: true });
+  mkdirSync(join(packageDir, "dist"), { recursive: true });
+  writeFileSync(join(packageDir, "package.json"), JSON.stringify(FIXTURE_PKG, null, 2));
+  writeFileSync(join(packageDir, "dist", "cli.js"), "console.log('pi 0.84.0');\n");
+  writeFileSync(join(packageDir, "index.js"), "export const VERSION = '0.84.0';\n");
 }
 
 /** Simulate the previously bundled install (0.83.0) inside the sandbox dir. */
@@ -74,17 +89,56 @@ function writeOldInstall(): void {
 
 afterEach(() => {
   vi.clearAllMocks();
-  rmSync(join(__dirname, "fixtures"), { recursive: true, force: true });
+  resetPiUpdateCacheForTests();
+  rmSync(join(fixtureRoot, "package"), { recursive: true, force: true });
   rmSync(process.env.PI_PACKAGE_DIR!, { recursive: true, force: true });
-  rmSync(join(process.env.PI_PACKAGE_DIR!, ".."), { recursive: true, force: true });
+});
+
+afterAll(() => {
+  rmSync(packageRoot, { recursive: true, force: true });
+  rmSync(fixtureRoot, { recursive: true, force: true });
+  delete process.env.PI_PACKAGE_DIR;
+  delete process.env.E_PI_UPDATE_FIXTURE_ROOT;
 });
 
 describe("applyPiUpdate", () => {
-  it("downloads, installs and atomically swaps the new pi version", async () => {
+  it("keeps the previous install when the compatibility layer rejects an update", async () => {
+    writeFixture();
+    writeOldInstall();
+    vi.mocked(applyPiCompatibilityPatches).mockImplementationOnce(() => {
+      throw new Error("compatibility conflict");
+    });
+
+    await expect(applyPiUpdate()).rejects.toThrow(PI_COMPATIBILITY_REQUIRED_PREFIX);
+
+    const installed = JSON.parse(readFileSync(join(process.env.PI_PACKAGE_DIR!, "package.json"), "utf8")) as {
+      version: string;
+    };
+    expect(installed.version).toBe("0.83.0");
+  });
+
+  it("installs stock pi-tui only after an explicit compatibility fallback", async () => {
+    writeFixture();
+    writeOldInstall();
+    vi.mocked(applyPiCompatibilityPatches).mockImplementationOnce(() => {
+      throw new Error("compatibility conflict");
+    });
+
+    const result = await applyPiUpdate({ allowStockFallback: true });
+
+    expect(result).toMatchObject({ from: "0.83.0", to: "0.84.0", fallbackToStock: true });
+    expect(applyPiCompatibilityPatches).toHaveBeenCalledOnce();
+    const installed = JSON.parse(readFileSync(join(process.env.PI_PACKAGE_DIR!, "package.json"), "utf8")) as {
+      version: string;
+    };
+    expect(installed.version).toBe("0.84.0");
+  });
+
+  it("installs stock pi-tui without invoking the patch when optimizations are disabled", async () => {
     writeFixture();
     writeOldInstall();
 
-    const result = await applyPiUpdate();
+    const result = await applyPiUpdate({ tuiOptimizationsEnabled: false });
 
     expect(result.from).toBe("0.83.0");
     expect(result.to).toBe("0.84.0");
@@ -93,6 +147,7 @@ describe("applyPiUpdate", () => {
     expect(existsSync(join(process.env.PI_PACKAGE_DIR!, "dist", "cli.js"))).toBe(true);
     // The staged dependency (ms) was installed.
     expect(existsSync(join(process.env.PI_PACKAGE_DIR!, "node_modules", "ms", "package.json"))).toBe(true);
+    expect(applyPiCompatibilityPatches).not.toHaveBeenCalled();
     // No leftover backup directory.
     const parent = join(process.env.PI_PACKAGE_DIR!, "..");
     const leftovers = readdirSync(parent).filter((name: string) => name.includes(".old-"));

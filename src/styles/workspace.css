@@ -24,6 +24,8 @@
 }
 
 .terminal-frame {
+  --terminal-bottom-fade-height: 88px;
+
   position: relative;
   min-width: 0;
   min-height: 0;
@@ -31,10 +33,9 @@
   background: var(--background);
 }
 
-/* Fade the scrollback out near the bottom edge so the junction with the
-   composer reads as a smooth transition instead of a hard cut. */
-.terminal-frame::after {
-  content: "";
+/* The disabled mode deliberately preserves the local master branch's host
+   fade, dimensions, and control placement. */
+.workspace[data-tui-optimizations="false"] .terminal-frame::after {
   position: absolute;
   right: 0;
   bottom: 0;
@@ -47,6 +48,30 @@
     color-mix(in oklch, var(--background) 60%, transparent) 72%,
     var(--background)
   );
+  content: "";
+  pointer-events: none;
+}
+
+/* Keep the veil present at all times so the terminal and floating quick
+   commands read as one stable bottom layer. Optimized Pi adds blank transcript
+   rows at the live tail; while scrolled up, history can still pass underneath
+   and disappear through this gradient. */
+.terminal-bottom-fade {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 1;
+  height: var(--terminal-bottom-fade-height);
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    color-mix(in oklch, var(--background) 10%, transparent) 20%,
+    color-mix(in oklch, var(--background) 42%, transparent) 50%,
+    color-mix(in oklch, var(--background) 82%, transparent) 78%,
+    var(--background)
+  );
+  opacity: 1;
   pointer-events: none;
 }
 
@@ -55,10 +80,9 @@
 .terminal-scroll-bottom {
   position: absolute;
   left: 50%;
-  /* Raised above the quick-command pill row (which floats over the
-     composer's top edge, i.e. the terminal's bottom strip) so the two
-     never overlap — kept close enough to the bottom to feel attached. */
-  bottom: 40px;
+  /* Straddle the fade's top edge: the arrow reads as a control attached to
+     the disappearing transcript rather than an item occupying terminal rows. */
+  bottom: calc(var(--terminal-bottom-fade-height) - 14px);
   translate: -50% 0;
   z-index: 2;
   display: grid;
@@ -95,6 +119,10 @@
 
 .terminal-scroll-bottom:active {
   transform: translateY(1px);
+}
+
+.workspace[data-tui-optimizations="false"] .terminal-scroll-bottom {
+  bottom: 40px;
 }
 
 .terminal-panel {
@@ -142,6 +170,13 @@
 
 .terminal-panel .xterm {
   height: 100%;
+}
+
+.workspace[data-tui-optimizations="true"] .terminal-panel .xterm {
+  /* Keep xterm's internal resize snapshot in this stacking context. Without
+     isolation its high renderer-layer z-index can escape the terminal and
+     cover the quick-command pills that intentionally overlap the bottom edge. */
+  isolation: isolate;
 }
 
 .terminal-panel .xterm-viewport {
@@ -606,7 +641,10 @@
    is raised out of this strip, so no horizontal reservation is needed. */
 .composer-quick-commands {
   position: absolute;
-  bottom: calc(100% + 14px);
+  /* Sit inside the composer's reserved top gap. Keeping the row closer to
+     the input prevents tall pills from crossing into the terminal's final
+     live row while retaining the floating treatment. */
+  bottom: calc(100% + 6px);
   /* Align with the input's inner padding (16px) rather than the card edge. */
   left: 14px;
   display: flex;
@@ -630,11 +668,21 @@
   font-size: var(--fs-small);
   /* Keep the pill's own label on a single line; the row scrolls instead. */
   white-space: nowrap;
-  box-shadow: 0 4px 14px color-mix(in oklch, var(--foreground) 14%, transparent);
+  box-shadow:
+    0 -8px 18px color-mix(in oklch, var(--foreground) 10%, transparent),
+    0 4px 14px color-mix(in oklch, var(--foreground) 14%, transparent);
   cursor: pointer;
   transition:
     border-color 120ms ease,
     background 120ms ease;
+}
+
+.workspace[data-tui-optimizations="false"] .composer-quick-commands {
+  bottom: calc(100% + 14px);
+}
+
+.workspace[data-tui-optimizations="false"] .composer-quick-command {
+  box-shadow: 0 4px 14px color-mix(in oklch, var(--foreground) 14%, transparent);
 }
 
 .composer-quick-command:hover {

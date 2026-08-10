@@ -84,13 +84,10 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
         }
       };
       let pendingWrites = 0;
-      let pendingWriteBytes = 0;
       const flushWrite = (data: string, onWritten?: () => void) => {
         pendingWrites += 1;
-        pendingWriteBytes += data.length;
         terminal!.write(data, () => {
           pendingWrites -= 1;
-          pendingWriteBytes -= data.length;
           onWritten?.();
         });
       };
@@ -100,9 +97,8 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
         // Same parser-ordering discipline as the main terminal: resizing while
         // a shell output batch is still queued makes the producer and the
         // emulator disagree about cursor coordinates, so defer the fit until
-        // the current write batch commits (capped by the scheduler).
+        // an explicit FIFO barrier behind the current write batch commits.
         hasPendingWrites: () => pendingWrites > 0,
-        pendingWriteBytes: () => pendingWriteBytes,
         queueWriteBarrier: (onDrained) => {
           terminal!.write("", () => {
             if (disposed) return;

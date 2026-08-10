@@ -5,6 +5,9 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { app } from "electron";
 
+import { isTuiOptimizationsEnabled } from "./app-settings-service";
+import { canLoadPiPackage, preparePiPackageForMode } from "./pi-compatibility-service";
+
 /**
  * Single source of truth for where the bundled `@earendil-works/pi-coding-agent`
  * package lives, and for loading it into the main process.
@@ -62,6 +65,8 @@ export function piPackageDir(): string {
   const custom = process.env.PI_PACKAGE_DIR?.trim();
   if (custom) return custom;
 
+  const tuiOptimizationsEnabled = isTuiOptimizationsEnabled();
+
   if (isPackaged()) {
     const unpacked = join(
       process.resourcesPath,
@@ -70,17 +75,34 @@ export function piPackageDir(): string {
       "@earendil-works",
       "pi-coding-agent",
     );
-    if (existsSync(join(unpacked, "package.json"))) return unpacked;
+    if (existsSync(join(unpacked, "package.json"))) {
+      if (!preparePiPackageForMode(unpacked, tuiOptimizationsEnabled)) {
+        throw new Error("The installed Pi package does not match the selected TUI optimization mode.");
+      }
+      return unpacked;
+    }
     // Unexpected: no unpacked copy. Resolve the asar copy instead of crashing.
     return resolveFromAsar(unpacked);
   }
 
   // Dev: a previously applied update lives outside node_modules and takes
-  // precedence, so the runtime picks it up without touching the pnpm store.
+  // precedence only after it passes E-Pi's TUI contract. Updates produced by
+  // older E-Pi builds were not patched; ignore those instead of silently
+  // restoring resize flicker and slow reflow.
   const updated = devUpdateDir();
-  if (updated && existsSync(join(updated, "package.json"))) return updated;
+  if (
+    updated &&
+    existsSync(join(updated, "package.json")) &&
+    preparePiPackageForMode(updated, tuiOptimizationsEnabled)
+  ) {
+    return updated;
+  }
 
-  return resolveFromHere();
+  const bundled = resolveFromHere();
+  if (!canLoadPiPackage(bundled, tuiOptimizationsEnabled)) {
+    throw new Error("The bundled Pi package does not match the selected TUI optimization mode.");
+  }
+  return bundled;
 }
 
 /**

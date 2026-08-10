@@ -70,7 +70,10 @@ const api: EPiApi = {
     getInfo: () => ipcRenderer.invoke("app:get-info") as Promise<AppInfo>,
     setDefaultCwd: (cwd: string) => ipcRenderer.invoke("app:set-default-cwd", cwd) as Promise<AppInfo>,
     checkPiUpdate: () => ipcRenderer.invoke("app:check-pi-update") as Promise<PiUpdateInfo>,
-    applyPiUpdate: () => ipcRenderer.invoke("app:apply-pi-update") as Promise<PiUpdateResult>,
+    applyPiUpdate: (options?: { allowStockFallback?: boolean }) =>
+      ipcRenderer.invoke("app:apply-pi-update", options) as Promise<PiUpdateResult>,
+    setTuiOptimizationsEnabled: (enabled: boolean) =>
+      ipcRenderer.invoke("app:set-tui-optimizations", enabled) as Promise<AppInfo>,
     chooseDirectory: (defaultPath?: string) =>
       ipcRenderer.invoke("app:choose-directory", defaultPath) as Promise<string | undefined>,
     chooseDirectories: (defaultPath?: string) =>

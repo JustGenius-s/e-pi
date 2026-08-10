@@ -1,0 +1,590 @@
+diff --git a/dist/components/markdown.js b/dist/components/markdown.js
+index 8f0ef3bef6645d790932cbb9eaf4c2fdb2849b7c..3609908cd982ab3010b44caf4febecbef9baab5b 100644
+--- a/dist/components/markdown.js
++++ b/dist/components/markdown.js
+@@ -159,6 +159,7 @@ export class Markdown {
+     cachedText;
+     cachedWidth;
+     cachedLines;
++    renderInvalidationRevision = 0;
+     constructor(text, paddingX, paddingY, theme, defaultTextStyle, options) {
+         this.text = text;
+         this.paddingX = paddingX;
+@@ -172,6 +173,7 @@ export class Markdown {
+         this.invalidate();
+     }
+     invalidate() {
++        this.renderInvalidationRevision++;
+         this.cachedText = undefined;
+         this.cachedWidth = undefined;
+         this.cachedLines = undefined;
+diff --git a/dist/components/scroll-view.js b/dist/components/scroll-view.js
+index 5bfccd17b93dbe0fb00a18d75f94f46208917597..482515ef3aedba1dfdd863c0001eff006dccf1b6 100644
+--- a/dist/components/scroll-view.js
++++ b/dist/components/scroll-view.js
+@@ -1,5 +1,40 @@
+ import { LAYOUT_NODE } from "../layout-node.js";
+ import { Container } from "../tui.js";
++const VIRTUALIZE_MIN_BLOCKS = 32;
++const VIRTUAL_OVERSCAN_LINES = 8;
++const MAX_VIRTUAL_WIDTHS = 3;
++const VIRTUAL_HYDRATION_IDLE_MS = 500;
++const componentIds = new WeakMap();
++let nextComponentId = 1;
++function componentId(component) {
++    let id = componentIds.get(component);
++    if (id === undefined) {
++        id = nextComponentId++;
++        componentIds.set(component, id);
++    }
++    return id;
++}
++function mixRevision(hash, value) {
++    return (Math.imul(hash ^ value, 16777619) >>> 0);
++}
++function componentRevision(component, seen = new WeakSet()) {
++    let revision = mixRevision(componentId(component), component.renderInvalidationRevision ?? 0);
++    if (!(component instanceof Container) || seen.has(component))
++        return revision;
++    seen.add(component);
++    revision = mixRevision(revision, component.children.length);
++    for (const child of component.children)
++        revision = mixRevision(revision, componentRevision(child, seen));
++    return revision;
++}
++function flattenVirtualBlocks(component, blocks) {
++    if (component?.constructor === Container) {
++        for (const child of component.children)
++            flattenVirtualBlocks(child, blocks);
++        return;
++    }
++    blocks.push(component);
++}
+ export class ScrollView extends Container {
+     child;
+     followEnd;
+@@ -16,6 +51,13 @@ export class ScrollView extends Container {
+     transientScrollbarVisible = false;
+     scrollbarActive = false;
+     scrollbarHideTimer;
++    virtualWidthStates = new Map();
++    virtualRenderCache = new WeakMap();
++    virtualHeightHints = new WeakMap();
++    virtualHydration;
++    virtualLastWidth;
++    virtualLastLayout;
++    virtualAnchor;
+     constructor(component, options = {}) {
+         super();
+         if (options.axis !== undefined && options.axis !== "vertical") {
+@@ -99,6 +141,10 @@ export class ScrollView extends Container {
+             return;
+         this.currentScrollTop = next;
+         this.followingEnd = this.followEnd && next === maxScrollTop;
++        if (this.followingEnd)
++            this.virtualAnchor = undefined;
++        else
++            this.captureVirtualAnchor(next);
+         this.markScrollbarActivity();
+         this.requestRenderCallback?.();
+     }
+@@ -112,6 +158,10 @@ export class ScrollView extends Container {
+         const moved = next - start;
+         this.currentScrollTop = next;
+         this.followingEnd = this.followEnd && next === maxScrollTop;
++        if (this.followingEnd)
++            this.virtualAnchor = undefined;
++        else
++            this.captureVirtualAnchor(next);
+         if (moved !== 0) {
+             this.markScrollbarActivity();
+             this.requestRenderCallback?.();
+@@ -123,6 +173,10 @@ export class ScrollView extends Container {
+             this.followingEnd !== (this.followEnd && this.contentHeight <= this.currentViewportHeight);
+         this.currentScrollTop = 0;
+         this.followingEnd = this.followEnd && this.contentHeight <= this.currentViewportHeight;
++        if (this.followingEnd)
++            this.virtualAnchor = undefined;
++        else
++            this.captureVirtualAnchor(0);
+         if (changed) {
+             this.markScrollbarActivity();
+             this.requestRenderCallback?.();
+@@ -133,6 +187,7 @@ export class ScrollView extends Container {
+         const changed = this.currentScrollTop !== next || this.followingEnd !== this.followEnd;
+         this.currentScrollTop = next;
+         this.followingEnd = this.followEnd;
++        this.virtualAnchor = undefined;
+         if (changed) {
+             this.markScrollbarActivity();
+             this.requestRenderCallback?.();
+@@ -149,9 +204,271 @@ export class ScrollView extends Container {
+             this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+         if (this.followEnd && this.currentScrollTop === maxScrollTop)
+             this.followingEnd = true;
++        if (this.followingEnd)
++            this.virtualAnchor = undefined;
+         if (this.contentHeight <= this.currentViewportHeight)
+             this.hideTransientScrollbar();
+     }
++    getVirtualBlocks() {
++        if (this.child?.constructor !== Container)
++            return undefined;
++        const blocks = [];
++        flattenVirtualBlocks(this.child, blocks);
++        return blocks.length >= VIRTUALIZE_MIN_BLOCKS ? blocks : undefined;
++    }
++    estimateHeight(component, width) {
++        const hint = this.virtualHeightHints.get(component);
++        if (!hint)
++            return 1;
++        if (hint.height === 0)
++            return 0;
++        return Math.max(1, Math.ceil((hint.height * hint.width) / Math.max(1, width)));
++    }
++    getVirtualWidthState(width, blocks) {
++        let state = this.virtualWidthStates.get(width);
++        const matches = state &&
++            state.blocks.length === blocks.length &&
++            state.blocks.every((component, index) => component === blocks[index]);
++        if (!matches) {
++            const previous = state;
++            const previousIndex = previous
++                ? new Map(previous.blocks.map((component, index) => [component, index]))
++                : undefined;
++            const heights = [];
++            const exact = [];
++            for (const component of blocks) {
++                const index = previousIndex?.get(component);
++                if (index !== undefined && previous.exact[index]) {
++                    heights.push(previous.heights[index]);
++                    exact.push(true);
++                }
++                else {
++                    heights.push(this.estimateHeight(component, width));
++                    exact.push(false);
++                }
++            }
++            state = { width, blocks, heights, exact, prefix: [], prefixDirty: true };
++            this.virtualWidthStates.set(width, state);
++        }
++        else {
++            this.virtualWidthStates.delete(width);
++            this.virtualWidthStates.set(width, state);
++        }
++        while (this.virtualWidthStates.size > MAX_VIRTUAL_WIDTHS) {
++            const oldestWidth = this.virtualWidthStates.keys().next().value;
++            if (oldestWidth === width)
++                break;
++            this.virtualWidthStates.delete(oldestWidth);
++        }
++        return state;
++    }
++    getCachedVirtualLines(component, width) {
++        return this.virtualRenderCache.get(component)?.get(width);
++    }
++    cacheVirtualLines(component, width, entry) {
++        let widths = this.virtualRenderCache.get(component);
++        if (!widths) {
++            widths = new Map();
++            this.virtualRenderCache.set(component, widths);
++        }
++        widths.delete(width);
++        widths.set(width, entry);
++        while (widths.size > MAX_VIRTUAL_WIDTHS)
++            widths.delete(widths.keys().next().value);
++    }
++    renderVirtualBlock(state, index, force) {
++        const component = state.blocks[index];
++        const revision = componentRevision(component);
++        const volatile = component.ePiVirtualRenderVolatile === true;
++        const cached = force || volatile ? undefined : this.getCachedVirtualLines(component, state.width);
++        let lines = cached?.revision === revision ? cached.lines : undefined;
++        if (!lines) {
++            lines = component.render(state.width);
++            if (!volatile) {
++                this.cacheVirtualLines(component, state.width, { lines, revision: componentRevision(component) });
++            }
++        }
++        const height = lines.length;
++        if (state.heights[index] !== height || !state.exact[index]) {
++            state.heights[index] = height;
++            state.exact[index] = true;
++            state.prefixDirty = true;
++        }
++        this.virtualHeightHints.set(component, { width: state.width, height });
++        return lines;
++    }
++    ensureVirtualPrefix(state) {
++        if (!state.prefixDirty)
++            return state.prefix;
++        const prefix = new Array(state.blocks.length + 1);
++        prefix[0] = 0;
++        for (let index = 0; index < state.blocks.length; index++)
++            prefix[index + 1] = prefix[index] + state.heights[index];
++        state.prefix = prefix;
++        state.prefixDirty = false;
++        return prefix;
++    }
++    findVirtualBlock(prefix, row) {
++        const blockCount = prefix.length - 1;
++        if (blockCount <= 0)
++            return -1;
++        const target = Math.max(0, Math.min(prefix[blockCount], row));
++        let low = 0;
++        let high = blockCount;
++        while (low < high) {
++            const middle = Math.floor((low + high) / 2);
++            if (prefix[middle + 1] <= target)
++                low = middle + 1;
++            else
++                high = middle;
++        }
++        return Math.min(blockCount - 1, low);
++    }
++    captureVirtualAnchor(scrollTop) {
++        const layout = this.virtualLastLayout;
++        if (!layout)
++            return;
++        const prefix = this.ensureVirtualPrefix(layout.state);
++        const index = this.findVirtualBlock(prefix, scrollTop);
++        if (index < 0)
++            return;
++        this.virtualAnchor = {
++            component: layout.state.blocks[index],
++            lineOffset: Math.max(0, scrollTop - prefix[index]),
++        };
++    }
++    scheduleVirtualHydration(state, startIndex, endIndex, requestRender) {
++        if (state.exact.every(Boolean)) {
++            if (this.virtualHydration) {
++                clearTimeout(this.virtualHydration.handle);
++                this.virtualHydration = undefined;
++            }
++            return;
++        }
++        const current = this.virtualHydration;
++        if (current)
++            clearTimeout(current.handle);
++        const hydration = {
++            state,
++            startIndex,
++            endIndex,
++            nextBefore: startIndex - 1,
++            nextAfter: endIndex,
++            handle: undefined,
++        };
++        this.virtualHydration = hydration;
++        const run = () => {
++            if (this.virtualHydration !== hydration)
++                return;
++            while (hydration.nextBefore >= 0 && state.exact[hydration.nextBefore])
++                hydration.nextBefore--;
++            while (hydration.nextAfter < state.blocks.length && state.exact[hydration.nextAfter])
++                hydration.nextAfter++;
++            let index;
++            if (hydration.nextBefore >= 0)
++                index = hydration.nextBefore--;
++            else if (hydration.nextAfter < state.blocks.length)
++                index = hydration.nextAfter++;
++            else {
++                this.virtualHydration = undefined;
++                requestRender();
++                return;
++            }
++            this.renderVirtualBlock(state, index, false);
++            requestRender();
++            hydration.handle = setTimeout(run, VIRTUAL_HYDRATION_IDLE_MS);
++            hydration.handle.unref?.();
++        };
++        hydration.handle = setTimeout(run, VIRTUAL_HYDRATION_IDLE_MS);
++        hydration.handle.unref?.();
++    }
++    renderVirtualViewport(width, viewportHeight, requestRender) {
++        if (viewportHeight <= 0)
++            return undefined;
++        const blocks = this.getVirtualBlocks();
++        if (!blocks)
++            return undefined;
++        const state = this.getVirtualWidthState(width, blocks);
++        this.virtualLastWidth = width;
++        const rendered = new Map();
++        let startIndex;
++        let endIndex;
++        if (this.followingEnd) {
++            const targetLines = viewportHeight + VIRTUAL_OVERSCAN_LINES;
++            let renderedHeight = 0;
++            startIndex = blocks.length;
++            endIndex = blocks.length;
++            while (startIndex > 0 && renderedHeight < targetLines) {
++                startIndex--;
++                const lines = this.renderVirtualBlock(state, startIndex, false);
++                rendered.set(startIndex, lines);
++                renderedHeight += lines.length;
++            }
++        }
++        else {
++            let prefix = this.ensureVirtualPrefix(state);
++            let anchorIndex = this.virtualAnchor
++                ? blocks.indexOf(this.virtualAnchor.component)
++                : this.findVirtualBlock(prefix, this.currentScrollTop);
++            if (anchorIndex < 0)
++                anchorIndex = this.findVirtualBlock(prefix, this.currentScrollTop);
++            if (anchorIndex < 0)
++                return undefined;
++            const anchorLines = this.renderVirtualBlock(state, anchorIndex, false);
++            rendered.set(anchorIndex, anchorLines);
++            prefix = this.ensureVirtualPrefix(state);
++            const requestedOffset = this.virtualAnchor?.component === blocks[anchorIndex]
++                ? this.virtualAnchor.lineOffset
++                : Math.max(0, this.currentScrollTop - prefix[anchorIndex]);
++            const anchorOffset = Math.min(requestedOffset, Math.max(0, anchorLines.length - 1));
++            this.virtualAnchor = { component: blocks[anchorIndex], lineOffset: anchorOffset };
++            this.currentScrollTop = prefix[anchorIndex] + anchorOffset;
++            startIndex = anchorIndex;
++            endIndex = anchorIndex + 1;
++            const targetEnd = () => this.currentScrollTop + viewportHeight + VIRTUAL_OVERSCAN_LINES;
++            while (endIndex < blocks.length && this.ensureVirtualPrefix(state)[endIndex] < targetEnd()) {
++                rendered.set(endIndex, this.renderVirtualBlock(state, endIndex, false));
++                endIndex++;
++            }
++            while (startIndex > 0 && this.ensureVirtualPrefix(state)[startIndex] > this.currentScrollTop - VIRTUAL_OVERSCAN_LINES) {
++                startIndex--;
++                rendered.set(startIndex, this.renderVirtualBlock(state, startIndex, false));
++                prefix = this.ensureVirtualPrefix(state);
++                this.currentScrollTop = prefix[anchorIndex] + anchorOffset;
++            }
++        }
++        const prefix = this.ensureVirtualPrefix(state);
++        const contentHeight = prefix[prefix.length - 1];
++        const lines = new Array(contentHeight);
++        for (const [index, blockLines] of rendered) {
++            const blockStart = prefix[index];
++            for (let lineIndex = 0; lineIndex < blockLines.length; lineIndex++)
++                lines[blockStart + lineIndex] = blockLines[lineIndex];
++        }
++        this.virtualLastLayout = { state, startIndex, endIndex };
++        this.scheduleVirtualHydration(state, startIndex, endIndex, requestRender);
++        return {
++            lines,
++            contentHeight,
++            renderedStart: prefix[startIndex],
++        };
++    }
++    invalidate() {
++        if (process.env.E_PI_TUI_OPTIMIZATIONS !== "true") {
++            super.invalidate();
++            return;
++        }
++        if (this.virtualHydration) {
++            clearTimeout(this.virtualHydration.handle);
++            this.virtualHydration = undefined;
++        }
++        this.virtualWidthStates.clear();
++        this.virtualRenderCache = new WeakMap();
++        this.virtualHeightHints = new WeakMap();
++        this.virtualLastLayout = undefined;
++        this.virtualAnchor = undefined;
++        this.child.invalidate?.();
++    }
+     addChild(_component) {
+         throw new Error("ScrollView has exactly one child");
+     }
+diff --git a/dist/components/text.js b/dist/components/text.js
+index 0d840239c41181e24dfc60237c3338081c6b48d5..4525f5f054d0e0e43444e99062eff54355ded709 100644
+--- a/dist/components/text.js
++++ b/dist/components/text.js
+@@ -11,6 +11,7 @@ export class Text {
+     cachedText;
+     cachedWidth;
+     cachedLines;
++    renderInvalidationRevision = 0;
+     constructor(text = "", paddingX = 1, paddingY = 1, customBgFn) {
+         this.text = text;
+         this.paddingX = paddingX;
+@@ -19,17 +20,20 @@ export class Text {
+     }
+     setText(text) {
+         this.text = text;
++        this.renderInvalidationRevision++;
+         this.cachedText = undefined;
+         this.cachedWidth = undefined;
+         this.cachedLines = undefined;
+     }
+     setCustomBgFn(customBgFn) {
+         this.customBgFn = customBgFn;
++        this.renderInvalidationRevision++;
+         this.cachedText = undefined;
+         this.cachedWidth = undefined;
+         this.cachedLines = undefined;
+     }
+     invalidate() {
++        this.renderInvalidationRevision++;
+         this.cachedText = undefined;
+         this.cachedWidth = undefined;
+         this.cachedLines = undefined;
+diff --git a/dist/layout.js b/dist/layout.js
+index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..c785f7259c54ea26c158aace414866cf8829ec8c 100644
+--- a/dist/layout.js
++++ b/dist/layout.js
+@@ -70,15 +70,52 @@ function layoutComponent(context, component, x, y, width, height, clip) {
+     if (node.type === "scroll") {
+         const previousScrollTop = node.state.scrollTop;
+         const contentWidth = node.state.getContentWidth(safeWidth);
++        const viewportHeight = height === undefined ? undefined : Math.max(0, Math.floor(height));
++        const virtual = process.env.E_PI_TUI_OPTIMIZATIONS !== "true" || viewportHeight === undefined
++            ? undefined
++            : node.state.renderVirtualViewport?.(contentWidth, viewportHeight, context.requestRender);
++        if (virtual) {
++            node.state.updateLayout(virtual.contentHeight, viewportHeight, context.requestRender);
++            const scrollView = node.state;
++            if (node.state.primary || !context.primaryScrollView)
++                context.primaryScrollView = scrollView;
++            const rect = { x, y, width: safeWidth, height: viewportHeight };
++            const childClip = intersect(clip, rect);
++            const childBox = {
++                component: node.component,
++                rect: {
++                    x,
++                    y: y - node.state.scrollTop,
++                    width: contentWidth,
++                    height: virtual.contentHeight,
++                },
++                clip: childClip,
++                children: [],
++                lines: virtual.lines,
++                layer: 0,
++            };
++            const box = {
++                component,
++                rect,
++                clip: childClip,
++                children: [childBox],
++                scrollView,
++                scrollContentLines: virtual.lines,
++                scrollVirtualStart: virtual.renderedStart,
++                layer: 0,
++            };
++            childBox.parent = box;
++            return box;
++        }
+         const childBox = layoutComponent(context, node.component, x, y - previousScrollTop, contentWidth, undefined, clip);
+         const contentHeight = childBox.rect.height;
+-        const viewportHeight = height === undefined ? contentHeight : Math.max(0, Math.floor(height));
+-        node.state.updateLayout(contentHeight, viewportHeight, context.requestRender);
++        const resolvedViewportHeight = viewportHeight ?? contentHeight;
++        node.state.updateLayout(contentHeight, resolvedViewportHeight, context.requestRender);
+         translateBox(childBox, previousScrollTop - node.state.scrollTop);
+         const scrollView = node.state;
+         if (node.state.primary || !context.primaryScrollView)
+             context.primaryScrollView = scrollView;
+-        const rect = { x, y, width: safeWidth, height: viewportHeight };
++        const rect = { x, y, width: safeWidth, height: resolvedViewportHeight };
+         const childClip = intersect(clip, rect);
+         const box = {
+             component,
+@@ -237,7 +274,8 @@ function paintBox(box, screen, totalWidth) {
+     for (const child of box.children)
+         paintBox(child, screen, totalWidth);
+     if (box.scrollView && box.scrollContentLines && box.scrollView.scrollTop > 0 && box.rect.height > 0) {
+-        for (let imageRow = box.scrollView.scrollTop - 1; imageRow >= 0; imageRow--) {
++        const virtualStart = box.scrollVirtualStart ?? 0;
++        for (let imageRow = box.scrollView.scrollTop - 1; imageRow >= virtualStart; imageRow--) {
+             const imageLine = box.scrollContentLines[imageRow] ?? "";
+             const metadata = getKittyImageMetadata(imageLine);
+             if (metadata) {
+diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
+index b80391d65a2b72542c4894684e9ebdcd051a7894..034f7ea8d7e931c216654c4bdd2860f92253f4bd 100644
+--- a/dist/tui-alt-screen.js
++++ b/dist/tui-alt-screen.js
+@@ -16,6 +16,8 @@ const FOCUS_IN = "\x1b[I";
+ const FOCUS_OUT = "\x1b[O";
+ const BEGIN_SYNCHRONIZED_OUTPUT = "\x1b[?2026h";
+ const END_SYNCHRONIZED_OUTPUT = "\x1b[?2026l";
++const EPI_SCROLL_TO_BOTTOM_INPUT = "\x1b_e-pi:viewport:bottom\x1b\\";
++const EPI_VIEWPORT_OSC_PREFIX = "\x1b]6973;e-pi:viewport:v1;";
+ const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
+ const OSC133_PROMPT_START = /^\x1b\]133;A(?:\x07|\x1b\\)/;
+ const PAGE_SCROLL_OVERLAP = 4;
+@@ -63,7 +65,7 @@ export class TuiAltScreen extends TuiBase {
+         };
+         this.implicitScrollView = new ScrollView(this.implicitDocument, { follow: "end", primary: true });
+         this.flashes = new AltScreenFlashContainer(() => this.requestRender());
+-        this.wheelScrollLines = Math.max(1, Math.floor(options.wheelScrollLines ?? 1));
++        this.wheelScrollLines = Math.max(1, Math.floor(options.wheelScrollLines ?? (process.env.E_PI_TUI_OPTIMIZATIONS === "true" ? 3 : 1)));
+         this.mouseEnabled = options.mouse ?? true;
+         this.openUrl = options.openUrl;
+         this.addInputListener((data) => this.handleViewportInput(data));
+@@ -237,6 +239,22 @@ export class TuiAltScreen extends TuiBase {
+         this.flashes.flash(message, durationMs);
+     }
+     handleViewportInput(data) {
++        const exactWheel = /^\x1b_e-pi:viewport:wheel:v1;(-?[1-9]\d{0,3});(0|[1-9]\d{0,4});(0|[1-9]\d{0,4})\x1b\\$/.exec(data);
++        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true" && exactWheel) {
++            this.routeWheel({
++                direction: 0,
++                lines: Number.parseInt(exactWheel[1], 10),
++                x: Number.parseInt(exactWheel[2], 10),
++                y: Number.parseInt(exactWheel[3], 10),
++            });
++            return { consume: true };
++        }
++        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true" && data === EPI_SCROLL_TO_BOTTOM_INPUT) {
++            this.scrollToBottom();
++            return { consume: true };
++        }
++        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true" && data.startsWith("\x1b_e-pi:viewport:"))
++            return { consume: true };
+         if (data === FOCUS_OUT) {
+             const hadActiveSelection = this.selectionPressActive;
+             this.selectionPressActive = false;
+@@ -337,7 +355,7 @@ export class TuiAltScreen extends TuiBase {
+         return undefined;
+     }
+     routeWheel(event) {
+-        let remaining = event.direction * this.wheelScrollLines;
++        let remaining = event.lines ?? event.direction * this.wheelScrollLines;
+         const seen = new Set();
+         for (const scrollView of this.currentLayout ? getScrollViewsAt(this.currentLayout, event.x, event.y) : []) {
+             seen.add(scrollView);
+@@ -757,6 +775,11 @@ export class TuiAltScreen extends TuiBase {
+         else {
+             buffer += "\x1b[?25l";
+         }
++        const primaryScrollView = nextLayout.primaryScrollView ?? this.implicitScrollView;
++        const maxScrollTop = Math.max(0, primaryScrollView.contentHeight - primaryScrollView.viewportHeight);
++        buffer += process.env.E_PI_TUI_OPTIMIZATIONS === "true"
++            ? `${EPI_VIEWPORT_OSC_PREFIX}${primaryScrollView.scrollTop};${maxScrollTop};${primaryScrollView.isFollowingEnd ? 1 : 0}\x07`
++            : "";
+         buffer += END_SYNCHRONIZED_OUTPUT;
+         this.terminal.write(buffer);
+         this.previousScreen = screen;
+diff --git a/dist/tui.js b/dist/tui.js
+index b140190a2443a579fb89324b853c9ccba9fc125e..aabb5d7be3047dc5e0145f247ce54131ccfc90d6 100644
+--- a/dist/tui.js
++++ b/dist/tui.js
+@@ -38,19 +38,24 @@ function parseSizeValue(value, referenceSize) {
+  */
+ export class Container {
+     children = [];
++    renderInvalidationRevision = 0;
+     addChild(component) {
+         this.children.push(component);
++        this.renderInvalidationRevision++;
+     }
+     removeChild(component) {
+         const index = this.children.indexOf(component);
+         if (index !== -1) {
+             this.children.splice(index, 1);
++            this.renderInvalidationRevision++;
+         }
+     }
+     clear() {
+         this.children = [];
++        this.renderInvalidationRevision++;
+     }
+     invalidate() {
++        this.renderInvalidationRevision++;
+         for (const child of this.children) {
+             child.invalidate?.();
+         }
