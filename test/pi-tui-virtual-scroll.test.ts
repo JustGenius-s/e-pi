@@ -1,4 +1,4 @@
-import { Container, ScrollView, stripTerminalSequences } from "@earendil-works/pi-tui";
+import { Container, ScrollView, stripTerminalSequences, Text, VStack } from "@earendil-works/pi-tui";
 import { renderLayoutFrame } from "@earendil-works/pi-tui/dist/layout.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -162,6 +162,64 @@ describe("patched pi-tui virtual transcript layout", () => {
     expect(visibleText(afterHydration.lines)).toEqual(beforeHydration);
     expect(visibleText(afterHydration.lines)).toEqual(expectedTail(blocks, 48, 10));
     expect(blocks[0].calls.get(48)).toBe(1);
+    scrollView.invalidate();
+  });
+
+  it("reuses same-width block renders while the viewport scrolls", () => {
+    const { blocks, scrollView } = makeTranscript(120, () => 1);
+
+    renderLayoutFrame(scrollView, 80, 12, () => undefined);
+    for (let step = 0; step < 20; step += 1) {
+      scrollView.scrollBy(-1);
+      renderLayoutFrame(scrollView, 80, 12, () => undefined);
+    }
+
+    expect(Math.max(...blocks.map((block) => block.calls.get(80) ?? 0))).toBe(1);
+    scrollView.invalidate();
+  });
+
+  it("invalidates cached mutable leaf and nested container content", () => {
+    const document = new Container();
+    for (let index = 0; index < 38; index += 1) document.addChild(new CountingBlock(index, () => 1));
+    const nested = new Container();
+    const mutable = new Text("before", 0, 0);
+    nested.addChild(mutable);
+    document.addChild(nested);
+    const scrollView = new ScrollView(document, { follow: "end", primary: true });
+
+    expect(visibleText(renderLayoutFrame(scrollView, 80, 6, () => undefined).lines)).toContain("before");
+    mutable.setText("after-text-update");
+    expect(visibleText(renderLayoutFrame(scrollView, 80, 6, () => undefined).lines)).toContain("after-text-update");
+
+    nested.clear();
+    nested.addChild(new Text("after-tree-update", 0, 0));
+    expect(visibleText(renderLayoutFrame(scrollView, 80, 6, () => undefined).lines)).toContain("after-tree-update");
+    scrollView.invalidate();
+  });
+
+  it("keeps the fullscreen dock fixed while the working status scrolls with the transcript", () => {
+    const document = new Container();
+    for (let index = 0; index < 40; index += 1) document.addChild(new CountingBlock(index, () => 1));
+    const status = new Container();
+    status.addChild(new Text("Working... 0:42", 0, 0));
+    const fullscreenTranscript = new Container();
+    fullscreenTranscript.addChild(document);
+    fullscreenTranscript.addChild(status);
+    const scrollView = new ScrollView(fullscreenTranscript, { follow: "end", primary: true });
+    const dock = new Text("EDITOR", 0, 0);
+    const root = new VStack([
+      { component: scrollView, basis: 0, grow: 1, shrink: 1, minSize: 1 },
+      { component: dock, basis: 1, grow: 0, shrink: 0, minSize: 1 },
+    ]);
+
+    const atBottom = visibleText(renderLayoutFrame(root, 80, 8, () => undefined).lines);
+    expect(atBottom).toContain("Working... 0:42");
+    expect(atBottom.at(-1)).toBe("EDITOR");
+
+    scrollView.scrollBy(-10);
+    const scrolled = visibleText(renderLayoutFrame(root, 80, 8, () => undefined).lines);
+    expect(scrolled).not.toContain("Working... 0:42");
+    expect(scrolled.at(-1)).toBe("EDITOR");
     scrollView.invalidate();
   });
 });

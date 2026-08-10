@@ -11,6 +11,14 @@ import { decodeOsc52Clipboard } from "../../lib/terminalOsc52";
 import { appendTerminalBuffer, clearTerminalBuffer, getReplayContent } from "../../lib/terminalReplayStore";
 import { createTerminalResizeOutputGate } from "../../lib/terminalResizeOutputGate";
 import { createTerminalResizeVisualGuard } from "../../lib/terminalResizeVisualGuard";
+import {
+  createPiViewportWheelBatcher,
+  decodePiViewportStatePayload,
+  getPiViewportCell,
+  PI_SCROLL_TO_BOTTOM_INPUT,
+  PI_VIEWPORT_OSC_ID,
+  wheelDeltaToTerminalRows,
+} from "../../lib/terminalViewportProtocol";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 import { createResizeScheduler } from "../../lib/xtermResizeScheduler";
 import type { ResizeScheduler } from "../../lib/xtermResizeScheduler";
@@ -105,6 +113,7 @@ function ensureBufferFeeder(): void {
 export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileLink }: TerminalPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const scrollToBottomRef = useRef<() => void>(() => undefined);
   const [atBottom, setAtBottom] = useState(true);
   const isDarkRef = useTerminalTheme(hostRef, terminalRef);
   // Keep the latest callback without re-running the mount effect.
@@ -163,6 +172,39 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     terminal.loadAddon(webLinks);
     terminal.open(hostRef.current);
     terminalRef.current = terminal;
+    setAtBottom(true);
+    let authoritativeViewportSeen = false;
+    const viewportWheelBatcher = createPiViewportWheelBatcher({
+      write: (input) => window.ePi.runtime.write(sessionKey, input),
+    });
+    terminal.attachCustomWheelEventHandler((event) => {
+      if (!authoritativeViewportSeen) return true;
+      // Keep horizontal wheel gestures inert while bypassing xterm's
+      // low-frequency terminal-mouse conversion for the authoritative view.
+      if (event.deltaY === 0 || event.shiftKey) return false;
+
+      const screen = terminal.element?.querySelector<HTMLElement>(".xterm-screen");
+      if (!screen) return true;
+      const rect = screen.getBoundingClientRect();
+      const cell = getPiViewportCell(event.clientX, event.clientY, {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        columns: terminal.cols,
+        rows: terminal.rows,
+      });
+      if (!cell) return true;
+
+      const deltaRows = wheelDeltaToTerminalRows(
+        event.deltaY,
+        event.deltaMode,
+        rect.height / terminal.rows,
+        terminal.rows,
+      );
+      viewportWheelBatcher.push(deltaRows, cell.x, cell.y);
+      return false;
+    });
     // Fullscreen Pi owns mouse selection and sends the selected UTF-8 text as
     // OSC 52. Accept only the clipboard target and a bounded, canonical base64
     // payload before crossing the preload boundary into Electron's clipboard.
@@ -171,9 +213,17 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       if (text !== null) void window.ePi.app.copyText(text).catch(() => undefined);
       return true;
     });
+    const viewportStateOsc = terminal.parser.registerOscHandler(PI_VIEWPORT_OSC_ID, (data) => {
+      const viewport = decodePiViewportStatePayload(data);
+      if (!viewport) return false;
+      authoritativeViewportSeen = true;
+      setAtBottom(viewport.followingEnd);
+      return true;
+    });
     const resizeVisualGuard = createTerminalResizeVisualGuard(terminal);
 
     const scrollSub = terminal.onScroll(() => {
+      if (authoritativeViewportSeen) return;
       setAtBottom(terminal.buffer.active.viewportY >= terminal.buffer.active.baseY);
     });
 
@@ -181,7 +231,17 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
     // buffer viewport (a swallowed scroll event, a clamp the app never
     // observed), the `atBottom` state above never updates again and the
     // viewport appears stuck. The watchdog re-derives it from the buffer.
-    const viewportWatchdog = createViewportWatchdog(terminal, setAtBottom);
+    const viewportWatchdog = createViewportWatchdog(terminal, (nextAtBottom) => {
+      if (!authoritativeViewportSeen) setAtBottom(nextAtBottom);
+    });
+
+    scrollToBottomRef.current = () => {
+      if (authoritativeViewportSeen) {
+        window.ePi.runtime.write(sessionKey, PI_SCROLL_TO_BOTTOM_INPUT);
+        return;
+      }
+      animateScrollToBottom(terminal);
+    };
 
     /** Re-assert the viewport from the buffer after xterm syncs replay/reset output. */
     const syncViewportAfterWrite = () => {
@@ -451,13 +511,16 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
       resizeOutputGate.dispose();
       eraseScrollbackGuard.dispose();
       viewportWatchdog.dispose();
+      viewportWheelBatcher.dispose();
       unsubscribeAppearance();
       stopData();
       stopState();
       input.dispose();
       scrollSub.dispose();
+      scrollToBottomRef.current = () => undefined;
       terminalRef.current = null;
       osc52Clipboard.dispose();
+      viewportStateOsc.dispose();
       webgl?.dispose();
       webLinks.dispose();
       resizeObserver.disconnect();
@@ -478,10 +541,7 @@ export function TerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpenFileL
         data-visible={atBottom ? "false" : "true"}
         aria-hidden={atBottom}
         tabIndex={atBottom ? -1 : 0}
-        onClick={() => {
-          const terminal = terminalRef.current;
-          if (terminal) animateScrollToBottom(terminal);
-        }}
+        onClick={() => scrollToBottomRef.current()}
         aria-label="Scroll to bottom"
         title="Scroll to bottom"
       >
