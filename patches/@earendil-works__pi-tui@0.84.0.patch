@@ -1,8 +1,28 @@
+diff --git a/dist/components/markdown.js b/dist/components/markdown.js
+index 8f0ef3bef6645d790932cbb9eaf4c2fdb2849b7c..3609908cd982ab3010b44caf4febecbef9baab5b 100644
+--- a/dist/components/markdown.js
++++ b/dist/components/markdown.js
+@@ -159,6 +159,7 @@ export class Markdown {
+     cachedText;
+     cachedWidth;
+     cachedLines;
++    renderInvalidationRevision = 0;
+     constructor(text, paddingX, paddingY, theme, defaultTextStyle, options) {
+         this.text = text;
+         this.paddingX = paddingX;
+@@ -172,6 +173,7 @@ export class Markdown {
+         this.invalidate();
+     }
+     invalidate() {
++        this.renderInvalidationRevision++;
+         this.cachedText = undefined;
+         this.cachedWidth = undefined;
+         this.cachedLines = undefined;
 diff --git a/dist/components/scroll-view.js b/dist/components/scroll-view.js
-index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe04b4bf0a 100644
+index 5bfccd17b93dbe0fb00a18d75f94f46208917597..c9c57c25cb52ea4560041217dc4810c7a499e51a 100644
 --- a/dist/components/scroll-view.js
 +++ b/dist/components/scroll-view.js
-@@ -1,5 +1,44 @@
+@@ -1,5 +1,41 @@
  import { LAYOUT_NODE } from "../layout-node.js";
  import { Container } from "../tui.js";
 +const VIRTUALIZE_MIN_BLOCKS = 32;
@@ -24,16 +44,13 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
 +    return (Math.imul(hash ^ value, 16777619) >>> 0);
 +}
 +function componentRevision(component, seen = new WeakSet()) {
-+    if (!(component instanceof Container) || seen.has(component))
-+        return componentId(component);
-+    seen.add(component);
 +    let revision = mixRevision(componentId(component), component.renderInvalidationRevision ?? 0);
++    if (!(component instanceof Container) || seen.has(component))
++        return revision;
++    seen.add(component);
 +    revision = mixRevision(revision, component.children.length);
-+    for (const child of component.children) {
-+        revision = mixRevision(revision, componentId(child));
-+        if (child instanceof Container)
-+            revision = mixRevision(revision, componentRevision(child, seen));
-+    }
++    for (const child of component.children)
++        revision = mixRevision(revision, componentRevision(child, seen));
 +    return revision;
 +}
 +function flattenVirtualBlocks(component, blocks) {
@@ -47,7 +64,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
  export class ScrollView extends Container {
      child;
      followEnd;
-@@ -16,6 +55,13 @@ export class ScrollView extends Container {
+@@ -16,6 +52,13 @@ export class ScrollView extends Container {
      transientScrollbarVisible = false;
      scrollbarActive = false;
      scrollbarHideTimer;
@@ -61,7 +78,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
      constructor(component, options = {}) {
          super();
          if (options.axis !== undefined && options.axis !== "vertical") {
-@@ -99,6 +145,10 @@ export class ScrollView extends Container {
+@@ -99,6 +142,10 @@ export class ScrollView extends Container {
              return;
          this.currentScrollTop = next;
          this.followingEnd = this.followEnd && next === maxScrollTop;
@@ -72,7 +89,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
          this.markScrollbarActivity();
          this.requestRenderCallback?.();
      }
-@@ -112,6 +162,10 @@ export class ScrollView extends Container {
+@@ -112,6 +159,10 @@ export class ScrollView extends Container {
          const moved = next - start;
          this.currentScrollTop = next;
          this.followingEnd = this.followEnd && next === maxScrollTop;
@@ -83,7 +100,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
          if (moved !== 0) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
-@@ -123,6 +177,10 @@ export class ScrollView extends Container {
+@@ -123,6 +174,10 @@ export class ScrollView extends Container {
              this.followingEnd !== (this.followEnd && this.contentHeight <= this.currentViewportHeight);
          this.currentScrollTop = 0;
          this.followingEnd = this.followEnd && this.contentHeight <= this.currentViewportHeight;
@@ -94,7 +111,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
          if (changed) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
-@@ -133,6 +191,7 @@ export class ScrollView extends Container {
+@@ -133,6 +188,7 @@ export class ScrollView extends Container {
          const changed = this.currentScrollTop !== next || this.followingEnd !== this.followEnd;
          this.currentScrollTop = next;
          this.followingEnd = this.followEnd;
@@ -102,7 +119,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
          if (changed) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
-@@ -149,9 +208,272 @@ export class ScrollView extends Container {
+@@ -149,9 +205,272 @@ export class ScrollView extends Container {
              this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
          if (this.followEnd && this.currentScrollTop === maxScrollTop)
              this.followingEnd = true;
@@ -307,7 +324,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
 +            endIndex = blocks.length;
 +            while (startIndex > 0 && renderedHeight < targetLines) {
 +                startIndex--;
-+                const lines = this.renderVirtualBlock(state, startIndex, true);
++                const lines = this.renderVirtualBlock(state, startIndex, false);
 +                rendered.set(startIndex, lines);
 +                renderedHeight += lines.length;
 +            }
@@ -321,7 +338,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
 +                anchorIndex = this.findVirtualBlock(prefix, this.currentScrollTop);
 +            if (anchorIndex < 0)
 +                return undefined;
-+            const anchorLines = this.renderVirtualBlock(state, anchorIndex, true);
++            const anchorLines = this.renderVirtualBlock(state, anchorIndex, false);
 +            rendered.set(anchorIndex, anchorLines);
 +            prefix = this.ensureVirtualPrefix(state);
 +            const requestedOffset = this.virtualAnchor?.component === blocks[anchorIndex]
@@ -334,12 +351,12 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
 +            endIndex = anchorIndex + 1;
 +            const targetEnd = () => this.currentScrollTop + viewportHeight + VIRTUAL_OVERSCAN_LINES;
 +            while (endIndex < blocks.length && this.ensureVirtualPrefix(state)[endIndex] < targetEnd()) {
-+                rendered.set(endIndex, this.renderVirtualBlock(state, endIndex, true));
++                rendered.set(endIndex, this.renderVirtualBlock(state, endIndex, false));
 +                endIndex++;
 +            }
 +            while (startIndex > 0 && this.ensureVirtualPrefix(state)[startIndex] > this.currentScrollTop - VIRTUAL_OVERSCAN_LINES) {
 +                startIndex--;
-+                rendered.set(startIndex, this.renderVirtualBlock(state, startIndex, true));
++                rendered.set(startIndex, this.renderVirtualBlock(state, startIndex, false));
 +                prefix = this.ensureVirtualPrefix(state);
 +                this.currentScrollTop = prefix[anchorIndex] + anchorOffset;
 +            }
@@ -375,8 +392,41 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..790e3fcaa93e4b25488c085bb012d6fe
      addChild(_component) {
          throw new Error("ScrollView has exactly one child");
      }
+diff --git a/dist/components/text.js b/dist/components/text.js
+index 0d840239c41181e24dfc60237c3338081c6b48d5..4525f5f054d0e0e43444e99062eff54355ded709 100644
+--- a/dist/components/text.js
++++ b/dist/components/text.js
+@@ -11,6 +11,7 @@ export class Text {
+     cachedText;
+     cachedWidth;
+     cachedLines;
++    renderInvalidationRevision = 0;
+     constructor(text = "", paddingX = 1, paddingY = 1, customBgFn) {
+         this.text = text;
+         this.paddingX = paddingX;
+@@ -19,17 +20,20 @@ export class Text {
+     }
+     setText(text) {
+         this.text = text;
++        this.renderInvalidationRevision++;
+         this.cachedText = undefined;
+         this.cachedWidth = undefined;
+         this.cachedLines = undefined;
+     }
+     setCustomBgFn(customBgFn) {
+         this.customBgFn = customBgFn;
++        this.renderInvalidationRevision++;
+         this.cachedText = undefined;
+         this.cachedWidth = undefined;
+         this.cachedLines = undefined;
+     }
+     invalidate() {
++        this.renderInvalidationRevision++;
+         this.cachedText = undefined;
+         this.cachedWidth = undefined;
+         this.cachedLines = undefined;
 diff --git a/dist/layout.js b/dist/layout.js
-index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..ed1e25909d44e874aa568e5a6768a9be8f097947 100644
+index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..c785f7259c54ea26c158aace414866cf8829ec8c 100644
 --- a/dist/layout.js
 +++ b/dist/layout.js
 @@ -70,15 +70,52 @@ function layoutComponent(context, component, x, y, width, height, clip) {
@@ -445,20 +495,93 @@ index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..ed1e25909d44e874aa568e5a6768a9be
              const imageLine = box.scrollContentLines[imageRow] ?? "";
              const metadata = getKittyImageMetadata(imageLine);
              if (metadata) {
+diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
+index b80391d65a2b72542c4894684e9ebdcd051a7894..7c0db41fa372d5855b4065ce090031a17944050a 100644
+--- a/dist/tui-alt-screen.js
++++ b/dist/tui-alt-screen.js
+@@ -16,6 +16,8 @@ const FOCUS_IN = "\x1b[I";
+ const FOCUS_OUT = "\x1b[O";
+ const BEGIN_SYNCHRONIZED_OUTPUT = "\x1b[?2026h";
+ const END_SYNCHRONIZED_OUTPUT = "\x1b[?2026l";
++const EPI_SCROLL_TO_BOTTOM_INPUT = "\x1b_e-pi:viewport:bottom\x1b\\";
++const EPI_VIEWPORT_OSC_PREFIX = "\x1b]6973;e-pi:viewport:v1;";
+ const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
+ const OSC133_PROMPT_START = /^\x1b\]133;A(?:\x07|\x1b\\)/;
+ const PAGE_SCROLL_OVERLAP = 4;
+@@ -63,7 +65,7 @@ export class TuiAltScreen extends TuiBase {
+         };
+         this.implicitScrollView = new ScrollView(this.implicitDocument, { follow: "end", primary: true });
+         this.flashes = new AltScreenFlashContainer(() => this.requestRender());
+-        this.wheelScrollLines = Math.max(1, Math.floor(options.wheelScrollLines ?? 1));
++        this.wheelScrollLines = Math.max(1, Math.floor(options.wheelScrollLines ?? 3));
+         this.mouseEnabled = options.mouse ?? true;
+         this.openUrl = options.openUrl;
+         this.addInputListener((data) => this.handleViewportInput(data));
+@@ -237,6 +239,22 @@ export class TuiAltScreen extends TuiBase {
+         this.flashes.flash(message, durationMs);
+     }
+     handleViewportInput(data) {
++        const exactWheel = /^\x1b_e-pi:viewport:wheel:v1;(-?[1-9]\d{0,3});(0|[1-9]\d{0,4});(0|[1-9]\d{0,4})\x1b\\$/.exec(data);
++        if (exactWheel) {
++            this.routeWheel({
++                direction: 0,
++                lines: Number.parseInt(exactWheel[1], 10),
++                x: Number.parseInt(exactWheel[2], 10),
++                y: Number.parseInt(exactWheel[3], 10),
++            });
++            return { consume: true };
++        }
++        if (data === EPI_SCROLL_TO_BOTTOM_INPUT) {
++            this.scrollToBottom();
++            return { consume: true };
++        }
++        if (data.startsWith("\x1b_e-pi:viewport:"))
++            return { consume: true };
+         if (data === FOCUS_OUT) {
+             const hadActiveSelection = this.selectionPressActive;
+             this.selectionPressActive = false;
+@@ -337,7 +355,7 @@ export class TuiAltScreen extends TuiBase {
+         return undefined;
+     }
+     routeWheel(event) {
+-        let remaining = event.direction * this.wheelScrollLines;
++        let remaining = event.lines ?? event.direction * this.wheelScrollLines;
+         const seen = new Set();
+         for (const scrollView of this.currentLayout ? getScrollViewsAt(this.currentLayout, event.x, event.y) : []) {
+             seen.add(scrollView);
+@@ -757,6 +775,9 @@ export class TuiAltScreen extends TuiBase {
+         else {
+             buffer += "\x1b[?25l";
+         }
++        const primaryScrollView = nextLayout.primaryScrollView ?? this.implicitScrollView;
++        const maxScrollTop = Math.max(0, primaryScrollView.contentHeight - primaryScrollView.viewportHeight);
++        buffer += `${EPI_VIEWPORT_OSC_PREFIX}${primaryScrollView.scrollTop};${maxScrollTop};${primaryScrollView.isFollowingEnd ? 1 : 0}\x07`;
+         buffer += END_SYNCHRONIZED_OUTPUT;
+         this.terminal.write(buffer);
+         this.previousScreen = screen;
 diff --git a/dist/tui.js b/dist/tui.js
-index b140190a2443a579fb89324b853c9ccba9fc125e..33e2a0125027b9b9ce7b91b65a03ab5cfd8e57fe 100644
+index b140190a2443a579fb89324b853c9ccba9fc125e..aabb5d7be3047dc5e0145f247ce54131ccfc90d6 100644
 --- a/dist/tui.js
 +++ b/dist/tui.js
-@@ -38,6 +38,7 @@ function parseSizeValue(value, referenceSize) {
+@@ -38,19 +38,24 @@ function parseSizeValue(value, referenceSize) {
   */
  export class Container {
      children = [];
 +    renderInvalidationRevision = 0;
      addChild(component) {
          this.children.push(component);
++        this.renderInvalidationRevision++;
      }
-@@ -51,6 +52,7 @@ export class Container {
+     removeChild(component) {
+         const index = this.children.indexOf(component);
+         if (index !== -1) {
+             this.children.splice(index, 1);
++            this.renderInvalidationRevision++;
+         }
+     }
+     clear() {
          this.children = [];
++        this.renderInvalidationRevision++;
      }
      invalidate() {
 +        this.renderInvalidationRevision++;

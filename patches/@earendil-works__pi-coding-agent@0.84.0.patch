@@ -1,0 +1,24 @@
+diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+index b7bc54e..56e5a3d 100644
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -606,7 +606,10 @@ export class InteractiveMode {
+         }
+         // Keep one component tree and remount it when changing renderers.
+         this.renderWidgets(); // Initialize with default spacer
+-        this.transcriptScrollView = new TuiLayouts.ScrollView(this.documentContainer, {
++        const fullscreenTranscriptContainer = new Container();
++        fullscreenTranscriptContainer.addChild(this.documentContainer);
++        fullscreenTranscriptContainer.addChild(this.statusContainer);
++        this.transcriptScrollView = new TuiLayouts.ScrollView(fullscreenTranscriptContainer, {
+             follow: "end",
+             primary: true,
+             overscroll: "chain",
+@@ -615,7 +618,6 @@ export class InteractiveMode {
+         });
+         const dock = new TuiLayouts.VStack([
+             { component: this.pendingMessagesContainer, shrink: 1, minSize: 0 },
+-            { component: this.statusContainer, shrink: 1, minSize: 0 },
+             { component: this.widgetContainerAbove, shrink: 1, minSize: 0 },
+             { component: this.editorContainer, shrink: 1, minSize: 3 },
+             { component: this.widgetContainerBelow, shrink: 1, minSize: 0 },
