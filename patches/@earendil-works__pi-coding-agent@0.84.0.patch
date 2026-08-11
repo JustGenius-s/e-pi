@@ -1,0 +1,73 @@
+diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
+index b7bc54e86d029953d3ace7362d5547538c1cbcdf..e047c0d98cfb4463d968697bc250bc0faa0966e8 100644
+--- a/dist/modes/interactive/interactive-mode.js
++++ b/dist/modes/interactive/interactive-mode.js
+@@ -606,7 +606,17 @@ export class InteractiveMode {
+         }
+         // Keep one component tree and remount it when changing renderers.
+         this.renderWidgets(); // Initialize with default spacer
+-        this.transcriptScrollView = new TuiLayouts.ScrollView(this.documentContainer, {
++        const externalComposer = process.env.E_PI === "true" && process.env.E_PI_TUI_OPTIMIZATIONS === "true";
++        const fullscreenTranscriptContainer = externalComposer ? new Container() : this.documentContainer;
++        if (externalComposer) {
++            fullscreenTranscriptContainer.addChild(this.documentContainer);
++            fullscreenTranscriptContainer.addChild(this.statusContainer);
++            fullscreenTranscriptContainer.addChild(this.pendingMessagesContainer);
++            fullscreenTranscriptContainer.addChild(this.widgetContainerAbove);
++            fullscreenTranscriptContainer.addChild(this.widgetContainerBelow);
++            fullscreenTranscriptContainer.addChild(new Spacer(4));
++        }
++        this.transcriptScrollView = new TuiLayouts.ScrollView(fullscreenTranscriptContainer, {
+             follow: "end",
+             primary: true,
+             overscroll: "chain",
+@@ -614,16 +624,22 @@ export class InteractiveMode {
+             scrollbarStyle: (text) => theme.bg("scrollbarThumb", text),
+         });
+         const dock = new TuiLayouts.VStack([
+-            { component: this.pendingMessagesContainer, shrink: 1, minSize: 0 },
+-            { component: this.statusContainer, shrink: 1, minSize: 0 },
+-            { component: this.widgetContainerAbove, shrink: 1, minSize: 0 },
+-            { component: this.editorContainer, shrink: 1, minSize: 3 },
+-            { component: this.widgetContainerBelow, shrink: 1, minSize: 0 },
+-            { component: this.footerContainer, shrink: 1, minSize: 1 },
++            ...(!externalComposer
++                ? [
++                    { component: this.pendingMessagesContainer, shrink: 1, minSize: 0 },
++                    { component: this.statusContainer, shrink: 1, minSize: 0 },
++                    { component: this.widgetContainerAbove, shrink: 1, minSize: 0 },
++                ]
++                : []),
++            { component: this.editorContainer, shrink: 1, minSize: externalComposer ? 0 : 3 },
++            ...(!externalComposer
++                ? [{ component: this.widgetContainerBelow, shrink: 1, minSize: 0 }]
++                : []),
++            { component: this.footerContainer, shrink: 1, minSize: externalComposer ? 0 : 1 },
+         ]);
+         this.fullscreenLayoutRoot = new TuiLayouts.VStack([
+             { component: this.transcriptScrollView, basis: 0, grow: 1, shrink: 1, minSize: 1 },
+-            { component: dock, basis: "auto", grow: 0, shrink: 1, minSize: 1 },
++            { component: dock, basis: "auto", grow: 0, shrink: 1, minSize: externalComposer ? 0 : 1 },
+         ]);
+         this.mountInteractiveTui(this.renderer, [
+             this.documentContainer,
+@@ -1653,6 +1667,9 @@ export class InteractiveMode {
+             // Factory function - create component
+             component = content(this.ui, theme);
+         }
++        if (process.env.E_PI === "true" && process.env.E_PI_TUI_OPTIMIZATIONS === "true" && Object.isExtensible(component)) {
++            component.ePiVirtualRenderVolatile = true;
++        }
+         const targetMap = placement === "belowEditor" ? this.extensionWidgetsBelow : this.extensionWidgetsAbove;
+         targetMap.set(key, component);
+         this.renderWidgets();
+@@ -1706,7 +1723,8 @@ export class InteractiveMode {
+     renderWidgets() {
+         if (!this.widgetContainerAbove || !this.widgetContainerBelow)
+             return;
+-        this.renderWidgetContainer(this.widgetContainerAbove, this.extensionWidgetsAbove, true, true);
++        const externalComposer = process.env.E_PI === "true" && process.env.E_PI_TUI_OPTIMIZATIONS === "true";
++        this.renderWidgetContainer(this.widgetContainerAbove, this.extensionWidgetsAbove, !externalComposer, true);
+         this.renderWidgetContainer(this.widgetContainerBelow, this.extensionWidgetsBelow, false, false);
+         this.ui.requestRender();
+     }

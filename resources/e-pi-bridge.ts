@@ -28,6 +28,43 @@ function supportedThinkingLevelsOf(
 }
 
 const ACTIVITY_SUFFIX = ".e-pi-activity.json";
+const FULLSCREEN_REDRAW_PREFIX = "\x1b[?2026h\x1b[2J\x1b[1;1H\x1b[2K";
+const RESIZE_FRAME_MARKER_PREFIX = "\x1b_e-pi:frame:";
+
+type ResizeMarkerStdout = NodeJS.WriteStream & {
+  ePiResizeFrameMarkerInstalled?: boolean;
+};
+
+/**
+ * Tag every fullscreen full redraw with the exact PTY grid that produced it.
+ * The renderer uses this private APC marker to reject a late frame from an old
+ * resize before any of its bytes reach xterm. APC is invisible to terminals.
+ */
+function installResizeFrameMarkers(): void {
+  const stdout = process.stdout as ResizeMarkerStdout;
+  if (stdout.ePiResizeFrameMarkerInstalled) return;
+  stdout.ePiResizeFrameMarkerInstalled = true;
+
+  const originalWrite = stdout.write.bind(stdout) as (chunk: string | Uint8Array, ...args: unknown[]) => boolean;
+  stdout.write = ((chunk: string | Uint8Array, ...args: unknown[]) => {
+    let output = chunk;
+    if (typeof chunk === "string") {
+      const redrawAt = chunk.indexOf(FULLSCREEN_REDRAW_PREFIX);
+      if (redrawAt >= 0) {
+        const markerAt = redrawAt + FULLSCREEN_REDRAW_PREFIX.length;
+        if (!chunk.startsWith(RESIZE_FRAME_MARKER_PREFIX, markerAt)) {
+          const cols = process.stdout.columns;
+          const rows = process.stdout.rows;
+          if (Number.isSafeInteger(cols) && cols > 0 && Number.isSafeInteger(rows) && rows > 0) {
+            const marker = `${RESIZE_FRAME_MARKER_PREFIX}${cols}x${rows}\x1b\\`;
+            output = chunk.slice(0, markerAt) + marker + chunk.slice(markerAt);
+          }
+        }
+      }
+    }
+    return originalWrite(output, ...args);
+  }) as typeof stdout.write;
+}
 
 /** Minimal shape of pi's per-response Usage (pi-ai) that we consume. */
 interface ProviderUsage {
@@ -313,7 +350,9 @@ class EmptyComponent implements Component {
 
 class DesktopEditor extends CustomEditor {
   override render(): string[] {
-    return [""];
+    // E-Pi owns the visible composer. Keep the editor mounted for keyboard
+    // routing, but give fullscreen layout no phantom terminal row to reserve.
+    return process.env.E_PI_TUI_OPTIMIZATIONS === "true" ? [] : [""];
   }
 }
 
@@ -327,6 +366,8 @@ const imageMime: Record<string, string> = {
 };
 
 export default function ePiBridge(pi: ExtensionAPI): void {
+  if (process.env.E_PI_TUI_OPTIMIZATIONS === "true") installResizeFrameMarkers();
+
   pi.registerCommand("e-pi-theme", {
     description: "Sync the TUI theme with E-Pi's light/dark mode",
     handler: async (args, ctx) => {

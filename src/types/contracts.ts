@@ -49,6 +49,8 @@ export interface AppInfo {
   homeDir: string;
   /** .app bundle path for the file tree's "open with"; undefined = system default. */
   openWithApp?: string;
+  /** Whether E-Pi injects its smooth resize/scrolling layer into Pi's TUI. */
+  tuiOptimizationsEnabled: boolean;
 }
 
 export interface AppDescriptor {
@@ -75,6 +77,8 @@ export interface PiUpdateResult {
   to: string;
   /** Path to the package directory the new version was installed into. */
   path: string;
+  /** True when the user explicitly accepted an unpatched stock fallback. */
+  fallbackToStock?: boolean;
 }
 
 export interface SessionSummary {
@@ -620,7 +624,9 @@ export interface EPiApi {
      * session so they run the new version. Resolves with the result of the
      * update (the previous version and the newly installed one).
      */
-    applyPiUpdate(): Promise<PiUpdateResult>;
+    applyPiUpdate(options?: { allowStockFallback?: boolean }): Promise<PiUpdateResult>;
+    /** Toggle E-Pi's injectable TUI optimization layer and restart live sessions. */
+    setTuiOptimizationsEnabled(enabled: boolean): Promise<AppInfo>;
     chooseDirectory(defaultPath?: string): Promise<string | undefined>;
     /** Pick one or more folders (multi-repo projects). */
     chooseDirectories(defaultPath?: string): Promise<string[]>;

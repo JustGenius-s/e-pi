@@ -334,11 +334,30 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
       cursorListener = terminal.onCursorMove(syncEditor);
       scrollListener = terminal.onScroll(syncEditor);
 
+      /**
+       * Xterm's viewport only re-syncs its scrollable state from the buffer
+       * when the scroll position actually changes. On a fresh spawn the
+       * internal state can sit at scrollTop 0 while the buffer has already
+       * been positioned by the first output burst; nudging by one line (and
+       * straight back) forces the sync so the position the user sees and the
+       * buffer agree before any user scroll happens.
+       */
+      const primeViewportSync = () => {
+        if (disposed || !terminal) return;
+        const buffer = terminal.buffer.active;
+        if (buffer.baseY > 0 && buffer.viewportY >= buffer.baseY) {
+          terminal.scrollLines(1);
+          terminal.scrollToBottom();
+        }
+      };
       resizeScheduler = createResizeScheduler({
         terminal: terminal!,
         fit,
+        // Same parser-ordering discipline as the main terminal: resizing while
+        // a shell output batch is still queued makes the producer and the
+        // emulator disagree about cursor coordinates, so defer the fit until
+        // an explicit FIFO barrier behind the current write batch commits.
         hasPendingWrites: () => pendingWrites > 0,
-        pendingWriteBytes: () => pendingWriteBytes,
         queueWriteBarrier: (onDrained) => {
           terminal!.write("", () => {
             if (disposed) return;
@@ -362,7 +381,7 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
 
       stopData = window.ePi.sideTerminal.onData((dataId, data) => {
         if (dataId !== id) return;
-        flushWrite(data);
+        flushWrite(data, primeViewportSync);
       });
       inputDisposable = terminal.onData((data) => {
         // Raw keystrokes only reach the pty while an interactive foreground

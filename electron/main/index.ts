@@ -7,6 +7,7 @@ import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeThem
 
 import type {
   AgentConfigSaveRequest,
+  AppInfo,
   CreateProjectRequest,
   CreateSessionRequest,
   CustomProviderRemoveRequest,
@@ -29,7 +30,13 @@ import type {
 import { ensureNpmOnPath } from "./npm-path";
 import { getAgentConfig, saveAgentConfig } from "./services/agent-config-service";
 import { appsForExtension, chooseAppFromSystem, listDevApps, openWithApp } from "./services/app-launch-service";
-import { getAppSettings, resolveDefaultCwd, setDefaultCwd, setOpenWithApp } from "./services/app-settings-service";
+import {
+  getAppSettings,
+  resolveDefaultCwd,
+  setDefaultCwd,
+  setOpenWithApp,
+  setTuiOptimizationsEnabled,
+} from "./services/app-settings-service";
 import { CommandService } from "./services/command-service";
 import { debugLog, resetDebugLog } from "./services/debug-log";
 import { FileService } from "./services/file-service";
@@ -37,6 +44,8 @@ import { GitService } from "./services/git-service";
 import { ModelService } from "./services/model-service";
 import { TaskNotificationService } from "./services/notification-service";
 import { PackageService } from "./services/package-service";
+import { piPackageDir } from "./services/pi-agent-loader";
+import { applyPiCompatibilityPatches } from "./services/pi-compatibility-service";
 import { PiRuntime } from "./services/pi-runtime";
 import { getPiTuiSettings, savePiTuiSettings } from "./services/pi-settings-service";
 import { applyPiUpdate, checkPiUpdate, readInstalledPiVersion } from "./services/pi-update-service";
@@ -103,45 +112,63 @@ function isImage(path: string): boolean {
   return extname(path).toLowerCase() in IMAGE_MIME;
 }
 
+async function readAppInfo(): Promise<AppInfo> {
+  const settings = await getAppSettings();
+  return {
+    platform: process.platform,
+    arch: process.arch,
+    appVersion: app.getVersion(),
+    piVersion: readInstalledPiVersion(),
+    defaultCwd: await resolveDefaultCwd(),
+    homeDir: app.getPath("home"),
+    openWithApp: settings.openWithApp,
+    tuiOptimizationsEnabled: settings.tuiOptimizationsEnabled,
+  };
+}
+
 function registerHandlers(): void {
-  ipcMain.handle("app:get-info", async () => {
-    const settings = await getAppSettings();
-    return {
-      platform: process.platform,
-      arch: process.arch,
-      appVersion: app.getVersion(),
-      // Always read from disk so an in-place pi update shows the new version.
-      piVersion: readInstalledPiVersion(),
-      defaultCwd: await resolveDefaultCwd(),
-      homeDir: app.getPath("home"),
-      openWithApp: settings.openWithApp,
-    };
-  });
+  // Always read Pi's version from disk so an in-place update is reflected.
+  ipcMain.handle("app:get-info", () => readAppInfo());
 
   ipcMain.handle("app:set-default-cwd", async (_event, cwd: string) => {
     await setDefaultCwd(cwd);
-    const settings = await getAppSettings();
-    return {
-      platform: process.platform,
-      arch: process.arch,
-      appVersion: app.getVersion(),
-      piVersion: readInstalledPiVersion(),
-      defaultCwd: await resolveDefaultCwd(),
-      openWithApp: settings.openWithApp,
-    };
+    return readAppInfo();
   });
 
   ipcMain.handle("app:set-open-with-app", async (_event, appPath: string | undefined) => {
     await setOpenWithApp(appPath || undefined);
-    const settings = await getAppSettings();
-    return {
-      platform: process.platform,
-      arch: process.arch,
-      appVersion: app.getVersion(),
-      piVersion: readInstalledPiVersion(),
-      defaultCwd: await resolveDefaultCwd(),
-      openWithApp: settings.openWithApp,
-    };
+    return readAppInfo();
+  });
+
+  ipcMain.handle("app:set-tui-optimizations", async (_event, enabled: boolean) => {
+    const current = await getAppSettings();
+    if (current.tuiOptimizationsEnabled === enabled) return readAppInfo();
+
+    // Enabling is transactional: prove the currently selected Pi package can
+    // accept the patch before persisting the setting or restarting sessions.
+    if (enabled) {
+      try {
+        applyPiCompatibilityPatches(piPackageDir());
+      } catch (cause) {
+        throw new Error("The installed Pi version is not compatible with E-Pi's TUI optimization patch.", { cause });
+      }
+    }
+    await setTuiOptimizationsEnabled(enabled);
+    try {
+      await runtime.reloadAll();
+    } catch (cause) {
+      // Keep the persisted mode and the renderer switch truthful if a live
+      // session cannot restart. The package may remain patched, but the env
+      // gate restores stock behavior while the setting is off.
+      await setTuiOptimizationsEnabled(current.tuiOptimizationsEnabled);
+      try {
+        await runtime.reloadAll();
+      } catch {
+        // Preserve the original restart failure for the settings UI.
+      }
+      throw new Error("Could not restart Pi sessions; the previous TUI optimization mode was restored.", { cause });
+    }
+    return readAppInfo();
   });
 
   // Development-oriented macOS apps for the file tree's "open with" menus.
@@ -166,8 +193,18 @@ function registerHandlers(): void {
   // the new version. Fails without touching the install when no update exists
   // or any step (download/extract/install/swap) errors. Session restarts are
   // best-effort: a restart failure must not report the update itself as failed.
-  ipcMain.handle("app:apply-pi-update", async () => {
-    const result = await applyPiUpdate();
+  ipcMain.handle("app:apply-pi-update", async (_event, options?: { allowStockFallback?: boolean }) => {
+    const settings = await getAppSettings();
+    const result = await applyPiUpdate({
+      tuiOptimizationsEnabled: settings.tuiOptimizationsEnabled,
+      allowStockFallback: options?.allowStockFallback === true,
+    });
+    if (result.fallbackToStock && settings.tuiOptimizationsEnabled) {
+      // A stock package cannot satisfy the enabled-mode compatibility probes.
+      // Persist stock mode before restarting sessions so the new package is
+      // immediately loadable and the UI truthfully waits for a future patch.
+      await setTuiOptimizationsEnabled(false);
+    }
     try {
       await runtime.reloadAll();
     } catch (reason) {

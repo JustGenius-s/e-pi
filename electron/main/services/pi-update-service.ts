@@ -8,6 +8,7 @@ import { net } from "electron";
 import type { PiUpdateInfo, PiUpdateResult } from "../../../src/types/contracts";
 import { debugLog } from "./debug-log";
 import { loadPiAgent, piPackageDir, piUpdateTargetDir } from "./pi-agent-loader";
+import { applyPiCompatibilityPatches } from "./pi-compatibility-service";
 
 /** Static fallback only; the real version is always read from disk. */
 const PI_VERSION = "0.0.0";
@@ -19,8 +20,14 @@ const DOWNLOAD_TIMEOUT_MS = 120_000;
 const INSTALL_TIMEOUT_MS = 10 * 60_000;
 /** How long a successful check is kept before hitting the registry again. */
 const CACHE_TTL_MS = 10 * 60 * 1000;
+export const PI_COMPATIBILITY_REQUIRED_PREFIX = "E_PI_TUI_COMPATIBILITY_REQUIRED";
 
 let cached: { at: number; latest: string | undefined } | undefined;
+
+/** Test hook: isolate registry/update cache state between cases. */
+export function resetPiUpdateCacheForTests(): void {
+  cached = undefined;
+}
 
 const execFileAsync = promisify(execFile);
 
@@ -118,14 +125,17 @@ export function readInstalledPiVersion(): string {
  *    `devDependencies` the npm registry tarball ships with — npm chokes on their peer sets during a standalone
  *    install.
  * 3. Install the package's own dependencies with `npm install --omit=dev`, producing a self-contained package directory.
- * 4. Atomically swap it into the location of the bundled pi package (rename the old directory aside, move the new one in),
+ * 4. Reapply and validate E-Pi's TUI compatibility layer while the update is still staged.
+ * 5. Atomically swap it into the location of the bundled pi package (rename the old directory aside, move the new one in),
  *    then delete the old one. The swap is all within one filesystem, so `renameSync` is atomic; the package's own
  *    node_modules are outside the asar in packaged builds, so they can be written freely.
- * 5. The caller restarts every live session so they pick up the new version.
+ * 6. The caller restarts every live session so they pick up the new version.
  *
  * Throws on any failure and leaves the existing installation untouched.
  */
-export async function applyPiUpdate(): Promise<PiUpdateResult> {
+export async function applyPiUpdate(
+  options: { tuiOptimizationsEnabled?: boolean; allowStockFallback?: boolean } = {},
+): Promise<PiUpdateResult> {
   // Read the *current* version from the live dir, but swap into the update
   // target — in dev these differ (target is userData, not the pnpm store).
   const installedDir = piUpdateTargetDir();
@@ -193,6 +203,25 @@ export async function applyPiUpdate(): Promise<PiUpdateResult> {
       throw new Error("Downloaded pi package is missing dist/cli.js.");
     }
 
+    let fallbackToStock = false;
+    if (options.tuiOptimizationsEnabled !== false) {
+      debugLog("[pi-update] applying E-Pi compatibility layer", { latest });
+      try {
+        applyPiCompatibilityPatches(staged);
+      } catch (cause) {
+        if (!options.allowStockFallback) {
+          throw new Error(
+            `${PI_COMPATIBILITY_REQUIRED_PREFIX}:${latest}:Pi ${latest} changed TUI internals used by E-Pi's optimization patch.`,
+            { cause },
+          );
+        }
+        fallbackToStock = true;
+        debugLog("[pi-update] compatibility failed; continuing with stock pi-tui", { latest });
+      }
+    } else {
+      debugLog("[pi-update] keeping stock pi-tui (optimization patch disabled)", { latest });
+    }
+
     // Atomic swap within one filesystem.
     const parent = dirname(installedDir);
     const backup = join(parent, `.${basename(installedDir)}.old-${Date.now()}`);
@@ -216,7 +245,7 @@ export async function applyPiUpdate(): Promise<PiUpdateResult> {
     // Keep the version cache in sync so the next check reports up to date.
     cached = { at: Date.now(), latest: undefined };
     debugLog("[pi-update] done", { from: current, to: installedVersion, path: installedDir });
-    return { from: current, to: installedVersion, path: installedDir };
+    return { from: current, to: installedVersion, path: installedDir, fallbackToStock };
   } finally {
     removeRecursive(workDir);
   }
