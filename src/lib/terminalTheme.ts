@@ -1,7 +1,7 @@
 import type { ITheme } from "@xterm/xterm";
 
 /** ANSI palette (dark): the slate pastel palette the app has always used. */
-const DARK_PALETTE: Omit<ITheme, "background"> = {
+export const DARK_PALETTE: Omit<ITheme, "background"> = {
   foreground: "#d7e0e9",
   cursor: "#74d6a5",
   selectionBackground: "#314b58",
@@ -27,7 +27,7 @@ const DARK_PALETTE: Omit<ITheme, "background"> = {
  * ANSI palette (light): GitHub's light terminal palette — the same color
  * family the app already renders diffs with (shiki github-light).
  */
-const LIGHT_PALETTE: Omit<ITheme, "background"> = {
+export const LIGHT_PALETTE: Omit<ITheme, "background"> = {
   foreground: "#24292f",
   cursor: "#0969da",
   selectionBackground: "#c8e1ff",

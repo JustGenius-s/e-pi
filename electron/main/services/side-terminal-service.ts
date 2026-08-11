@@ -4,10 +4,19 @@ import type { IPty } from "node-pty";
 import * as pty from "node-pty";
 
 import { debugLog } from "./debug-log";
+import { isInteractiveForeground } from "./side-terminal-interactive";
 
 interface SideTerminal {
   pty: IPty;
   cwd: string;
+  /** Shell binary this pty was spawned with (used for foreground detection). */
+  shell: string;
+}
+
+interface SideTerminalStatus {
+  cwd: string;
+  foregroundProcess: string;
+  interactive: boolean;
 }
 
 /**
@@ -23,10 +32,31 @@ export class SideTerminalService {
     this.#listener = listener;
   }
 
+  getStatus(id: string): SideTerminalStatus | undefined {
+    const terminal = this.#terminals.get(id);
+    if (!terminal) return undefined;
+    // pty.process resolves the FOREGROUND process group of the terminal
+    // (tcgetpgrp → p_comm on macOS, /proc/<pgrp>/cmdline on Linux), so while a
+    // program like vim/ssh owns the tty this reports its name. Only known
+    // keystroke-driven programs flip the renderer into raw-input mode — a
+    // long-running plain command (sleep, a build) must not.
+    const processName = terminal.pty.process.trim();
+    const interactive = isInteractiveForeground(processName);
+    const foregroundProcess = processName.split(/[\\/]/).pop()?.replace(/^-+/, "").trim() || processName;
+    return { cwd: terminal.cwd, foregroundProcess, interactive };
+  }
+
   spawn(cwd: string): string {
     const id = randomUUID();
     const shell = process.env.SHELL || (process.platform === "win32" ? "powershell.exe" : "/bin/zsh");
-    const terminal = pty.spawn(shell, [], {
+    // Spawn as a LOGIN shell so the full PATH chain runs: /etc/zprofile
+    // (path_helper) and ~/.zprofile (brew shellenv) are skipped by plain
+    // interactive shells, so an Electron-launched app would otherwise give
+    // .zshrc a PATH without /opt/homebrew/bin — fnm/nvm/… then break. This
+    // matches how Terminal.app spawns shells. On Windows there is no login
+    // concept; keep the bare invocation.
+    const args = process.platform === "win32" ? [] : ["-l"];
+    const terminal = pty.spawn(shell, args, {
       name: "xterm-256color",
       cols: 80,
       rows: 24,
@@ -40,7 +70,7 @@ export class SideTerminalService {
       debugLog("[side-terminal] exit", { id, exitCode });
       this.#terminals.delete(id);
     });
-    this.#terminals.set(id, { pty: terminal, cwd });
+    this.#terminals.set(id, { pty: terminal, cwd, shell });
     debugLog("[side-terminal] spawned", { id, cwd });
     return id;
   }

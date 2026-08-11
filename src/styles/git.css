@@ -1178,7 +1178,16 @@
   text-align: center;
 }
 
-/* --- Embedded terminal --- */
+/* --- Embedded terminal (Warp-style overlay editor) --- */
+
+.tool-terminal-wrap {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  overflow: hidden;
+}
 
 .tool-terminal-host {
   min-height: 0;
@@ -1192,7 +1201,80 @@
   height: 100%;
 }
 
-.tool-terminal-host .xterm-viewport {
+/* The command editor floats over the prompt's cursor cell: transparent,
+   borderless, same font/metrics as the grid — it reads as terminal text,
+   not as a widget. It owns the caret in line-edit mode. */
+.tool-terminal-editor {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  resize: none;
+  overflow: hidden;
+  background: transparent;
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  /* caret-color is set inline from the xterm theme; shape is a thin bar. */
+  caret-shape: bar;
+}
+
+.tool-terminal-editor[data-anchor="hidden"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tool-terminal-editor[data-anchor="visible"] {
+  opacity: 1;
+}
+
+/* xterm never paints its own cursor in this view (see cursorInactiveStyle
+   "none" in SideTerminalView): the overlay editor owns the caret, and a
+   hollow-block ghost during mode flips is worse than no xterm caret. */
+.tool-terminal-wrap .xterm-cursor-layer,
+.tool-terminal-wrap .xterm .xterm-cursor,
+.tool-terminal-wrap .xterm .terminal-cursor,
+.tool-terminal-wrap .xterm .xterm-rows span.xterm-cursor {
+  visibility: hidden !important;
+  opacity: 0 !important;
+}
+
+.tool-terminal-editor::selection {
+  background: color-mix(in oklab, var(--primary) 30%, transparent);
+}
+
+/* Raw-input badge: shown while a keystroke-driven program (vim, ssh, …)
+   owns the tty and the editor is bypassed. */
+.tool-terminal-raw-badge {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100% - 28px);
+  padding: 3px 8px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--background) 82%, transparent);
+  color: var(--muted-foreground);
+  font-size: var(--fs-mini);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tool-terminal-raw-dot {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--warning, #eab308);
 }
 
 /* --- Review repo switcher (multi-repo projects) --- */
