@@ -217,7 +217,7 @@ export const ToolPanel = memo(function ToolPanel({
                   onSelectRepo={setReviewCwd}
                 />
               ) : null}
-              {tab.view === "files" ? <FileTreeView cwd={cwd} onOpenFile={onOpenFile} /> : null}
+              {tab.view === "files" ? <FileTreeView cwd={cwd} roots={repos} onOpenFile={onOpenFile} /> : null}
               {tab.view === "terminal" ? <SideTerminalView cwd={cwd} /> : null}
             </div>
           ))}

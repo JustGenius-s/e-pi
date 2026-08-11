@@ -247,7 +247,7 @@ export const ReviewView = memo(function ReviewView({ cwd, repos, primaryRepo, on
   return (
     <div className="git-panel-body">
       <div className="git-review-meta">
-        {repos && repos.length > 1 ? (
+        {repos && repos.length > 0 ? (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button type="button" className="git-review-repo" title={cwd}>

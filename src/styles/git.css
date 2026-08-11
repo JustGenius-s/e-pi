@@ -979,6 +979,13 @@
   align-items: center;
 }
 
+/* Separator between repo roots in a multi-repo file tree. */
+.tool-file-root-divider {
+  height: 1px;
+  margin: 2px 8px;
+  background: var(--border);
+}
+
 .tool-file-root-row .tool-file-row {
   flex: 1 1 auto;
   min-width: 0;

@@ -453,18 +453,82 @@
 .pinned-sessions {
   /* 8px left padding replaces .sidebar-group's side padding: this block
      renders outside the group, and its label/rows must align with RECENT. */
-  margin: 2px 0 6px;
+  margin: 2px 0 0;
   padding: 0 0 4px 8px;
-  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+  min-height: 0;
+  /* A drag-resized section scrolls internally, so a long pinned list can
+     never squeeze the PROJECTS group out of the sidebar. */
+  overflow-y: auto;
 }
 
 .pinned-sessions-label {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 3px;
   padding: 2px 8px 3px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
   color: var(--muted-foreground);
+  font: inherit;
   font-size: var(--fs-mini);
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pinned-sessions-label:hover {
+  color: var(--foreground);
+}
+
+.pinned-sessions-chevron {
+  flex: 0 0 auto;
+  transition: transform 120ms ease;
+}
+
+.pinned-sessions-label.collapsed .pinned-sessions-chevron {
+  transform: rotate(-90deg);
+}
+
+/* Drag handle under the PINNED section: dragging caps the pinned area so
+   PROJECTS keeps room (the section's own scrollbar takes over). The ::after
+   line is the visual divider between PINNED and PROJECTS. */
+.pinned-resize-handle {
+  position: relative;
+  flex: 0 0 auto;
+  height: 10px;
+  margin: 0 8px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.pinned-resize-handle::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border);
+  transition:
+    height 120ms ease,
+    background-color 120ms ease;
+}
+
+.pinned-resize-handle:hover::after,
+.pinned-resize-handle:focus-visible::after {
+  height: 4px;
+  background: var(--sidebar-ring);
+}
+
+body.pinned-section-resizing {
+  cursor: ns-resize;
+  user-select: none;
 }
 
 /* Default-folder sessions, listed flat above the project groups. The top

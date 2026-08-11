@@ -429,6 +429,10 @@ export class PiRuntime {
           COLORFGBG: this.#themeHint === "light" ? "15;7" : "15;0",
           E_PI: "true",
           E_PI_TUI_OPTIMIZATIONS: tuiOptimizationsEnabled ? "true" : "false",
+          // Where the bridge extension can find the editor's project registry
+          // (projects.json in Electron userData) so multi-repo workspaces are
+          // visible to the agent without a restart.
+          E_PI_USER_DATA: app.getPath("userData"),
           // Surface pi's own startup timings (stderr) when profiling startup.
           // Deliberately a separate switch: E_PI_DEBUG is for E-Pi's own logs
           // and must never change what the user sees in the terminal.

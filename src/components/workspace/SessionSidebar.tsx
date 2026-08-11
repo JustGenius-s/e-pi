@@ -35,6 +35,26 @@ import {
   type SessionRowCallbacks,
 } from "./sidebar/shared";
 
+/** Drag-resized max-height of the expanded PINNED section (px). */
+const PINNED_HEIGHT_KEY = "sidebar-pinned-height-v1";
+/** Smallest the PINNED section can be dragged to (label + one row). */
+const PINNED_SECTION_MIN = 32;
+/** Space (px) the PROJECTS group keeps when the pinned section is resized. */
+const PROJECTS_MIN_SPACE = 110;
+
+function readPinnedSectionHeight(): number | undefined {
+  try {
+    const saved = window.localStorage.getItem(PINNED_HEIGHT_KEY);
+    if (saved !== null) {
+      const parsed = Number(saved);
+      if (Number.isFinite(parsed) && parsed >= PINNED_SECTION_MIN) return parsed;
+    }
+  } catch {
+    // Storage unavailable — use the natural height.
+  }
+  return undefined;
+}
+
 interface SessionSidebarProps {
   sessions: SessionSummary[];
   /** Multi-folder projects; sessions whose cwd is inside a project's folders join it. */
@@ -90,6 +110,8 @@ export const SessionSidebar = memo(function SessionSidebar({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   /** Click-controlled open state of the collapsed pinned-chats flyout. */
   const [pinnedFlyoutOpen, setPinnedFlyoutOpen] = useState(false);
+  /** PINNED section collapsed by the user (chevron on the section label). */
+  const [pinnedCollapsed, setPinnedCollapsed] = useState(false);
   /** RECENT (default-folder sessions) collapsed by the user. */
   const [recentCollapsed, setRecentCollapsed] = useState(false);
   /**
@@ -241,6 +263,53 @@ export const SessionSidebar = memo(function SessionSidebar({
   };
 
   const isCollapsed = (cwd: string) => collapsed.has(cwd);
+
+  /**
+   * Drag-resized max-height (px) of the expanded PINNED section; undefined
+   * means the section grows naturally and the sidebar scrolls as a whole.
+   */
+  const [pinnedMaxHeight, setPinnedMaxHeight] = useState<number | undefined>(readPinnedSectionHeight);
+  const pinnedSectionRef = useRef<HTMLDivElement>(null);
+
+  const persistPinnedHeight = (height: number) => {
+    setPinnedMaxHeight(height);
+    try {
+      window.localStorage.setItem(PINNED_HEIGHT_KEY, String(height));
+    } catch {
+      // Storage unavailable — the resize just won't survive a restart.
+    }
+  };
+
+  /**
+   * Drag the divider under PINNED to cap the section's height: a long pinned
+   * list then scrolls inside the section instead of squeezing PROJECTS out.
+   */
+  const onPinnedResizeStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    const section = pinnedSectionRef.current;
+    const container = section?.parentElement;
+    if (!section || !container) return;
+    event.preventDefault();
+    const handle = event.currentTarget;
+    handle.setPointerCapture(event.pointerId);
+    const startY = event.clientY;
+    const startHeight = pinnedMaxHeight ?? section.clientHeight;
+    const maxAllowed = Math.max(PINNED_SECTION_MIN, container.clientHeight - PROJECTS_MIN_SPACE);
+    const clampHeight = (clientY: number) =>
+      Math.min(maxAllowed, Math.max(PINNED_SECTION_MIN, startHeight + (clientY - startY)));
+    const onMove = (moveEvent: PointerEvent) => {
+      section.style.maxHeight = `${clampHeight(moveEvent.clientY)}px`;
+    };
+    const onUp = (upEvent: PointerEvent) => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      document.body.classList.remove("pinned-section-resizing");
+      section.style.maxHeight = "";
+      persistPinnedHeight(clampHeight(upEvent.clientY));
+    };
+    document.body.classList.add("pinned-section-resizing");
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
 
   /** Expand the sidebar and reveal one project's sessions (collapsed-mode click). */
   const expandToProject = (cwd: string) => {
@@ -444,21 +513,50 @@ export const SessionSidebar = memo(function SessionSidebar({
               ))}
             </SidebarMenu>
           ) : (
-            <div className="pinned-sessions">
-              <div className="pinned-sessions-label">Pinned</div>
-              <SidebarMenu className="pinned-sessions-list">
-                {pinnedSessionList.map((session) => renderSessionRow(session))}
-              </SidebarMenu>
-              {pinnedProjectList.map((project) => renderProjectRow(project))}
+            <div
+              className="pinned-sessions"
+              ref={pinnedSectionRef}
+              style={pinnedMaxHeight !== undefined ? { maxHeight: pinnedMaxHeight } : undefined}
+            >
+              <button
+                type="button"
+                className={`pinned-sessions-label${pinnedCollapsed ? " collapsed" : ""}`}
+                onClick={() => setPinnedCollapsed((current) => !current)}
+                aria-expanded={!pinnedCollapsed}
+              >
+                <ChevronDown size={10} className="pinned-sessions-chevron" aria-hidden="true" />
+                Pinned
+              </button>
+              {pinnedCollapsed ? null : (
+                <>
+                  <SidebarMenu className="pinned-sessions-list">
+                    {pinnedSessionList.map((session) => renderSessionRow(session))}
+                  </SidebarMenu>
+                  {pinnedProjectList.map((project) => renderProjectRow(project))}
+                </>
+              )}
             </div>
           )
         ) : null}
+
+        {state === "collapsed" ||
+        pinnedCollapsed ||
+        (pinnedSessionList.length === 0 && pinnedProjectList.length === 0) ? null : (
+          <div
+            className="pinned-resize-handle"
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize Pinned section"
+            title="Drag to resize Pinned"
+            onPointerDown={onPinnedResizeStart}
+          />
+        )}
 
         <SidebarGroup className="sidebar-session-group">
           {state === "collapsed" ? null : (
             <SidebarGroupLabel>
               PROJECTS
-              <SidebarGroupAction aria-label="Add workspace" title="Add workspace" onClick={onImportProject}>
+              <SidebarGroupAction aria-label="Add project" title="Add project" onClick={onImportProject}>
                 <Plus size={12} />
               </SidebarGroupAction>
             </SidebarGroupLabel>

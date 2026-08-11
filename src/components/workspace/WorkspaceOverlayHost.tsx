@@ -1,6 +1,10 @@
-import { memo } from "react";
+import { memo, useCallback } from "react";
 
-import type { UseWorkspaceOverlaysResult } from "../../hooks/useWorkspaceOverlays";
+import type {
+  UseWorkspaceOverlaysResult,
+  WorkspaceEditorOpenRequest,
+  WorkspacePreviewOpenRequest,
+} from "../../hooks/useWorkspaceOverlays";
 import { WorkspaceCodeEditorOverlay } from "./WorkspaceCodeEditorOverlay";
 import { WorkspaceFilePreviewOverlay } from "./WorkspaceFilePreviewOverlay";
 
@@ -22,6 +26,23 @@ export const WorkspaceOverlayHost = memo(function WorkspaceOverlayHost({
   cwd,
   onOpenWorkspacePath,
 }: WorkspaceOverlayHostProps) {
+  // Stable callbacks: the `overlays` object is rebuilt on every App render,
+  // but the hook's functions keep their identity — binding them with
+  // useCallback keeps the overlay children memoized so App re-renders never
+  // reach (and re-mount) the preview/editor subtree.
+  const { openFilePreview, openEditorFile, requestPreviewClose, handleEditorClosed, handlePreviewClosed } = overlays;
+  const onPreviewFile = useCallback(
+    (request: Omit<WorkspacePreviewOpenRequest, "id">) => openFilePreview(request),
+    [openFilePreview],
+  );
+  const onOpenEditor = useCallback(
+    (request: Omit<WorkspaceEditorOpenRequest, "id">) => openEditorFile(request),
+    [openEditorFile],
+  );
+  const onRequestClose = useCallback(() => requestPreviewClose(), [requestPreviewClose]);
+  const onEditorClose = useCallback(() => handleEditorClosed(), [handleEditorClosed]);
+  const onPreviewClose = useCallback(() => handlePreviewClosed(), [handlePreviewClosed]);
+
   return (
     <>
       {overlays.editorMounted ? (
@@ -29,8 +50,8 @@ export const WorkspaceOverlayHost = memo(function WorkspaceOverlayHost({
           openRequest={overlays.editorOpenRequest}
           isOpen={overlays.editorOpen}
           closeRequestId={overlays.editorCloseRequestId}
-          onPreviewFile={(request) => overlays.openFilePreview(request)}
-          onClose={overlays.handleEditorClosed}
+          onPreviewFile={onPreviewFile}
+          onClose={onEditorClose}
         />
       ) : null}
       {overlays.previewMounted ? (
@@ -38,10 +59,10 @@ export const WorkspaceOverlayHost = memo(function WorkspaceOverlayHost({
           openRequest={overlays.previewOpenRequest}
           isOpen={overlays.previewOpen}
           cwd={cwd}
-          onOpenEditor={(request) => overlays.openEditorFile(request)}
+          onOpenEditor={onOpenEditor}
           onOpenWorkspacePath={onOpenWorkspacePath}
-          onRequestClose={overlays.requestPreviewClose}
-          onClose={overlays.handlePreviewClosed}
+          onRequestClose={onRequestClose}
+          onClose={onPreviewClose}
         />
       ) : null}
     </>

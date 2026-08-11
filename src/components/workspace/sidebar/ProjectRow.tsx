@@ -82,8 +82,8 @@ export function ProjectRow({
       <button
         type="button"
         className={`project-pin${pinned ? " active" : ""}`}
-        aria-label={pinned ? "Unpin workspace" : "Pin workspace"}
-        title={pinned ? "Unpin workspace" : "Pin workspace"}
+        aria-label={pinned ? "Unpin project" : "Pin project"}
+        title={pinned ? "Unpin project" : "Pin project"}
         onClick={(event) => {
           event.stopPropagation();
           toggleProjectPin(project.key);
@@ -117,7 +117,7 @@ export function ProjectRow({
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onSelect={() => toggleProjectPin(project.key)}>
-            {pinned ? "Unpin workspace" : "Pin workspace"}
+            {pinned ? "Unpin project" : "Pin project"}
           </ContextMenuItem>
           <ContextMenuItem onSelect={() => onCreate(project.cwd)}>
             New session {project.primaryRepo ? "in primary repo" : "in this folder"}
