@@ -431,17 +431,32 @@ export function App() {
     setPanel((current) => (current.tabs.some((tab) => tab.id === id) ? { ...current, activeId: id } : current));
   }, []);
 
+  /** The project folder containing a workspace path (multi-repo sibling support). */
+  const folderContainingPath = useCallback(
+    (path: string): string | undefined => {
+      if (!activeProject) return undefined;
+      const normalized = path.replace(/\\/g, "/");
+      return activeProject.folders.find((folder) => normalized.startsWith(`${folder.replace(/\\/g, "/")}/`));
+    },
+    [activeProject],
+  );
+
   /** Open a workspace file through the preview/editor routing. */
+  const { openFilePreview: overlaysOpenFilePreview, openEditorFile: overlaysOpenEditorFile } = overlays;
   const handleOpenWorkspaceFile = useCallback(
     (path: string, imagePaths?: string[]) => {
-      if (!activeCwd) return;
+      // The file tree can browse every repo of a multi-repo project, so the
+      // read must be rooted at the folder containing the file — not the
+      // active session's cwd (which would trip the workspace confinement).
+      const cwd = folderContainingPath(path) ?? activeCwd;
+      if (!cwd) return;
       if (isWorkspacePreviewPath(path)) {
-        overlays.openFilePreview({ cwd: activeCwd, path, imagePaths });
+        overlaysOpenFilePreview({ cwd, path, imagePaths });
       } else {
-        overlays.openEditorFile({ cwd: activeCwd, path });
+        overlaysOpenEditorFile({ cwd, path });
       }
     },
-    [activeCwd, overlays],
+    [activeCwd, folderContainingPath, overlaysOpenEditorFile, overlaysOpenFilePreview],
   );
 
   /** Open a workspace path from inside previews (markdown links, images). */
@@ -461,15 +476,15 @@ export function App() {
       }
       if (absPath.startsWith(activeCwd)) {
         if (isWorkspacePreviewPath(absPath)) {
-          overlays.openFilePreview({ cwd: activeCwd, path: absPath });
+          overlaysOpenFilePreview({ cwd: activeCwd, path: absPath });
         } else {
-          overlays.openEditorFile({ cwd: activeCwd, path: absPath, line });
+          overlaysOpenEditorFile({ cwd: activeCwd, path: absPath, line });
         }
         return;
       }
       void window.ePi.app.openPath(absPath);
     },
-    [activeCwd, overlays],
+    [activeCwd, overlaysOpenEditorFile, overlaysOpenFilePreview],
   );
 
   // Workspace fs watching follows the active session cwd.

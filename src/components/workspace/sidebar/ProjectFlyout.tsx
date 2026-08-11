@@ -63,8 +63,8 @@ export function ProjectFlyout({
             <button
               type="button"
               className={`project-flyout-add${projectPinned ? " active" : ""}`}
-              aria-label={projectPinned ? "Unpin workspace" : "Pin workspace"}
-              title={projectPinned ? "Unpin workspace" : "Pin workspace"}
+              aria-label={projectPinned ? "Unpin project" : "Pin project"}
+              title={projectPinned ? "Unpin project" : "Pin project"}
               onClick={(event) => {
                 event.stopPropagation();
                 toggleProjectPin(project.key);

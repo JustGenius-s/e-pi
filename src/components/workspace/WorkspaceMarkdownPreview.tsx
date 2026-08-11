@@ -1,11 +1,19 @@
-import { memo, useCallback } from "react";
-import type { AnchorHTMLAttributes, ImgHTMLAttributes, MouseEvent as ReactMouseEvent, ReactNode } from "react";
+import { memo, useCallback, useMemo } from "react";
+import type {
+  AnchorHTMLAttributes,
+  HTMLAttributes,
+  ImgHTMLAttributes,
+  MouseEvent as ReactMouseEvent,
+  ReactNode,
+} from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 
+import { pathBaseName } from "../../lib/format";
 import { isWorkspacePreviewPath } from "../../lib/workspacePreviewKind";
+import { MermaidDiagram } from "./MermaidDiagram";
 
 interface WorkspaceMarkdownPreviewProps {
   /** Absolute path of the markdown file being rendered. */
@@ -47,10 +55,12 @@ function createMarkdownComponents({
   handleLinkClick,
   resolveWorkspacePath,
   onOpenWorkspacePath,
+  markdownPath,
 }: {
   handleLinkClick: (event: ReactMouseEvent<HTMLAnchorElement>, href: string | undefined) => void;
   resolveWorkspacePath: (target: string) => string | null;
   onOpenWorkspacePath: (absPath: string) => void;
+  markdownPath: string;
 }) {
   return {
     a({ href, children, ...props }: AnchorHTMLAttributes<HTMLAnchorElement> & { children?: ReactNode }) {
@@ -61,7 +71,7 @@ function createMarkdownComponents({
       );
     },
     img({ src, alt }: ImgHTMLAttributes<HTMLImageElement>) {
-      const abs = resolveWorkspacePath(src ?? "");
+      const abs = resolveWorkspacePath((src ?? "").split(/[?#]/)[0]);
       if (abs && isWorkspacePreviewPath(abs)) {
         return (
           <button
@@ -75,6 +85,22 @@ function createMarkdownComponents({
         );
       }
       return <img src={src} alt={alt ?? ""} loading="lazy" />;
+    },
+    pre({ children, ...props }: HTMLAttributes<HTMLPreElement> & { children?: ReactNode }) {
+      // A ```mermaid fenced block arrives as <pre><code class="language-mermaid">…</code></pre>.
+      // Render it as a live diagram (with a view-source toggle) instead of raw text.
+      const child = Array.isArray(children) ? children[0] : children;
+      const childProps =
+        child !== null && typeof child === "object" && "props" in child
+          ? (child.props as Record<string, unknown> | null)
+          : null;
+      const className = typeof childProps?.className === "string" ? childProps.className : "";
+      if (className.split(/\s+/).includes("language-mermaid")) {
+        const raw = childProps?.children;
+        const code = typeof raw === "string" ? raw : Array.isArray(raw) ? raw.join("") : "";
+        return <MermaidDiagram code={code} exportName={pathBaseName(markdownPath)} />;
+      }
+      return <pre {...props}>{children}</pre>;
     },
   };
 }
@@ -131,6 +157,17 @@ export const WorkspaceMarkdownPreview = memo(function WorkspaceMarkdownPreview({
     [onOpenWorkspacePath, resolveWorkspacePath],
   );
 
+  /**
+   * Stable components map: the `a`/`img` functions must keep their identity
+   * across renders, otherwise React treats them as a different element type
+   * on every render and unmounts/remounts every link and image — each
+   * remount restarts the image request, so failing images visibly flash.
+   */
+  const components = useMemo(
+    () => createMarkdownComponents({ handleLinkClick, resolveWorkspacePath, onOpenWorkspacePath, markdownPath }),
+    [handleLinkClick, resolveWorkspacePath, onOpenWorkspacePath, markdownPath],
+  );
+
   return (
     <div className={`workspace-md-preview ${className ?? ""}`}>
       <ReactMarkdown
@@ -139,7 +176,7 @@ export const WorkspaceMarkdownPreview = memo(function WorkspaceMarkdownPreview({
           [rehypeRaw, { passThrough: [] }],
           [rehypeSanitize, MARKDOWN_HTML_SCHEMA],
         ]}
-        components={createMarkdownComponents({ handleLinkClick, resolveWorkspacePath, onOpenWorkspacePath })}
+        components={components}
       >
         {content}
       </ReactMarkdown>

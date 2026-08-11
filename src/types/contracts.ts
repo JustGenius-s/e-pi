@@ -629,6 +629,10 @@ export interface EPiApi {
     pasteImage(): Promise<string | null>;
     imageData(filePath: string, maxSize?: number): Promise<string | null>;
     openPath(path: string): Promise<void>;
+    /** Write a file into the OS temp dir; content is base64 when base64=true (binary). Returns its path. */
+    writeTempFile(fileName: string, content: string, base64?: boolean): Promise<string>;
+    /** Delete a file previously created via writeTempFile (only allowed inside the temp dir). */
+    removeTempFile(path: string): Promise<void>;
     /** Reveal the item in Finder (macOS) / Explorer (Windows) / file manager (Linux). */
     showInFolder(path: string): Promise<void>;
     /** Open a file with a specific app bundle (macOS). */

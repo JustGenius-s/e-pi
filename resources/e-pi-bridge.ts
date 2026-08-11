@@ -1,8 +1,168 @@
+import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
+import { Type } from "typebox";
+
 import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
+
+// ── Project workspace support ──────────────────────────────────────────────
+//
+// An E-Pi project is a label + routing layer grouping several folders/repos;
+// each session stays bound to its own cwd. These helpers make sibling repos
+// visible to the agent so an edited project (adding/removing a repo folder in
+// the editor) takes effect in OLD sessions on their very next prompt:
+//
+//  - `before_agent_start` re-reads the editor's projects.json every turn and
+//    appends the repo list to the system prompt when the session's cwd belongs
+//    to a multi-repo project. Content is stable while the project is unchanged,
+//    so the system prompt bytes (and prompt caching) are unaffected.
+//  - The `project_repos` tool serves a live per-repo view (existence, git
+//    branch) the agent can call on demand; files in sibling repos are reached
+//    via absolute paths or ../<folder-name> relative paths.
+//
+// projects.json lives in Electron userData; the editor passes its location via
+// E_PI_USER_DATA when spawning pi. Standalone pi (no env var) degrades to the
+// previous behavior: no note, no tool data.
+
+export const PROJECTS_FILE_NAME = "projects.json";
+
+export interface WorkspaceProject {
+  id: string;
+  name?: string;
+  folders: string[];
+  primaryRepo: string;
+}
+
+/** Trailing-slash normalization, mirroring ProjectService.normalizePath. */
+export function normalizeWorkspacePath(path: string): string {
+  return path.replace(/\/+$/, "");
+}
+
+export function parseProjects(raw: string): WorkspaceProject[] {
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? (parsed as WorkspaceProject[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** The project whose folders contain `cwd`, if any. */
+export function findProjectForCwd(projects: WorkspaceProject[], cwd: string): WorkspaceProject | undefined {
+  const normalized = normalizeWorkspacePath(cwd);
+  return projects.find((project) => project.folders.some((folder) => normalizeWorkspacePath(folder) === normalized));
+}
+
+/**
+ * System-prompt note naming the sibling repos of a multi-repo project.
+ * Undefined for standalone folders and single-repo projects (no noise).
+ */
+export function buildWorkspaceNote(project: WorkspaceProject | undefined, cwd: string): string | undefined {
+  if (!project || project.folders.length < 2) return undefined;
+  const current = normalizeWorkspacePath(cwd);
+  const primary = normalizeWorkspacePath(project.primaryRepo);
+  const lines = project.folders.map((folder) => {
+    const normalized = normalizeWorkspacePath(folder);
+    const markers: string[] = [];
+    if (normalized === current) markers.push("current session");
+    if (normalized === primary) markers.push("primary");
+    const suffix = markers.length > 0 ? ` (${markers.join(", ")})` : "";
+    return `- ${folder}${suffix}`;
+  });
+  return [
+    `E-Pi project workspace: this session's directory belongs to the multi-repo project "${project.name ?? project.primaryRepo}". The project's repos are:`,
+    ...lines,
+    "Sibling repos are not under the session cwd — reach their files via absolute paths or ../<folder-name> relative paths. Call project_repos for a live view including git state.",
+  ].join("\n");
+}
+
+function projectsFilePath(): string | undefined {
+  return process.env.E_PI_USER_DATA ? join(process.env.E_PI_USER_DATA, PROJECTS_FILE_NAME) : undefined;
+}
+
+/** Fresh read of the project registry for `cwd`; never throws. */
+export async function loadProjectWorkspace(
+  cwd: string,
+): Promise<{ project: WorkspaceProject | undefined; note: string | undefined }> {
+  const filePath = projectsFilePath();
+  if (!filePath) return { project: undefined, note: undefined };
+  try {
+    const projects = parseProjects(await readFile(filePath, "utf8"));
+    const project = findProjectForCwd(projects, cwd);
+    return { project, note: buildWorkspaceNote(project, cwd) };
+  } catch {
+    return { project: undefined, note: undefined };
+  }
+}
+
+/** Existence + git branch for one repo folder; never throws. */
+function repoState(folder: string): { exists: boolean; isGit: boolean; branch?: string } {
+  if (!existsSync(folder)) return { exists: false, isGit: false };
+  const isGit = existsSync(join(folder, ".git"));
+  if (!isGit) return { exists: true, isGit };
+  try {
+    const branch = execFileSync("git", ["-C", folder, "rev-parse", "--abbrev-ref", "HEAD"], {
+      encoding: "utf8",
+      timeout: 1500,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return { exists: true, isGit, branch: branch || undefined };
+  } catch {
+    return { exists: true, isGit };
+  }
+}
+
+function registerProjectWorkspaceSupport(pi: ExtensionAPI): void {
+  pi.registerTool({
+    name: "project_repos",
+    label: "Project repos",
+    description:
+      "List the repos that make up the E-Pi project this session belongs to (multi-repo workspaces): paths, primary repo, per-repo existence and git branch. Use it when the user references another repo/folder of the project or after the project workspace changed in the editor.",
+    parameters: Type.Object({}),
+    promptSnippet: "project_repos - list the repos of the current E-Pi project workspace",
+    promptGuidelines: [
+      "Use project_repos when the user mentions another repo/folder of this project or right after the project workspace changes in the editor.",
+    ],
+    async execute(_toolCallId, _params, _signal, _onUpdate, ctx) {
+      const { project } = await loadProjectWorkspace(ctx.cwd);
+      if (!project) {
+        return {
+          content: [
+            { type: "text", text: "This session is not part of an E-Pi project (standalone folder)." },
+          ],
+          details: {},
+        };
+      }
+      const primary = normalizeWorkspacePath(project.primaryRepo);
+      const lines = project.folders.map((folder) => {
+        const state = repoState(folder);
+        const role = normalizeWorkspacePath(folder) === primary ? " (primary)" : "";
+        const git = state.isGit ? (state.branch ? ` branch=${state.branch}` : " git") : " no-git";
+        return `- ${folder}${role} [exists=${state.exists},${git}]`;
+      });
+      return {
+        content: [
+          {
+            type: "text",
+            text: [`Project: ${project.name ?? project.primaryRepo}`, `Repos (${project.folders.length}):`, ...lines].join("\n"),
+          },
+        ],
+        details: {},
+      };
+    },
+  });
+
+  // Re-read the registry on every turn so an editor change (adding or removing
+  // a repo folder) reaches old sessions on their next prompt — no restart.
+  pi.on("before_agent_start", async (event) => {
+    const { note } = await loadProjectWorkspace(event.systemPromptOptions.cwd);
+    if (!note) return;
+    return { systemPrompt: `${event.systemPrompt}\n\n${note}` };
+  });
+}
 
 /** Thinking levels pi exposes (mirrors pi's own ThinkingLevel union). */
 type ThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
@@ -367,6 +527,9 @@ const imageMime: Record<string, string> = {
 
 export default function ePiBridge(pi: ExtensionAPI): void {
   if (process.env.E_PI_TUI_OPTIMIZATIONS === "true") installResizeFrameMarkers();
+
+  // Multi-repo project awareness: system-prompt note + live repo tool.
+  registerProjectWorkspaceSupport(pi);
 
   pi.registerCommand("e-pi-theme", {
     description: "Sync the TUI theme with E-Pi's light/dark mode",

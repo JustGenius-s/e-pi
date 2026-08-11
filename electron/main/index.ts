@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { readFile, readdir, rm, writeFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { app, BrowserWindow, clipboard, dialog, ipcMain, nativeImage, nativeTheme, shell } from "electron";
@@ -253,6 +253,32 @@ function registerHandlers(): void {
   ipcMain.handle("app:open-path", async (_event, path: string) => {
     const error = await shell.openPath(path);
     if (error) throw new Error(error);
+  });
+
+  // Write a file into the OS temp dir (e.g. an exported diagram); returns
+  // the absolute path so the caller can open it. base64=true decodes the
+  // content as binary (PNG exports).
+  ipcMain.handle("app:write-temp-file", async (_event, fileName: string, content: string, base64?: boolean) => {
+    const target = join(app.getPath("temp"), basename(fileName));
+    if (base64) await writeFile(target, Buffer.from(content, "base64"));
+    else await writeFile(target, content, "utf8");
+    return target;
+  });
+
+  // Delete a temp file the renderer no longer needs. The check is hardened
+  // against traversal (`..`) and platform path separators: the path is
+  // resolved, must stay inside the temp dir, and must be one of our own
+  // exported temp files (mermaid-* prefix) — a compromised renderer can
+  // never delete arbitrary files.
+  ipcMain.handle("app:remove-temp-file", async (_event, path: string) => {
+    const tempDir = app.getPath("temp");
+    const resolved = resolve(path);
+    const relativeToTemp = relative(tempDir, resolved);
+    const insideTemp = !relativeToTemp.startsWith("..") && !isAbsolute(relativeToTemp);
+    if (!insideTemp || !basename(resolved).startsWith("mermaid-")) {
+      throw new Error("Refusing to remove file outside the temp dir");
+    }
+    await rm(resolved, { force: true });
   });
 
   // Reveal the item in Finder (macOS) / Explorer (Windows) / the file manager (Linux).

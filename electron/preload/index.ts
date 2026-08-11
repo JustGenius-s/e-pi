@@ -84,6 +84,9 @@ const api: EPiApi = {
     imageData: (filePath: string, maxSize?: number) =>
       ipcRenderer.invoke("app:image-data", filePath, maxSize) as Promise<string | null>,
     openPath: (path: string) => ipcRenderer.invoke("app:open-path", path) as Promise<void>,
+    writeTempFile: (fileName: string, content: string, base64?: boolean) =>
+      ipcRenderer.invoke("app:write-temp-file", fileName, content, base64) as Promise<string>,
+    removeTempFile: (path: string) => ipcRenderer.invoke("app:remove-temp-file", path) as Promise<void>,
     /** Reveal the item in Finder (macOS) / Explorer (Windows) / file manager (Linux). */
     showInFolder: (path: string) => ipcRenderer.invoke("app:show-in-folder", path) as Promise<void>,
     openWith: (appPath: string, filePath: string) =>

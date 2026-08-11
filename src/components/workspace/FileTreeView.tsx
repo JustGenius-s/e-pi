@@ -1,5 +1,5 @@
 import { ChevronDown, ChevronRight, Folder, FolderOpen, Loader2, RefreshCw, Search, X } from "lucide-react";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -23,6 +23,16 @@ import { IconButton } from "@/components/ui/IconButton";
 import { FileTypeIcon } from "@/components/workspace/FileTypeIcon";
 
 import { emitAttachFiles } from "../../lib/attachmentsBus";
+import {
+  displayHitPath,
+  expandPath,
+  findNodeIn,
+  refreshDirChildren,
+  rootIndexOf,
+  treeNode,
+  updateRoot,
+  type TreeNode,
+} from "../../lib/file-tree";
 import { formatBytes } from "../../lib/format";
 import { isWorkspacePreviewPath } from "../../lib/workspacePreviewKind";
 import type { AppDescriptor, FileEntry, MentionSearchEntry } from "../../types/contracts";
@@ -31,85 +41,36 @@ const SEARCH_DEBOUNCE_MS = 180;
 
 interface FileTreeViewProps {
   cwd: string;
+  /**
+   * Project repos (multi-repo workspaces): each repo becomes a collapsible
+   * root in the tree. Undefined/empty falls back to a single root at `cwd`.
+   */
+  roots?: string[];
   /** Open a workspace file through the preview/editor routing. */
   onOpenFile?: (path: string, imagePaths?: string[]) => void;
 }
 
-interface TreeNode extends FileEntry {
-  children?: TreeNode[];
-  expanded?: boolean;
-  loading?: boolean;
-  error?: string;
-}
-
-function treeNode(entry: FileEntry): TreeNode {
-  return { ...entry };
+/** A workspace-search hit; `path` is absolute (root-prefixed) for multi-repo trees. */
+interface SearchHit extends MentionSearchEntry {
+  root: string;
 }
 
 function isImagePath(path: string) {
   return /\.(avif|bmp|gif|ico|jpeg|jpg|png|svg|webp)$/i.test(path);
 }
 
-/** Immutably update the node at `path`: expand/collapse and optionally set children/loading/error. */
-function expandPath(
-  node: TreeNode | undefined,
-  path: string,
-  expanded: boolean,
-  loading = false,
-  children?: TreeNode[],
-  error?: string,
-): TreeNode | undefined {
-  if (!node) return node;
-  if (node.path === path) {
-    return {
-      ...node,
-      expanded,
-      loading,
-      error: error ?? node.error,
-      children: children ?? node.children,
-    };
-  }
-  if (!node.children) return node;
-  return {
-    ...node,
-    children: node.children.flatMap((child) => {
-      const updated = expandPath(child, path, expanded, loading, children, error);
-      return updated ? [updated] : [];
-    }),
-  };
-}
-
-/** Immutably replace the children of the directory at `path` (watcher refresh). */
-function refreshDirChildren(node: TreeNode | undefined, path: string, children: TreeNode[]): TreeNode | undefined {
-  if (!node) return node;
-  if (node.path === path) {
-    return { ...node, children, loading: false, error: undefined };
-  }
-  if (!node.children) return node;
-  return {
-    ...node,
-    children: node.children.flatMap((child) => {
-      const updated = refreshDirChildren(child, path, children);
-      return updated ? [updated] : [];
-    }),
-  };
-}
-
-/** Find a node by absolute path. */
-function findNode(node: TreeNode | undefined, path: string): TreeNode | undefined {
-  if (!node) return undefined;
-  if (node.path === path) return node;
-  if (!node.children) return undefined;
-  for (const child of node.children) {
-    const found = findNode(child, path);
-    if (found) return found;
-  }
-  return undefined;
-}
-
-/** Lazy directory tree with search, watcher-driven refresh and preview/editor opening. */
-export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: FileTreeViewProps) {
-  const [root, setRoot] = useState<TreeNode>();
+/** Lazy directory tree (single root, or one collapsible root per project repo) with search, watcher-driven refresh and preview/editor opening. */
+export const FileTreeView = memo(function FileTreeView({ cwd, roots, onOpenFile }: FileTreeViewProps) {
+  /** Multi-root only when the project contributes ≥2 repos; single root otherwise. */
+  const multiRoot = (roots?.length ?? 0) > 1;
+  const treeRoots = useMemo(() => {
+    const resolved = roots && roots.length > 0 ? roots : [cwd];
+    // The session's own repo comes first; the rest keep project order.
+    return [...resolved].sort((a, b) => (a === cwd ? -1 : b === cwd ? 1 : 0));
+  }, [roots, cwd]);
+  const rootSet = useMemo(() => new Set(treeRoots), [treeRoots]);
+  /** One root node per repo; all path operations resolve against their own root. */
+  const [rootsState, setRootsState] = useState<TreeNode[]>([]);
   const [rootError, setRootError] = useState<string>();
   const [apps, setApps] = useState<AppDescriptor[]>([]);
   /** .app bundle path for "Open"; undefined = system default. */
@@ -120,7 +81,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
   /** Search box state. */
   const [query, setQuery] = useState("");
   const [searching, setSearching] = useState(false);
-  const [searchResults, setSearchResults] = useState<MentionSearchEntry[]>([]);
+  const [searchResults, setSearchResults] = useState<SearchHit[]>([]);
   const [searchTruncated, setSearchTruncated] = useState(false);
   const [searchError, setSearchError] = useState<string>();
   const loadingPaths = useRef(new Set<string>());
@@ -186,35 +147,61 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
     async (path: string, onLoaded: (entries: FileEntry[]) => void, onError: (message: string) => void) => {
       loadingPaths.current.add(path);
       try {
-        onLoaded(await window.ePi.fs.listDir(cwd, path));
+        // The containing root is the workspace root for path validation.
+        const index = rootIndexOf(rootsState, path);
+        const rootPath = index >= 0 ? rootsState[index].path : treeRoots.find((r) => path.startsWith(`${r}/`)) ?? cwd;
+        onLoaded(await window.ePi.fs.listDir(rootPath, path));
       } catch (reason) {
         onError(reason instanceof Error ? reason.message : String(reason));
       } finally {
         loadingPaths.current.delete(path);
       }
     },
-    [cwd],
+    [cwd, rootsState, treeRoots],
   );
 
-  // Load the root directory.
+  // Load every root (one per repo; a single root for standalone folders).
   useEffect(() => {
-    setRoot(undefined);
+    let cancelled = false;
+    setRootsState([]);
     setRootError(undefined);
     setQuery("");
     setSearchResults([]);
-    void loadDir(
-      cwd,
-      (entries) =>
-        setRoot({
-          name: cwd.split("/").pop() || cwd,
-          path: cwd,
-          type: "dir",
-          expanded: true,
-          children: entries.map(treeNode),
+    void (async () => {
+      const loaded = await Promise.all(
+        treeRoots.map(async (rootPath) => {
+          const name = rootPath.split("/").pop() || rootPath;
+          try {
+            const entries = await window.ePi.fs.listDir(rootPath, rootPath);
+            return {
+              name,
+              path: rootPath,
+              type: "dir" as const,
+              expanded: true,
+              children: entries.map(treeNode),
+            } satisfies TreeNode;
+          } catch (reason) {
+            return {
+              name,
+              path: rootPath,
+              type: "dir" as const,
+              expanded: true,
+              error: reason instanceof Error ? reason.message : String(reason),
+            } satisfies TreeNode;
+          }
         }),
-      setRootError,
-    );
-  }, [cwd, loadDir]);
+      );
+      if (cancelled) return;
+      setRootsState(loaded);
+      // Surface a global error only when every root failed to load.
+      if (loaded.length > 0 && loaded.every((node) => node.error)) {
+        setRootError(loaded[0].error);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [treeRoots]);
 
   const toggle = (node: TreeNode) => {
     if (node.type === "file") return;
@@ -222,29 +209,36 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
       // Toggle: expand if collapsed, collapse if expanded; keep children
       // cached so reopening is instant.
       const willExpand = node.expanded !== true;
-      setRoot((current) => expandPath(current, node.path, willExpand));
+      setRootsState((current) => updateRoot(current, node.path, (root) => expandPath(root, node.path, willExpand)!));
       return;
     }
     // Lazy-load children.
-    setRoot((current) => expandPath(current, node.path, true, true));
+    setRootsState((current) => updateRoot(current, node.path, (root) => expandPath(root, node.path, true, true)!));
     void loadDir(
       node.path,
-      (entries) => setRoot((current) => expandPath(current, node.path, true, false, entries.map(treeNode))),
-      (message) => setRoot((current) => expandPath(current, node.path, true, false, undefined, message)),
+      (entries) =>
+        setRootsState((current) =>
+          updateRoot(current, node.path, (root) => expandPath(root, node.path, true, false, entries.map(treeNode))!),
+        ),
+      (message) =>
+        setRootsState((current) =>
+          updateRoot(current, node.path, (root) => expandPath(root, node.path, true, false, undefined, message)!),
+        ),
     );
   };
 
   /** Reload the directory at `path`, keeping the rest of the tree intact. */
   const reloadDir = useCallback(
     (path: string) => {
-      setRoot((current) => {
-        if (!current) return current;
-        const node = findNode(current, path);
+      setRootsState((current) => {
+        const node = findNodeIn(current, path);
         if (!node || node.type !== "dir" || node.expanded !== true) return current;
         void loadDir(
           path,
-          (entries) => setRoot((tree) => refreshDirChildren(tree, path, entries.map(treeNode))),
-          (_message) => setRoot((tree) => refreshDirChildren(tree, path, node.children ?? [])),
+          (entries) =>
+            setRootsState((tree) => updateRoot(tree, path, (root) => refreshDirChildren(root, path, entries.map(treeNode))!)),
+          (_message) =>
+            setRootsState((tree) => updateRoot(tree, path, (root) => refreshDirChildren(root, path, node.children ?? [])!)),
         );
         return current;
       });
@@ -255,24 +249,26 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
   // Watcher-driven refresh: reload expanded directories touched by changes.
   useEffect(() => {
     return window.ePi.workspace.onChanged((event) => {
-      if (event.cwd !== cwd) return;
+      // Only events inside one of the tree roots (each repo watches its own
+      // cwd, so multi-repo changes arrive with the repo that changed).
+      if (!rootSet.has(event.cwd)) return;
       const targets = new Set<string>();
       for (const changed of event.paths) {
         if (!changed) {
-          targets.add(cwd);
+          targets.add(event.cwd);
           continue;
         }
         const parts = changed.split("/");
         parts.pop(); // parent directory of the changed path
-        targets.add(parts.length > 0 ? `${cwd}/${parts.join("/")}` : cwd);
+        targets.add(parts.length > 0 ? `${event.cwd}/${parts.join("/")}` : event.cwd);
       }
       for (const target of targets) reloadDir(target);
     });
-  }, [cwd, reloadDir]);
+  }, [rootSet, reloadDir]);
 
-  // Debounced search over the workspace.
+  // Debounced search across all tree roots (multi-repo: one search per repo).
   useEffect(() => {
-    if (!query.trim() || !cwd) {
+    if (!query.trim()) {
       setSearchResults([]);
       setSearchError(undefined);
       setSearchTruncated(false);
@@ -281,36 +277,42 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
     let cancelled = false;
     const timer = window.setTimeout(() => {
       setSearching(true);
-      void window.ePi.fs
-        .mentionSearch(cwd, query.trim())
-        .then((result) => {
-          if (cancelled) return;
-          setSearchResults(result.entries);
-          setSearchTruncated(result.truncated);
-          setSearchError(undefined);
-        })
-        .catch((reason: unknown) => {
-          if (cancelled) return;
-          setSearchResults([]);
-          setSearchError(reason instanceof Error ? reason.message : String(reason));
-        })
-        .finally(() => {
-          if (!cancelled) setSearching(false);
-        });
+      void (async () => {
+        const trimmed = query.trim();
+        const hits: SearchHit[] = [];
+        let truncated = false;
+        let failures = 0;
+        for (const rootPath of treeRoots) {
+          try {
+            const result = await window.ePi.fs.mentionSearch(rootPath, trimmed);
+            for (const entry of result.entries) {
+              hits.push({ ...entry, path: `${rootPath}/${entry.path}`, root: rootPath });
+            }
+            truncated ||= result.truncated;
+          } catch {
+            failures += 1;
+          }
+        }
+        if (cancelled) return;
+        setSearchResults(hits);
+        setSearchTruncated(truncated);
+        setSearchError(failures === treeRoots.length ? `Search failed in ${failures} repo(s)` : undefined);
+        setSearching(false);
+      })();
     }, SEARCH_DEBOUNCE_MS);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [cwd, query]);
+  }, [treeRoots, query]);
 
   /** Reveal a search result: expand ancestors, select and (for files) open. */
-  const revealResult = (entry: MentionSearchEntry) => {
-    const absPath = `${cwd}/${entry.path}`;
+  const revealResult = (hit: SearchHit) => {
+    const absPath = hit.path;
     setQuery("");
     setSearchResults([]);
     setSelectedPath(absPath);
-    if (entry.kind === "file") {
+    if (hit.kind === "file") {
       if (onOpenFile) {
         onOpenFile(absPath);
         return;
@@ -318,22 +320,26 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
       void openFile(absPath);
       return;
     }
-    // Directory: expand the ancestor chain lazily.
-    const parts = entry.path.split("/");
+    // Directory: expand the ancestor chain lazily within its root.
+    const rel = absPath.startsWith(`${hit.root}/`) ? absPath.slice(hit.root.length + 1) : absPath;
+    const parts = rel.split("/");
     const chain: string[] = [];
     for (let index = 0; index < parts.length; index += 1) {
-      chain.push(`${cwd}/${parts.slice(0, index + 1).join("/")}`);
+      chain.push(`${hit.root}/${parts.slice(0, index + 1).join("/")}`);
     }
     void (async () => {
       for (const dir of chain) {
-        const node = findNode(root, dir);
+        const node = findNodeIn(rootsState, dir);
         if (node?.children) {
-          setRoot((current) => expandPath(current, dir, true));
+          setRootsState((current) => updateRoot(current, dir, (root) => expandPath(root, dir, true)!));
         } else {
-          setRoot((current) => expandPath(current, dir, true, true));
+          setRootsState((current) => updateRoot(current, dir, (root) => expandPath(root, dir, true, true)!));
           await loadDir(
             dir,
-            (entries) => setRoot((current) => expandPath(current, dir, true, false, entries.map(treeNode))),
+            (entries) =>
+              setRootsState((current) =>
+                updateRoot(current, dir, (root) => expandPath(root, dir, true, false, entries.map(treeNode))!),
+              ),
             () => undefined,
           );
         }
@@ -348,9 +354,9 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
         return;
       }
       // Sibling image paths for prev/next navigation in the preview overlay.
-      const node = findNode(root, path);
+      const node = findNodeIn(rootsState, path);
       const parentPath = path.slice(0, path.lastIndexOf("/"));
-      const parent = findNode(root, parentPath);
+      const parent = findNodeIn(rootsState, parentPath);
       const siblingImages =
         parent?.children
           ?.filter((child) => child.type === "file" && isImagePath(child.path))
@@ -358,7 +364,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
       onOpenFile(path, siblingImages.length > 0 ? siblingImages : undefined);
       void node;
     },
-    [onOpenFile, openFile, root],
+    [onOpenFile, openFile, rootsState],
   );
 
   const selectedAppName = apps.find((app) => app.id === openWithApp)?.name;
@@ -480,7 +486,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
         {depth === 0 ? (
           <div className="tool-file-root-row">
             {content}
-            {openWithSelector}
+            {multiRoot ? null : openWithSelector}
           </div>
         ) : (
           content
@@ -503,7 +509,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
         <input
           type="text"
           className="tool-file-search-input"
-          placeholder="Search workspace…"
+          placeholder={multiRoot ? "Search project repos…" : "Search workspace…"}
           value={query}
           onChange={(event) => setQuery(event.target.value)}
           onKeyDown={(event) => {
@@ -513,6 +519,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
             }
           }}
         />
+        {multiRoot ? openWithSelector : null}
         {searching ? (
           <Loader2 size={12} className="tool-file-search-spinner spin" />
         ) : query ? (
@@ -546,7 +553,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
                 onClick={() => revealResult(entry)}
               >
                 {entry.kind === "dir" ? <Folder size={12} /> : <FileTypeIcon name={entry.name} />}
-                <span className="min-w-0 flex-1 truncate text-left">{entry.path}</span>
+                <span className="min-w-0 flex-1 truncate text-left">{displayHitPath(entry.path, entry.root, multiRoot)}</span>
               </button>
             ))
           )}
@@ -554,8 +561,15 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
         </div>
       ) : null}
 
-      {root ? (
-        <div className="tool-file-tree">{renderTree(root, 0)}</div>
+      {rootsState.length > 0 ? (
+        <div className="tool-file-tree">
+          {rootsState.map((rootNode) => (
+            <div key={rootNode.path}>
+              {renderTree(rootNode, 0)}
+              {multiRoot ? <div className="tool-file-root-divider" /> : null}
+            </div>
+          ))}
+        </div>
       ) : (
         <div className="git-empty-panel">Loading…</div>
       )}
@@ -563,19 +577,37 @@ export const FileTreeView = memo(function FileTreeView({ cwd, onOpenFile }: File
         <IconButton
           label="Refresh"
           onClick={() => {
-            setRoot(undefined);
-            void loadDir(
-              cwd,
-              (entries) =>
-                setRoot({
-                  name: cwd.split("/").pop() || cwd,
-                  path: cwd,
-                  type: "dir",
-                  expanded: true,
-                  children: entries.map(treeNode),
+            void (async () => {
+              const loaded = await Promise.all(
+                treeRoots.map(async (rootPath) => {
+                  const name = rootPath.split("/").pop() || rootPath;
+                  try {
+                    const entries = await window.ePi.fs.listDir(rootPath, rootPath);
+                    return {
+                      name,
+                      path: rootPath,
+                      type: "dir" as const,
+                      expanded: true,
+                      children: entries.map(treeNode),
+                    } satisfies TreeNode;
+                  } catch (reason) {
+                    return {
+                      name,
+                      path: rootPath,
+                      type: "dir" as const,
+                      expanded: true,
+                      error: reason instanceof Error ? reason.message : String(reason),
+                    } satisfies TreeNode;
+                  }
                 }),
-              setRootError,
-            );
+              );
+              setRootsState(loaded);
+              if (loaded.length > 0 && loaded.every((node) => node.error)) {
+                setRootError(loaded[0].error);
+              } else {
+                setRootError(undefined);
+              }
+            })();
           }}
         >
           <RefreshCw size={13} />
