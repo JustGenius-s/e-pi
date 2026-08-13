@@ -1,4 +1,4 @@
-import { ArrowBigUpDash, CloudSync, Package, PackageCheck, PackagePlus, PackageX, Search } from "lucide-react";
+import { ArrowBigUpDash, CloudSync, PackageCheck, PackagePlus, PackageX, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import {
@@ -215,9 +215,9 @@ export function InstalledPackagesPane({
             <IconButton
               label="Update all packages"
               onClick={() => run(() => window.ePi.packages.update({ cwd }), "All packages updated")}
-              disabled={busy || packages.length === 0}
+              disabled={busy || updates.length === 0}
             >
-              <Package size={14} />
+              <ArrowBigUpDash size={14} />
             </IconButton>
           </div>
         </div>
