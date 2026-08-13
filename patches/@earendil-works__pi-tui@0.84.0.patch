@@ -19,7 +19,7 @@ index 8f0ef3bef6645d790932cbb9eaf4c2fdb2849b7c..3609908cd982ab3010b44caf4febecbe
          this.cachedWidth = undefined;
          this.cachedLines = undefined;
 diff --git a/dist/components/scroll-view.js b/dist/components/scroll-view.js
-index 5bfccd17b93dbe0fb00a18d75f94f46208917597..482515ef3aedba1dfdd863c0001eff006dccf1b6 100644
+index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f40607588f1f 100644
 --- a/dist/components/scroll-view.js
 +++ b/dist/components/scroll-view.js
 @@ -1,5 +1,40 @@
@@ -110,7 +110,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..482515ef3aedba1dfdd863c0001eff00
          if (changed) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
-@@ -133,6 +187,7 @@ export class ScrollView extends Container {
+@@ -133,25 +187,419 @@ export class ScrollView extends Container {
          const changed = this.currentScrollTop !== next || this.followingEnd !== this.followEnd;
          this.currentScrollTop = next;
          this.followingEnd = this.followEnd;
@@ -118,9 +118,143 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..482515ef3aedba1dfdd863c0001eff00
          if (changed) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
-@@ -149,9 +204,271 @@ export class ScrollView extends Container {
+         }
+     }
++    /**
++     * E-Pi: absolute row offsets for the given transcript blocks, using the
++     * latest width's height table (exact for hydrated blocks, estimated for
++     * the rest). Returns undefined when no virtual layout exists yet. Offsets
++     * drift as offscreen hydration corrects estimates, matching scrollTop.
++     * Used by the host app's session navigator.
++     */
++    getVirtualBlockOffsets(components) {
++        const layout = this.virtualLastLayout;
++        if (!layout)
++            return undefined;
++        const prefix = this.ensureVirtualPrefix(layout.state);
++        const offsets = new Map();
++        for (const component of components) {
++            const index = layout.state.blocks.indexOf(component);
++            if (index >= 0)
++                offsets.set(component, prefix[index]);
++        }
++        return offsets;
++    }
++    /**
++     * E-Pi: scroll so the given transcript block sits at the viewport top.
++     * Uses the component anchor so hydration above it keeps the block stable.
++     */
++    scrollToVirtualBlock(component) {
++        const layout = this.virtualLastLayout;
++        if (layout) {
++            const state = layout.state;
++            let index = state.blocks.indexOf(component);
++            if (index < 0) {
++                // After a width change the layout may hold a stale block list;
++                // re-flatten and retry against the current children.
++                const fresh = this.getAllBlocks?.();
++                if (!fresh)
++                    return false;
++                index = fresh.indexOf(component);
++                if (index < 0)
++                    return false;
++                state.blocks = fresh;
++            }
++            const prefix = this.ensureVirtualPrefix(state);
++            const target = Math.max(0, Math.min(Math.max(0, this.contentHeight - this.currentViewportHeight), prefix[index]));
++            this.animateScrollTo(target, component);
++            return true;
++        }
++        // Non-virtual transcript: resolve the row from the frame's render cache.
++        if (!this.ePiLastContext || !this.getAllBlocks)
++            return false;
++        const flat = this.getAllBlocks();
++        if (!flat?.includes(component))
++            return false;
++        // Re-derive the width each call: ePiLastContext is replaced on resize.
++        const contentWidth = this.getContentWidth(this.ePiLastContext.viewport.width);
++        let cursor = 0;
++        for (const block of flat) {
++            if (block === component)
++                break;
++            const lines = this.ePiLastContext.renderCache.get(block)?.get(Math.max(1, Math.floor(contentWidth)));
++            cursor += lines ? lines.length : 1;
++        }
++        this.animateScrollTo(cursor, component);
++        return true;
++    }
++    /**
++     * E-Pi: smooth-scroll to a target row, keeping the destination block
++     * anchored so hydration above it does not drift the final position.
++     * The interval only mutates currentScrollTop and calls requestRender();
++     * intermediate renders are skipped via ePiScrollAnimationActive so the
++     * animation cannot fight updateLayout's follow-end clamping.
++     */
++    animateScrollTo(target, anchorComponent) {
++        if (this.ePiScrollAnimation) {
++            clearInterval(this.ePiScrollAnimation.handle);
++            this.ePiScrollAnimation = undefined;
++        }
++        const start = this.followingEnd
++            ? Math.max(0, this.contentHeight - this.currentViewportHeight)
++            : this.currentScrollTop;
++        const distance = target - start;
++        if (distance === 0) {
++            this.followingEnd = false;
++            this.virtualAnchor = anchorComponent ? { component: anchorComponent, lineOffset: 0 } : undefined;
++            this.requestRenderCallback?.();
++            return;
++        }
++        const steps = Math.max(4, Math.min(24, Math.ceil(Math.abs(distance) / 12)));
++        let step = 0;
++        this.followingEnd = false;
++        this.ePiScrollAnimationActive = true;
++        const animation = {
++            handle: setInterval(() => {
++                step += 1;
++                if (this.ePiScrollAnimation !== animation)
++                    return;
++                if (step >= steps) {
++                    clearInterval(animation.handle);
++                    this.ePiScrollAnimation = undefined;
++                    this.ePiScrollAnimationActive = false;
++                    this.currentScrollTop = target;
++                    this.virtualAnchor = anchorComponent ? { component: anchorComponent, lineOffset: 0 } : undefined;
++                    this.markScrollbarActivity();
++                    this.requestRenderCallback?.();
++                    return;
++                }
++                // ease-out cubic
++                const t = step / steps;
++                const eased = 1 - Math.pow(1 - t, 3);
++                this.currentScrollTop = Math.max(0, Math.min(Math.max(0, this.contentHeight - this.currentViewportHeight), Math.round(start + distance * eased)));
++                this.virtualAnchor = undefined;
++                this.markScrollbarActivity();
++                this.requestRenderCallback?.();
++            }, 16),
++        };
++        animation.handle.unref?.();
++        this.ePiScrollAnimation = animation;
++    }
+     updateLayout(contentHeight, viewportHeight, requestRender) {
+         this.contentHeight = Math.max(0, Math.floor(contentHeight));
+         this.currentViewportHeight = Math.max(0, Math.floor(viewportHeight));
+         this.requestRenderCallback = requestRender;
++        // Skip intermediate animation frames: applying them would let the
++        // follow-end logic below yank currentScrollTop back to the tail.
++        // Keep requestRenderCallback current so the animation can still drive
++        // renders through the fresh callback.
++        if (this.ePiScrollAnimationActive)
++            return;
+         const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
+-        if (this.followingEnd)
++        if (this.followingEnd && !this.ePiScrollAnimation)
+             this.currentScrollTop = maxScrollTop;
+-        else
++        else if (!this.ePiScrollAnimation)
              this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
-         if (this.followEnd && this.currentScrollTop === maxScrollTop)
+-        if (this.followEnd && this.currentScrollTop === maxScrollTop)
++        if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.ePiScrollAnimation)
              this.followingEnd = true;
 +        if (this.followingEnd)
 +            this.virtualAnchor = undefined;
@@ -133,6 +267,14 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..482515ef3aedba1dfdd863c0001eff00
 +        const blocks = [];
 +        flattenVirtualBlocks(this.child, blocks);
 +        return blocks.length >= VIRTUALIZE_MIN_BLOCKS ? blocks : undefined;
++    }
++    /** E-Pi: flattened transcript blocks regardless of the virtualization threshold. */
++    getAllBlocks() {
++        if (this.child?.constructor !== Container)
++            return undefined;
++        const blocks = [];
++        flattenVirtualBlocks(this.child, blocks);
++        return blocks;
 +    }
 +    estimateHeight(component, width) {
 +        const hint = this.virtualHeightHints.get(component);
@@ -308,6 +450,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..482515ef3aedba1dfdd863c0001eff00
 +            return undefined;
 +        const state = this.getVirtualWidthState(width, blocks);
 +        this.virtualLastWidth = width;
++        this.virtualLastLayout = { state, startIndex: 0, endIndex: 0 };
 +        const rendered = new Map();
 +        let startIndex;
 +        let endIndex;
@@ -424,10 +567,10 @@ index 0d840239c41181e24dfc60237c3338081c6b48d5..4525f5f054d0e0e43444e99062eff543
          this.cachedWidth = undefined;
          this.cachedLines = undefined;
 diff --git a/dist/layout.js b/dist/layout.js
-index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..c785f7259c54ea26c158aace414866cf8829ec8c 100644
+index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..aa71eaa70c3ba913e6191024c6917cff9002a392 100644
 --- a/dist/layout.js
 +++ b/dist/layout.js
-@@ -70,15 +70,52 @@ function layoutComponent(context, component, x, y, width, height, clip) {
+@@ -70,15 +70,55 @@ function layoutComponent(context, component, x, y, width, height, clip) {
      if (node.type === "scroll") {
          const previousScrollTop = node.state.scrollTop;
          const contentWidth = node.state.getContentWidth(safeWidth);
@@ -479,11 +622,14 @@ index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..c785f7259c54ea26c158aace414866cf
          if (node.state.primary || !context.primaryScrollView)
              context.primaryScrollView = scrollView;
 -        const rect = { x, y, width: safeWidth, height: viewportHeight };
++        // E-Pi: expose the layout context so the navigator can resolve block
++        // offsets for non-virtual transcripts from the render cache.
++        scrollView.ePiLastContext = context;
 +        const rect = { x, y, width: safeWidth, height: resolvedViewportHeight };
          const childClip = intersect(clip, rect);
          const box = {
              component,
-@@ -237,7 +274,8 @@ function paintBox(box, screen, totalWidth) {
+@@ -237,7 +277,8 @@ function paintBox(box, screen, totalWidth) {
      for (const child of box.children)
          paintBox(child, screen, totalWidth);
      if (box.scrollView && box.scrollContentLines && box.scrollView.scrollTop > 0 && box.rect.height > 0) {
@@ -494,19 +640,21 @@ index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..c785f7259c54ea26c158aace414866cf
              const metadata = getKittyImageMetadata(imageLine);
              if (metadata) {
 diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
-index b80391d65a2b72542c4894684e9ebdcd051a7894..034f7ea8d7e931c216654c4bdd2860f92253f4bd 100644
+index b80391d65a2b72542c4894684e9ebdcd051a7894..6b0ca10bcd042bad844621a96b7537596f6e80ef 100644
 --- a/dist/tui-alt-screen.js
 +++ b/dist/tui-alt-screen.js
-@@ -16,6 +16,8 @@ const FOCUS_IN = "\x1b[I";
+@@ -16,6 +16,10 @@ const FOCUS_IN = "\x1b[I";
  const FOCUS_OUT = "\x1b[O";
  const BEGIN_SYNCHRONIZED_OUTPUT = "\x1b[?2026h";
  const END_SYNCHRONIZED_OUTPUT = "\x1b[?2026l";
 +const EPI_SCROLL_TO_BOTTOM_INPUT = "\x1b_e-pi:viewport:bottom\x1b\\";
++const EPI_SCROLL_TO_ROW_PATTERN = /^\x1b_e-pi:viewport:scrollto:v1;([1-9]\d{0,6})\x1b\\$/;
 +const EPI_VIEWPORT_OSC_PREFIX = "\x1b]6973;e-pi:viewport:v1;";
++const EPI_NAV_OSC_PREFIX = "\x1b]6974;e-pi:nav:v1;";
  const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
  const OSC133_PROMPT_START = /^\x1b\]133;A(?:\x07|\x1b\\)/;
  const PAGE_SCROLL_OVERLAP = 4;
-@@ -63,7 +65,7 @@ export class TuiAltScreen extends TuiBase {
+@@ -63,7 +67,7 @@ export class TuiAltScreen extends TuiBase {
          };
          this.implicitScrollView = new ScrollView(this.implicitDocument, { follow: "end", primary: true });
          this.flashes = new AltScreenFlashContainer(() => this.requestRender());
@@ -515,10 +663,20 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..034f7ea8d7e931c216654c4bdd2860f9
          this.mouseEnabled = options.mouse ?? true;
          this.openUrl = options.openUrl;
          this.addInputListener((data) => this.handleViewportInput(data));
-@@ -237,6 +239,22 @@ export class TuiAltScreen extends TuiBase {
+@@ -237,6 +241,32 @@ export class TuiAltScreen extends TuiBase {
          this.flashes.flash(message, durationMs);
      }
      handleViewportInput(data) {
++        const scrollToRow = EPI_SCROLL_TO_ROW_PATTERN.exec(data);
++        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true" && scrollToRow) {
++            // E-Pi session navigator: jump to a transcript row (user message block).
++            const row = Number.parseInt(scrollToRow[1], 10) - 1;
++            const scrollView = this.currentLayout?.primaryScrollView ?? this.implicitScrollView;
++            const target = this.ePiNavBlocks?.[row];
++            if (target && scrollView.scrollToVirtualBlock?.(target))
++                this.requestRender?.();
++            return { consume: true };
++        }
 +        const exactWheel = /^\x1b_e-pi:viewport:wheel:v1;(-?[1-9]\d{0,3});(0|[1-9]\d{0,4});(0|[1-9]\d{0,4})\x1b\\$/.exec(data);
 +        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true" && exactWheel) {
 +            this.routeWheel({
@@ -538,16 +696,63 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..034f7ea8d7e931c216654c4bdd2860f9
          if (data === FOCUS_OUT) {
              const hadActiveSelection = this.selectionPressActive;
              this.selectionPressActive = false;
-@@ -337,7 +355,7 @@ export class TuiAltScreen extends TuiBase {
+@@ -336,8 +366,54 @@ export class TuiAltScreen extends TuiBase {
+         }
          return undefined;
      }
++    /**
++     * E-Pi session navigator payload. InteractiveMode registers the ordered
++     * user-message transcript blocks (ePiNavBlocks) and their labels
++     * (ePiNavLabels); each frame reports the blocks' absolute rows so the
++     * host app can draw a clickable navigation rail. Deduped: the OSC is only
++     * re-emitted when the payload changes, including a final clear when the
++     * transcript no longer has user messages.
++     */
++    buildEPiNavOsc(primaryScrollView) {
++        const blocks = this.ePiNavBlocks;
++        const labels = this.ePiNavLabels;
++        let payload = "";
++        if (blocks && labels && blocks.length > 0) {
++            let offsets = primaryScrollView.getVirtualBlockOffsets?.(blocks);
++            if ((!offsets || offsets.size !== blocks.length) && primaryScrollView.getAllBlocks && primaryScrollView.ePiLastContext) {
++                // Non-virtual transcript: resolve rows from the frame's render cache.
++                const flat = primaryScrollView.getAllBlocks();
++                const context = primaryScrollView.ePiLastContext;
++                const contentWidth = primaryScrollView.getContentWidth(context.viewport.width);
++                offsets = new Map();
++                let cursor = 0;
++                for (const block of flat) {
++                    if (blocks.includes(block))
++                        offsets.set(block, cursor);
++                    const cached = context.renderCache.get(block);
++                    const lines = cached?.get(Math.max(1, Math.floor(contentWidth)));
++                    cursor += lines ? lines.length : 1;
++                }
++            }
++            if (offsets && offsets.size === blocks.length) {
++                const replies = this.ePiNavReplies;
++                const parts = [];
++                for (let index = 0; index < blocks.length; index += 1) {
++                    const row = offsets.get(blocks[index]);
++                    const label = (labels[index] ?? "").replace(/[\x00-\x1f\x7f;,|]/g, " ").slice(0, 80);
++                    const reply = (replies?.[index] ?? "").replace(/[\x00-\x1f\x7f;,|]/g, " ").slice(0, 160);
++                    parts.push(`${row},${label}|${reply}`);
++                }
++                payload = parts.join(";");
++            }
++        }
++        if (payload === this.ePiNavLastPayload)
++            return "";
++        this.ePiNavLastPayload = payload;
++        return `${EPI_NAV_OSC_PREFIX}${payload}\x07`;
++    }
      routeWheel(event) {
 -        let remaining = event.direction * this.wheelScrollLines;
 +        let remaining = event.lines ?? event.direction * this.wheelScrollLines;
          const seen = new Set();
          for (const scrollView of this.currentLayout ? getScrollViewsAt(this.currentLayout, event.x, event.y) : []) {
              seen.add(scrollView);
-@@ -757,6 +775,11 @@ export class TuiAltScreen extends TuiBase {
+@@ -757,6 +833,13 @@ export class TuiAltScreen extends TuiBase {
          else {
              buffer += "\x1b[?25l";
          }
@@ -556,6 +761,8 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..034f7ea8d7e931c216654c4bdd2860f9
 +        buffer += process.env.E_PI_TUI_OPTIMIZATIONS === "true"
 +            ? `${EPI_VIEWPORT_OSC_PREFIX}${primaryScrollView.scrollTop};${maxScrollTop};${primaryScrollView.isFollowingEnd ? 1 : 0}\x07`
 +            : "";
++        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true")
++            buffer += this.buildEPiNavOsc(primaryScrollView);
          buffer += END_SYNCHRONIZED_OUTPUT;
          this.terminal.write(buffer);
          this.previousScreen = screen;

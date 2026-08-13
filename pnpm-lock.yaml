@@ -6,10 +6,10 @@ settings:
 
 patchedDependencies:
   '@earendil-works/pi-coding-agent@0.84.0':
-    hash: 6f4645a561069d80f309071fb4f6449d2e1e923663aec3136d256c9d6a98aca7
+    hash: 424fcbc7d58a5958798d3afd1d08fe2f83992cc984e373c831a3cb9b16c3756b
     path: patches/@earendil-works__pi-coding-agent@0.84.0.patch
   '@earendil-works/pi-tui@0.84.0':
-    hash: 962524f83f3e8ed03377050a3182e76803c9f2b3fdec0b8bad48264f379ceddc
+    hash: 99b215e7768381e2080d54a6605f562db4f8c720c525216c6241cbef542e591f
     path: patches/@earendil-works__pi-tui@0.84.0.patch
 
 importers:
@@ -69,7 +69,7 @@ importers:
         version: 6.43.8
       '@earendil-works/pi-coding-agent':
         specifier: 0.84.0
-        version: 0.84.0(patch_hash=6f4645a561069d80f309071fb4f6449d2e1e923663aec3136d256c9d6a98aca7)(ws@8.21.2)(zod@4.4.3)
+        version: 0.84.0(patch_hash=424fcbc7d58a5958798d3afd1d08fe2f83992cc984e373c831a3cb9b16c3756b)(ws@8.21.2)(zod@4.4.3)
       material-file-icons:
         specifier: ^2.4.0
         version: 2.4.0
@@ -97,7 +97,7 @@ importers:
     devDependencies:
       '@earendil-works/pi-tui':
         specifier: 0.84.0
-        version: 0.84.0(patch_hash=962524f83f3e8ed03377050a3182e76803c9f2b3fdec0b8bad48264f379ceddc)
+        version: 0.84.0(patch_hash=99b215e7768381e2080d54a6605f562db4f8c720c525216c6241cbef542e591f)
       '@pierre/diffs':
         specifier: 1.2.11
         version: 1.2.11(@shikijs/themes@4.4.2)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -1026,7 +1026,6 @@ packages:
     engines: {node: ^22.20 || ^24.12 || >=25}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@noble/hashes@1.4.0':
     resolution: {integrity: sha512-V1JJ1WTRUqHHrOSh597hURcMqVKVGL/ea3kv0gSnEdsEZ0/+VyPghM1lMNGc00z7CIQorSvbKpuJkxvuHbvdbg==}
@@ -2092,7 +2091,6 @@ packages:
     resolution: {integrity: sha512-9kmDIvNZqdoHOBZgNtpTBeLWYO/LVipM3H/j62P8848/l/VPEQL6N3uxU9pvP1oZAsXyC2MEnFP3ovRjo7WYNQ==}
     cpu: [arm]
     os: [linux]
-    libc: [musl]
 
   '@rollup/rollup-linux-arm64-gnu@4.62.4':
     resolution: {integrity: sha512-CcnXHWnXg69g+DX5VWL3FHts3qMRN2uVEHX+BZvGLdd07/gXkn3ePjYtO1LDJvxkGKVHMclKBRa1QUTH+6toYQ==}
@@ -2152,7 +2150,6 @@ packages:
     resolution: {integrity: sha512-W69hukhZ3KKNRCaMIEzKvcFye42hh0FE1+YoYaf5+Ikacuftoco6yO/xouz0hc5d5W/s3yBro5jRiuEE/Q5vUw==}
     cpu: [x64]
     os: [linux]
-    libc: [glibc]
 
   '@rollup/rollup-linux-x64-musl@4.62.4':
     resolution: {integrity: sha512-qiXbGG2jkjXhzXpsFZSR2Xpb8DN/UaxYsbb/STbuR/6fpaDgRmmaq1B/LmtF2wQFOFOSsK2jdE0RZ3a0zHn4QA==}
@@ -5451,13 +5448,13 @@ snapshots:
     dependencies:
       '@earendil-works/pi-protocol': 0.84.0
 
-  '@earendil-works/pi-coding-agent@0.84.0(patch_hash=6f4645a561069d80f309071fb4f6449d2e1e923663aec3136d256c9d6a98aca7)(ws@8.21.2)(zod@4.4.3)':
+  '@earendil-works/pi-coding-agent@0.84.0(patch_hash=424fcbc7d58a5958798d3afd1d08fe2f83992cc984e373c831a3cb9b16c3756b)(ws@8.21.2)(zod@4.4.3)':
     dependencies:
       '@earendil-works/pi-agent-core': 0.84.0(ws@8.21.2)(zod@4.4.3)
       '@earendil-works/pi-ai': 0.84.0(ws@8.21.2)(zod@4.4.3)
       '@earendil-works/pi-client': 0.84.0
       '@earendil-works/pi-protocol': 0.84.0
-      '@earendil-works/pi-tui': 0.84.0(patch_hash=962524f83f3e8ed03377050a3182e76803c9f2b3fdec0b8bad48264f379ceddc)
+      '@earendil-works/pi-tui': 0.84.0(patch_hash=99b215e7768381e2080d54a6605f562db4f8c720c525216c6241cbef542e591f)
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
       cross-spawn: 7.0.6
@@ -5490,7 +5487,7 @@ snapshots:
 
   '@earendil-works/pi-telemetry@0.84.0': {}
 
-  '@earendil-works/pi-tui@0.84.0(patch_hash=962524f83f3e8ed03377050a3182e76803c9f2b3fdec0b8bad48264f379ceddc)':
+  '@earendil-works/pi-tui@0.84.0(patch_hash=99b215e7768381e2080d54a6605f562db4f8c720c525216c6241cbef542e591f)':
     dependencies:
       get-east-asian-width: 1.6.0
       marked: 18.0.5

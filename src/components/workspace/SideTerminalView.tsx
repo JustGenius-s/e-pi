@@ -398,33 +398,46 @@ export const SideTerminalView = memo(function SideTerminalView({ cwd }: SideTerm
         moveCaretToEnd();
         return;
       }
+      // Boundary passthrough (arrows/backspace/delete) only applies to a
+      // COLLAPSED caret. With an active selection the browser's native
+      // behaviour must run: checking only selectionStart misreads a selection
+      // that starts at 0 as "caret at line start", so Backspace got
+      // preventDefault'd and the forwarded \x7f hit the shell's empty line —
+      // the selection never deleted.
+      const selectionStart = textareaRef.current?.selectionStart ?? 0;
+      const selectionEnd = textareaRef.current?.selectionEnd ?? selectionStart;
+      const hasSelection = selectionStart !== selectionEnd;
+      if (event.key === "Backspace" || event.key === "Delete") {
+        // TEMP DIAGNOSTIC: confirm whether selection-delete reaches this code.
+        console.log("[side-term del]", {
+          key: event.key, selectionStart, selectionEnd, hasSelection,
+          value: editorStateRef.current.value, shellOwns: shellOwnsLineRef.current,
+          editorEmpty: editorStateRef.current.value.length === 0,
+        });
+      }
       if (event.key === "ArrowLeft" && bare) {
-        const caret = textareaRef.current?.selectionStart ?? 0;
-        if (caret === 0) {
+        if (!hasSelection && selectionStart === 0) {
           event.preventDefault();
           forward("\x1b[D");
           return;
         }
       }
       if (event.key === "ArrowRight" && bare) {
-        const caret = textareaRef.current?.selectionStart ?? 0;
-        if (caret >= editorStateRef.current.value.length) {
+        if (!hasSelection && selectionStart >= editorStateRef.current.value.length) {
           event.preventDefault();
           forward("\x1b[C");
           return;
         }
       }
       if (event.key === "Backspace" && bare) {
-        const caret = textareaRef.current?.selectionStart ?? 0;
-        if (caret === 0) {
+        if (!hasSelection && selectionStart === 0) {
           event.preventDefault();
           forward("\x7f");
           return;
         }
       }
       if (event.key === "Delete" && bare) {
-        const caret = textareaRef.current?.selectionStart ?? 0;
-        if (caret >= editorStateRef.current.value.length) {
+        if (!hasSelection && selectionStart >= editorStateRef.current.value.length) {
           event.preventDefault();
           forward("\x1b[3~");
           return;

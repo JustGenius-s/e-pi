@@ -14,17 +14,23 @@ import { createTerminalResizeOutputGate } from "../../lib/terminalResizeOutputGa
 import { createTerminalResizeVisualGuard } from "../../lib/terminalResizeVisualGuard";
 import {
   createPiViewportWheelBatcher,
+  decodePiNavPayload,
   decodePiViewportStatePayload,
+  encodePiScrollToRowInput,
   getPiViewportCell,
+  PI_NAV_OSC_ID,
   PI_SCROLL_TO_BOTTOM_INPUT,
   PI_VIEWPORT_OSC_ID,
   wheelDeltaToTerminalRows,
 } from "../../lib/terminalViewportProtocol";
+import type { PiNavEntry, PiViewportState } from "../../lib/terminalViewportProtocol";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
+import { fitToTerminalElement } from "../../lib/xtermFit";
 import { createResizeScheduler } from "../../lib/xtermResizeScheduler";
 import type { ResizeScheduler } from "../../lib/xtermResizeScheduler";
 import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 import { createViewportWatchdog } from "../../lib/xtermViewportWatchdog";
+import { MessageNavigator } from "./MessageNavigator";
 import { StockTerminalPanel } from "./StockTerminalPanel";
 
 export interface TerminalPanelProps {
@@ -112,6 +118,12 @@ function OptimizedTerminalPanel({
   const terminalRef = useRef<Terminal | null>(null);
   const scrollToBottomRef = useRef<() => void>(() => undefined);
   const [atBottom, setAtBottom] = useState(true);
+  const [navEntries, setNavEntries] = useState<PiNavEntry[]>([]);
+  const [navViewport, setNavViewport] = useState<PiViewportState>();
+  // Latest nav data in refs so the terminal effect can decide paint-time state
+  // without re-running the mount effect on every nav update.
+  const navEntriesRef = useRef<PiNavEntry[]>([]);
+  navEntriesRef.current = navEntries;
   const isDarkRef = useTerminalTheme(hostRef, terminalRef);
   // Keep the latest callback without re-running the mount effect.
   const onFirstPaintRef = useRef(onFirstPaint);
@@ -136,6 +148,7 @@ function OptimizedTerminalPanel({
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
+    fitToTerminalElement(fit, terminal);
     // GPU rendering keeps glyph work cheap during streaming and repeated local
     // reflows. The resize guard captures only while a resize transaction is
     // active, so normal output keeps WebGL's fast non-preserved back buffer.
@@ -213,6 +226,13 @@ function OptimizedTerminalPanel({
       if (!viewport) return false;
       authoritativeViewportSeen = true;
       setAtBottom(viewport.followingEnd);
+      setNavViewport(viewport);
+      return true;
+    });
+    const navOsc = terminal.parser.registerOscHandler(PI_NAV_OSC_ID, (data) => {
+      const entries = decodePiNavPayload(data);
+      if (!entries) return false;
+      setNavEntries(entries);
       return true;
     });
     const resizeVisualGuard = createTerminalResizeVisualGuard(terminal);
@@ -448,6 +468,11 @@ function OptimizedTerminalPanel({
       }
       if (state.generation <= bootGeneration) return;
       bootGeneration = state.generation;
+      // Stale nav data from the previous process generation must not paint:
+      // the fresh pi re-emits OSC 6974 only after its first rendered frames,
+      // and until then the old rows point at a transcript that no longer exists.
+      navEntriesRef.current = [];
+      setNavEntries([]);
       terminal.reset();
       window.ePi.runtime.resize(sessionKey, { cols: terminal.cols, rows: terminal.rows });
       // The repainted full frame after the pty resize re-syncs xterm's
@@ -516,6 +541,7 @@ function OptimizedTerminalPanel({
       terminalRef.current = null;
       osc52Clipboard.dispose();
       viewportStateOsc.dispose();
+      navOsc.dispose();
       webgl?.dispose();
       webLinks.dispose();
       resizeObserver.disconnect();
@@ -527,6 +553,14 @@ function OptimizedTerminalPanel({
     if (autoFocus) terminalRef.current?.focus();
   }, [autoFocus]);
 
+  // Expose the decoded nav state for debugging/diagnostics.
+  useEffect(() => {
+    console.debug(
+      `[message-nav] session=${sessionKey} entries=${navEntries.length}`,
+      navViewport ? `scrollTop=${navViewport.scrollTop} max=${navViewport.maxScrollTop}` : "no-viewport",
+    );
+  }, [navEntries, navViewport, sessionKey]);
+
   return (
     <>
       <div
@@ -534,6 +568,11 @@ function OptimizedTerminalPanel({
         data-bottom-inset={tuiOptimizationsEnabled ? "tui" : undefined}
         ref={hostRef}
         aria-label="Pi terminal output"
+      />
+      <MessageNavigator
+        entries={navEntries}
+        viewport={navViewport}
+        onJump={(row) => window.ePi.runtime.write(sessionKey, encodePiScrollToRowInput(row))}
       />
       <div className="terminal-bottom-fade" aria-hidden="true" />
       <button

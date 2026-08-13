@@ -4,7 +4,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   createPiViewportWheelBatcher,
+  decodePiNavPayload,
   decodePiViewportStatePayload,
+  encodePiScrollToRowInput,
   encodePiViewportWheelInput,
   encodePiViewportStatePayload,
   getPiViewportCell,
@@ -219,5 +221,73 @@ describe("Pi fullscreen viewport protocol", () => {
     expect(inner.scrollTop).toBe(11);
     expect(primary.scrollTop).toBe(22);
     tui.stop({ preserveScreen: true });
+  });
+
+  it("emits the navigator OSC and jumps to a user-message block on scrollto input", async () => {
+    const terminal = new FakeTerminal();
+    const document = new Container();
+    // Enough blocks for virtualization; mark two as user messages.
+    const blocks: SingleLineBlock[] = [];
+    for (let index = 0; index < 48; index += 1) {
+      const block = new SingleLineBlock(`line-${index}`);
+      blocks.push(block);
+      document.addChild(block);
+    }
+    const scrollView = new ScrollView(document, { follow: "end", primary: true });
+    const tui = new TuiAltScreen(terminal, false, undefined, { mouse: true });
+    tui.setLayoutRoot(scrollView);
+    // What InteractiveMode does for each UserMessageComponent.
+    (tui as unknown as { ePiNavBlocks: unknown[] }).ePiNavBlocks = [blocks[5], blocks[20]];
+    (tui as unknown as { ePiNavLabels: string[] }).ePiNavLabels = ["fix the login bug", "add a nav rail; with semicolons"];
+    tui.start();
+    tui.renderNow();
+
+    const navPayload = (output: string): string => {
+      const prefix = "\x1b]6974;";
+      const start = output.lastIndexOf(prefix);
+      const end = start < 0 ? -1 : output.indexOf("\x07", start + prefix.length);
+      if (start < 0 || end < 0) throw new Error("Pi nav OSC payload missing");
+      return output.slice(start + prefix.length, end);
+    };
+
+    const entries = decodePiNavPayload(navPayload(terminal.writes.at(-1)!));
+    expect(entries?.length).toBe(2);
+    expect(entries?.[0]).toMatchObject({ row: 1, label: "fix the login bug" });
+    // semicolons are replaced with spaces by the emitter
+    expect(entries?.[1]?.label).toBe("add a nav rail  with semicolons");
+    expect(entries![1]!.offset).toBeGreaterThan(entries![0]!.offset);
+
+    // Click row 2 → viewport smooth-scrolls to the second user message block.
+    terminal.emitInput(encodePiScrollToRowInput(2));
+    // The jump is animated (~16ms frames); drive renders until it settles.
+    for (let frame = 0; frame < 40 && scrollView.scrollTop !== entries![1]!.offset; frame += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 16));
+      tui.renderNow();
+    }
+    expect(scrollView.scrollTop).toBe(entries![1]!.offset);
+    expect(scrollView.isFollowingEnd).toBe(false);
+
+    // Unknown rows are consumed without moving.
+    terminal.emitInput(encodePiScrollToRowInput(9));
+    tui.renderNow();
+    expect(scrollView.scrollTop).toBe(entries![1]!.offset);
+
+    tui.stop({ preserveScreen: true });
+  });
+
+  it("encodes and decodes nav protocol primitives", () => {
+    expect(encodePiScrollToRowInput(1)).toBe("\x1b_e-pi:viewport:scrollto:v1;1\x1b\\");
+    expect(() => encodePiScrollToRowInput(0)).toThrow(RangeError);
+    expect(decodePiNavPayload("e-pi:nav:v1;")).toEqual([]);
+    expect(decodePiNavPayload("e-pi:nav:v1;12,hello world;40,second")).toEqual([
+      { row: 1, offset: 12, label: "hello world", reply: "" },
+      { row: 2, offset: 40, label: "second", reply: "" },
+    ]);
+    expect(decodePiNavPayload("e-pi:nav:v1;12,fix the bug|I checked the code and it;40,second|")).toEqual([
+      { row: 1, offset: 12, label: "fix the bug", reply: "I checked the code and it" },
+      { row: 2, offset: 40, label: "second", reply: "" },
+    ]);
+    expect(decodePiNavPayload("e-pi:nav:v1;nope,label")).toBeNull();
+    expect(decodePiNavPayload("other:payload")).toBeNull();
   });
 });

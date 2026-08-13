@@ -1,5 +1,5 @@
 diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
-index b7bc54e86d029953d3ace7362d5547538c1cbcdf..e047c0d98cfb4463d968697bc250bc0faa0966e8 100644
+index b7bc54e86d029953d3ace7362d5547538c1cbcdf..8e12984344ae193eba257e3274ee2e298167a741 100644
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
 @@ -606,7 +606,17 @@ export class InteractiveMode {
@@ -51,7 +51,7 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..e047c0d98cfb4463d968697bc250bc0f
          ]);
          this.mountInteractiveTui(this.renderer, [
              this.documentContainer,
-@@ -1653,6 +1667,9 @@ export class InteractiveMode {
+@@ -1653,6 +1669,9 @@ export class InteractiveMode {
              // Factory function - create component
              component = content(this.ui, theme);
          }
@@ -61,7 +61,7 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..e047c0d98cfb4463d968697bc250bc0f
          const targetMap = placement === "belowEditor" ? this.extensionWidgetsBelow : this.extensionWidgetsAbove;
          targetMap.set(key, component);
          this.renderWidgets();
-@@ -1706,7 +1723,8 @@ export class InteractiveMode {
+@@ -1706,7 +1725,8 @@ export class InteractiveMode {
      renderWidgets() {
          if (!this.widgetContainerAbove || !this.widgetContainerBelow)
              return;
@@ -71,3 +71,79 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..e047c0d98cfb4463d968697bc250bc0f
          this.renderWidgetContainer(this.widgetContainerBelow, this.extensionWidgetsBelow, false, false);
          this.ui.requestRender();
      }
+@@ -2828,11 +2848,13 @@ export class InteractiveMode {
+                             this.chatContainer.addChild(new Spacer(1));
+                             const userComponent = new UserMessageComponent(skillBlock.userMessage, this.getMarkdownThemeWithSettings(), this.outputPad, this.getMarkdownTransformers());
+                             this.chatContainer.addChild(userComponent);
++                            this.ePiRegisterUserMessageNav(userComponent, skillBlock.userMessage);
+                         }
+                     }
+                     else {
+                         const userComponent = new UserMessageComponent(textContent, this.getMarkdownThemeWithSettings(), this.outputPad, this.getMarkdownTransformers());
+                         this.chatContainer.addChild(userComponent);
++                        this.ePiRegisterUserMessageNav(userComponent, textContent);
+                     }
+                     if (options?.populateHistory) {
+                         this.editor.addToHistory?.(textContent);
+@@ -2978,6 +3000,7 @@ export class InteractiveMode {
+             populateHistory: true,
+         });
+         this.renderProjectTrustWarningIfNeeded();
++        this.ePiSyncNav();
+         // Show compaction info if session was compacted
+         const allEntries = this.sessionManager.getEntries();
+         const compactionCount = allEntries.filter((e) => e.type === "compaction").length;
+@@ -3010,6 +3033,53 @@ export class InteractiveMode {
+     rebuildChatFromMessages() {
+         this.chatContainer.clear();
+         this.renderSessionEntries(this.sessionManager.buildContextEntries());
++        this.ePiSyncNav();
++    }
++    // =========================================================================
++    // E-Pi session navigator
++    // =========================================================================
++    get ePiNavEnabled() {
++        return process.env.E_PI === "true" && process.env.E_PI_TUI_OPTIMIZATIONS === "true";
++    }
++    /** Register a rendered user message for the host app's navigation rail. */
++    ePiRegisterUserMessageNav(component, textContent) {
++        if (!this.ePiNavEnabled)
++            return;
++        if (!this.ePiNavComponents)
++            this.ePiNavComponents = [];
++        component.ePiNavUserMessage = true;
++        this.ePiNavComponents.push(component);
++        this.ePiSyncNav();
++    }
++    /** Re-collect the surviving user message blocks after any transcript change. */
++    ePiSyncNav() {
++        if (!this.ePiNavEnabled || !this.ePiNavComponents)
++            return;
++        const order = new Map(this.chatContainer.children.map((child, index) => [child, index]));
++        const survivors = this.ePiNavComponents
++            .filter((component) => order.has(component))
++            .sort((a, b) => order.get(a) - order.get(b));
++        this.ePiNavComponents = survivors;
++        if (this.renderer?.mode === "fullscreen") {
++            this.renderer.ePiNavBlocks = survivors;
++            this.renderer.ePiNavLabels = survivors.map((component) => component.text ?? "");
++            // AI reply preview under each user message title in the nav tooltip:
++            // first text content of the next AssistantMessageComponent.
++            this.renderer.ePiNavReplies = survivors.map((component) => {
++                const index = this.chatContainer.children.indexOf(component);
++                for (let next = index + 1; next < this.chatContainer.children.length; next += 1) {
++                    const sibling = this.chatContainer.children[next];
++                    if (sibling instanceof UserMessageComponent)
++                        break;
++                    if (sibling instanceof AssistantMessageComponent) {
++                        const message = sibling.lastMessage;
++                        const text = message?.content?.find((c) => c.type === "text" && c.text.trim())?.text ?? "";
++                        return text.replace(/\s+/g, " ").trim().slice(0, 160);
++                    }
++                }
++                return "";
++            });
++        }
+     }
+     // =========================================================================
+     // Key handlers
