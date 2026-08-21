@@ -174,7 +174,7 @@ function registerHandlers(): void {
   // Development-oriented macOS apps for the file tree's "open with" menus.
   ipcMain.handle("apps:list", async () => (process.platform === "darwin" ? listDevApps() : []));
 
-  // Apps declared to open the given file extension (fallback: dev apps).
+  // Apps ranked for the given file extension (Open With). Empty on non-macOS.
   ipcMain.handle("apps:for-extension", async (_event, extension: string) =>
     process.platform === "darwin" ? appsForExtension(extension) : [],
   );
@@ -525,10 +525,16 @@ function registerHandlers(): void {
     return state;
   });
   ipcMain.handle("models:custom-list", () => models.listCustomProviders());
-  ipcMain.handle("models:custom-save", (_event, request: CustomProviderRequest) => models.saveCustomProvider(request));
-  ipcMain.handle("models:custom-remove", (_event, request: CustomProviderRemoveRequest) =>
-    models.removeCustomProvider(request),
-  );
+  ipcMain.handle("models:custom-save", async (_event, request: CustomProviderRequest) => {
+    const list = await models.saveCustomProvider(request);
+    await reloadActiveRuntime();
+    return list;
+  });
+  ipcMain.handle("models:custom-remove", async (_event, request: CustomProviderRemoveRequest) => {
+    const list = await models.removeCustomProvider(request);
+    await reloadActiveRuntime();
+    return list;
+  });
   ipcMain.handle("models:fetch-models", (_event, request: FetchModelsRequest) => models.fetchModels(request));
   ipcMain.handle("models:catalog-meta", (_event, request: CatalogMetaRequest) => models.catalogMeta(request));
 

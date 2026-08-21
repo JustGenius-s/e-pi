@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import { useImeComposition } from "../../hooks/useImeComposition";
-import { pathBaseName, sessionTitle } from "../../lib/format";
+import { pathBaseName, SESSION_NAME_MAX_LENGTH, sessionTitle } from "../../lib/format";
 import type { AppInfo, ArchivedSessionSummary, Project, SessionSummary } from "../../types/contracts";
 import { ArchivedChatsSettings } from "./ArchivedChatsSettings";
 import { CommonSettings } from "./CommonSettings";
@@ -54,7 +54,9 @@ function RenameInput({ value, onChange, onCommit }: RenameInputProps) {
     <Input
       autoFocus
       value={value}
+      maxLength={SESSION_NAME_MAX_LENGTH}
       aria-label="Session name"
+      placeholder="Short name for this session"
       // Focus lands with the whole name selected: typing replaces it, and
       // this covers every entry point (context menu, double-click) since
       // they all open the same dialog.
@@ -148,7 +150,9 @@ export function AppDialogs({
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Rename session</DialogTitle>
-            <DialogDescription>Give this session a short name so it is easier to find later.</DialogDescription>
+            <DialogDescription>
+              Give this session a short name (max {SESSION_NAME_MAX_LENGTH} characters).
+            </DialogDescription>
           </DialogHeader>
           <RenameInput value={renameName} onChange={onRenameNameChange} onCommit={onCommitRename} />
           <DialogFooter>

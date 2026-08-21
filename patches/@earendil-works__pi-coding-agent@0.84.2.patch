@@ -1,8 +1,7 @@
 diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive/interactive-mode.js
-index b7bc54e86d029953d3ace7362d5547538c1cbcdf..8e12984344ae193eba257e3274ee2e298167a741 100644
 --- a/dist/modes/interactive/interactive-mode.js
 +++ b/dist/modes/interactive/interactive-mode.js
-@@ -606,7 +606,17 @@ export class InteractiveMode {
+@@ -637,7 +637,17 @@
          }
          // Keep one component tree and remount it when changing renderers.
          this.renderWidgets(); // Initialize with default spacer
@@ -21,7 +20,7 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..8e12984344ae193eba257e3274ee2e29
              follow: "end",
              primary: true,
              overscroll: "chain",
-@@ -614,16 +624,22 @@ export class InteractiveMode {
+@@ -645,16 +655,22 @@
              scrollbarStyle: (text) => theme.bg("scrollbarThumb", text),
          });
          const dock = new TuiLayouts.VStack([
@@ -51,7 +50,7 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..8e12984344ae193eba257e3274ee2e29
          ]);
          this.mountInteractiveTui(this.renderer, [
              this.documentContainer,
-@@ -1653,6 +1669,9 @@ export class InteractiveMode {
+@@ -1697,6 +1713,9 @@
              // Factory function - create component
              component = content(this.ui, theme);
          }
@@ -61,7 +60,7 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..8e12984344ae193eba257e3274ee2e29
          const targetMap = placement === "belowEditor" ? this.extensionWidgetsBelow : this.extensionWidgetsAbove;
          targetMap.set(key, component);
          this.renderWidgets();
-@@ -1706,7 +1725,8 @@ export class InteractiveMode {
+@@ -1750,7 +1769,8 @@
      renderWidgets() {
          if (!this.widgetContainerAbove || !this.widgetContainerBelow)
              return;
@@ -71,7 +70,7 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..8e12984344ae193eba257e3274ee2e29
          this.renderWidgetContainer(this.widgetContainerBelow, this.extensionWidgetsBelow, false, false);
          this.ui.requestRender();
      }
-@@ -2828,11 +2848,13 @@ export class InteractiveMode {
+@@ -2905,11 +2925,13 @@
                              this.chatContainer.addChild(new Spacer(1));
                              const userComponent = new UserMessageComponent(skillBlock.userMessage, this.getMarkdownThemeWithSettings(), this.outputPad, this.getMarkdownTransformers());
                              this.chatContainer.addChild(userComponent);
@@ -85,7 +84,7 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..8e12984344ae193eba257e3274ee2e29
                      }
                      if (options?.populateHistory) {
                          this.editor.addToHistory?.(textContent);
-@@ -2978,6 +3000,7 @@ export class InteractiveMode {
+@@ -3055,6 +3077,7 @@
              populateHistory: true,
          });
          this.renderProjectTrustWarningIfNeeded();
@@ -93,7 +92,7 @@ index b7bc54e86d029953d3ace7362d5547538c1cbcdf..8e12984344ae193eba257e3274ee2e29
          // Show compaction info if session was compacted
          const allEntries = this.sessionManager.getEntries();
          const compactionCount = allEntries.filter((e) => e.type === "compaction").length;
-@@ -3010,6 +3033,53 @@ export class InteractiveMode {
+@@ -3087,6 +3110,53 @@
      rebuildChatFromMessages() {
          this.chatContainer.clear();
          this.renderSessionEntries(this.sessionManager.buildContextEntries());

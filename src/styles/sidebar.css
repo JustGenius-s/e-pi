@@ -202,6 +202,7 @@
 .session-menu-button {
   min-height: 38px;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  user-select: none;
 }
 
 /* Activity glyph before the session title: 3x3 dot-matrix canvas shared by
@@ -217,21 +218,21 @@
 }
 
 .session-activity.working {
-  color: #8db9e8;
+  color: var(--info);
 }
 
 /* Blocked on the human (permission prompt / ask-user): amber “?”. The turn
    is NOT finished — the agent paused and resumes once the user interacts. */
 .session-activity.waiting {
-  color: var(--warning, #eab308);
+  color: var(--warning);
 }
 
 .session-activity.done {
-  color: #74d6a5;
+  color: var(--success);
 }
 
 .session-activity.error {
-  color: #ed8b92;
+  color: var(--destructive);
 }
 
 .session-activity-matrix {
@@ -1018,7 +1019,7 @@ body.pinned-section-resizing {
 }
 
 .project-info-primary {
-  color: var(--warning, #eab308);
+  color: var(--warning);
   flex: 0 0 auto;
 }
 

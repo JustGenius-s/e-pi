@@ -360,7 +360,7 @@
 }
 
 .git-file-stage-untracked {
-  color: var(--chart-2);
+  color: var(--info);
 }
 
 .git-file-stage-conflict {
@@ -592,7 +592,7 @@
 }
 
 .git-busy {
-  color: var(--chart-2);
+  color: var(--info);
   animation: git-busy-pulse 1.2s ease-in-out infinite;
 }
 
@@ -703,7 +703,7 @@
 }
 
 .git-tree-card-status-untracked {
-  color: var(--chart-2);
+  color: var(--info);
 }
 
 .git-tree-card-status-conflict {
@@ -1274,7 +1274,7 @@
   height: 6px;
   flex: 0 0 auto;
   border-radius: 50%;
-  background: var(--warning, #eab308);
+  background: var(--warning);
 }
 
 /* --- Review repo switcher (multi-repo projects) --- */
@@ -1304,7 +1304,7 @@
 }
 
 .git-review-repo-star {
-  color: var(--warning, #eab308);
+  color: var(--warning);
   flex: 0 0 auto;
 }
 

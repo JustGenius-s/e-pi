@@ -162,6 +162,31 @@ export function markProviderDefaultHidden(providerId: string): void {
   persist({ ...current, defaultHiddenProviders: [...current.defaultHiddenProviders, providerId] });
 }
 
+/**
+ * After saving a custom provider: mark it default-hidden (unlisted models
+ * stay off) and explicitly show `shownRefs` (newly added models, plus any
+ * that were already visible). One persist so the list does not flicker
+ * all-off then back on.
+ */
+export function revealModelsForProvider(providerId: string, shownRefs: string[]): void {
+  const current = getModelVisibility();
+  const shown = new Set(current.shown);
+  const hidden = new Set(current.hidden);
+  for (const ref of shownRefs) {
+    if (!isModelRef(ref)) continue;
+    shown.add(ref);
+    hidden.delete(ref);
+  }
+  const defaultHiddenProviders = current.defaultHiddenProviders.includes(providerId)
+    ? current.defaultHiddenProviders
+    : [...current.defaultHiddenProviders, providerId];
+  persist({
+    shown: [...shown],
+    hidden: [...hidden],
+    defaultHiddenProviders,
+  });
+}
+
 /** Subscribe to visibility changes; returns an unsubscribe function. */
 export function subscribeModelVisibility(listener: () => void): () => void {
   listeners.add(listener);

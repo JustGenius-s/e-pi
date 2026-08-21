@@ -19,11 +19,11 @@ type PlannedFileChange = {
 
 const PATCH_SPECS = [
   {
-    names: ["pi-coding-agent.patch", "@earendil-works__pi-coding-agent@0.84.0.patch"],
+    names: ["pi-coding-agent.patch", "@earendil-works__pi-coding-agent@0.84.2.patch", "@earendil-works__pi-coding-agent@0.84.0.patch"],
     target: (packageDir: string) => packageDir,
   },
   {
-    names: ["pi-tui.patch", "@earendil-works__pi-tui@0.84.0.patch"],
+    names: ["pi-tui.patch", "@earendil-works__pi-tui@0.84.2.patch", "@earendil-works__pi-tui@0.84.0.patch"],
     target: (packageDir: string) => resolvePiTuiDir(packageDir),
   },
 ] as const;

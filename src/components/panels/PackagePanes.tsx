@@ -12,6 +12,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/input";
@@ -212,13 +213,19 @@ export function InstalledPackagesPane({
             >
               <CloudSync size={14} className={checkingUpdates ? "package-spin" : undefined} />
             </IconButton>
-            <IconButton
-              label="Update all packages"
-              onClick={() => run(() => window.ePi.packages.update({ cwd }), "All packages updated")}
-              disabled={busy || updates.length === 0}
-            >
-              <ArrowBigUpDash size={14} />
-            </IconButton>
+            {updates.length > 0 ? (
+              <Button
+                className="package-update-all"
+                variant="outline"
+                size="xs"
+                title="Update all packages"
+                onClick={() => run(() => window.ePi.packages.update({ cwd }), "All packages updated")}
+                disabled={busy || checkingUpdates}
+              >
+                <ArrowBigUpDash size={13} />
+                Update all
+              </Button>
+            ) : null}
           </div>
         </div>
         {busy && progress ? (
@@ -256,17 +263,17 @@ export function InstalledPackagesPane({
                     </HoverCardContent>
                   </HoverCard>
                   <div className="package-row-side">
+                    {updateInfo ? (
+                      <IconButton
+                        className="package-update-action"
+                        label={`Update ${item.source}${updateInfo.latestVersion ? ` to v${updateInfo.latestVersion}` : ""}`}
+                        onClick={() => run(() => window.ePi.packages.update({ cwd, source: item.source }))}
+                        disabled={busy}
+                      >
+                        <ArrowBigUpDash size={14} />
+                      </IconButton>
+                    ) : null}
                     <div className="package-row-actions">
-                      {updateInfo ? (
-                        <IconButton
-                          className="package-update-action"
-                          label={`Update ${item.source}${updateInfo.latestVersion ? ` to v${updateInfo.latestVersion}` : ""}`}
-                          onClick={() => run(() => window.ePi.packages.update({ cwd, source: item.source }))}
-                          disabled={busy}
-                        >
-                          <ArrowBigUpDash size={14} />
-                        </IconButton>
-                      ) : null}
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
                           <IconButton label={`Remove ${item.source}`} disabled={busy}>

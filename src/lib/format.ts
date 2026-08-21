@@ -36,12 +36,43 @@ export function formatTokens(count: number): string {
   return `${Math.round(count / 1_000_000)}M`;
 }
 
+/** Backend hard limit for `sessions.rename` (keep UI in sync). */
+export const SESSION_NAME_MAX_LENGTH = 20;
+
+/** Soft cap for titles shown in the sidebar, header, tooltips, and dialogs. */
+export const SESSION_TITLE_DISPLAY_MAX = 80;
+
 /** Anything carrying a session name/first message (active or archived). */
 export type SessionTitleSource = Pick<SessionSummary, "name" | "firstMessage">;
 
-/** Display title: the custom name, else the first user message, else a placeholder. */
+/** Collapse whitespace and optionally truncate with an ellipsis. */
+export function truncateText(value: string, max: number): string {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return "";
+  if (normalized.length <= max) return normalized;
+  return `${normalized.slice(0, max).trimEnd()}…`;
+}
+
+/**
+ * Display title: the custom name, else a short first-message preview, else a
+ * placeholder. First messages can be multi-KB pastes (skills, manifests); never
+ * surface those raw in the chrome.
+ */
 export function sessionTitle(session: SessionTitleSource): string {
-  return session.name || session.firstMessage || "New session";
+  const named = session.name?.trim();
+  if (named) return named;
+  return truncateText(session.firstMessage ?? "", SESSION_TITLE_DISPLAY_MAX) || "New session";
+}
+
+/**
+ * Initial value for the rename dialog. Prefers the custom name; otherwise a
+ * whitespace-normalized slice of the first message — never the full paste.
+ */
+export function sessionRenameDraft(session: SessionTitleSource): string {
+  const named = session.name?.trim();
+  if (named) return named.slice(0, SESSION_NAME_MAX_LENGTH);
+  const draft = (session.firstMessage ?? "").replace(/\s+/g, " ").trim();
+  return draft.slice(0, SESSION_NAME_MAX_LENGTH);
 }
 
 export function formatBytes(bytes: number): string {

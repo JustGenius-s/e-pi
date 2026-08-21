@@ -16,6 +16,8 @@ export function createXterm({ isDark, background, fontSize, lineHeight, scrollba
     convertEol: true,
     cursorBlink: false,
     cursorStyle: "bar",
+    // Bold + ANSI yellow must not jump to the bright palette (highlighter on white).
+    drawBoldTextInBrightColors: false,
     fontFamily: '"SFMono-Regular", "Cascadia Code", "JetBrains Mono", monospace',
     fontSize,
     lineHeight,

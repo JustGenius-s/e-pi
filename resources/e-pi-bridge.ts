@@ -1,12 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, watch, type FSWatcher } from "node:fs";
 import { readFile, rename, rm, writeFile } from "node:fs/promises";
-import { basename, dirname, join } from "node:path";
-
-import { Type } from "typebox";
+import { basename, dirname, extname, isAbsolute, join, resolve } from "node:path";
 
 import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
 import type { Component } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
 
 // ── Project workspace support ──────────────────────────────────────────────
 //
@@ -130,9 +129,7 @@ function registerProjectWorkspaceSupport(pi: ExtensionAPI): void {
       const { project } = await loadProjectWorkspace(ctx.cwd);
       if (!project) {
         return {
-          content: [
-            { type: "text", text: "This session is not part of an E-Pi project (standalone folder)." },
-          ],
+          content: [{ type: "text", text: "This session is not part of an E-Pi project (standalone folder)." }],
           details: {},
         };
       }
@@ -147,7 +144,11 @@ function registerProjectWorkspaceSupport(pi: ExtensionAPI): void {
         content: [
           {
             type: "text",
-            text: [`Project: ${project.name ?? project.primaryRepo}`, `Repos (${project.folders.length}):`, ...lines].join("\n"),
+            text: [
+              `Project: ${project.name ?? project.primaryRepo}`,
+              `Repos (${project.folders.length}):`,
+              ...lines,
+            ].join("\n"),
           },
         ],
         details: {},
@@ -491,6 +492,62 @@ function questionDetail(input: unknown): string | undefined {
 
 /** The extension context of the live session; undefined between sessions. */
 let activeCtx: ExtensionContext | undefined;
+let themeHintWatcher: FSWatcher | undefined;
+
+export function readThemeHint(raw: string): "light" | "dark" | undefined {
+  const value = raw.trim();
+  return value === "light" || value === "dark" ? value : undefined;
+}
+
+/** Switch TUI colors without persisting the name into settings.json. */
+export function applyEpiTheme(
+  ui: { getTheme?(name: string): unknown; setTheme?(theme: unknown): unknown },
+  appearance: "light" | "dark",
+): void {
+  const themeName = appearance === "light" ? "e-pi-light" : "dark";
+  const instance = ui.getTheme?.(themeName);
+  if (instance) ui.setTheme?.(instance);
+  else ui.setTheme?.(themeName);
+}
+
+export function applyThemeFromHint(
+  ui: { getTheme?(name: string): unknown; setTheme?(theme: unknown): unknown },
+  hintRaw?: string,
+): void {
+  if (hintRaw !== undefined) {
+    const hint = readThemeHint(hintRaw);
+    if (hint) applyEpiTheme(ui, hint);
+    return;
+  }
+  const userData = process.env.E_PI_USER_DATA?.trim();
+  if (!userData) return;
+  try {
+    applyThemeFromHint(ui, readFileSync(join(userData, "theme-hint.json"), "utf8"));
+  } catch {
+    // Hint not written yet — COLORFGBG still applies at spawn.
+  }
+}
+
+function stopThemeHintWatcher(): void {
+  themeHintWatcher?.close();
+  themeHintWatcher = undefined;
+}
+
+function startThemeHintWatcher(): void {
+  stopThemeHintWatcher();
+  const userData = process.env.E_PI_USER_DATA?.trim();
+  if (!userData || !existsSync(userData)) return;
+  try {
+    themeHintWatcher = watch(userData, (_event, filename) => {
+      if (filename !== null && filename !== "theme-hint.json") return;
+      if (!activeCtx?.ui) return;
+      applyThemeFromHint(activeCtx.ui);
+    });
+    themeHintWatcher.unref?.();
+  } catch {
+    // Directory watch unsupported; /e-pi-theme remains the fallback.
+  }
+}
 
 /**
  * ReportState for event-bus listeners, which receive no ExtensionContext.
@@ -499,6 +556,100 @@ let activeCtx: ExtensionContext | undefined;
 function reportStateFromActive(patch: Partial<BridgeState>): void {
   if (!activeCtx) return;
   reportState(activeCtx, patch);
+}
+
+/** Trailing lines kept when a custom dialog is taller than the dock (options + hint). */
+export const CUSTOM_DIALOG_ACTION_LINES = 7;
+/** Fraction of the terminal kept for the transcript above a docked custom dialog. */
+export const CUSTOM_DIALOG_TRANSCRIPT_RESERVE = 0.4;
+
+/**
+ * Cap a custom dialog so it cannot eat the whole session. Tiny terminals keep
+ * almost everything; otherwise ~40% of the rows stay as transcript.
+ */
+export function dialogMaxHeight(termRows: number): number {
+  const rows = Math.max(0, Math.floor(termRows));
+  const reserved = Math.max(4, Math.floor(rows * CUSTOM_DIALOG_TRANSCRIPT_RESERVE));
+  return Math.max(1, rows - reserved);
+}
+
+/**
+ * Clip a tall dialog from the middle so the title stays at the top and the
+ * action rows (Yes / No / …) stay at the bottom. Pi's layout otherwise clips
+ * from the bottom, hiding Approve/Reject when the command preview wraps.
+ */
+export function clipDialogKeepingActions(
+  lines: string[],
+  maxHeight: number,
+  actionLines = CUSTOM_DIALOG_ACTION_LINES,
+): string[] {
+  if (maxHeight <= 0) return [];
+  if (lines.length <= maxHeight) return lines;
+  const footer = Math.min(actionLines, Math.max(1, maxHeight - 2));
+  const header = Math.max(1, maxHeight - footer - 1);
+  return [...lines.slice(0, header), "…", ...lines.slice(lines.length - footer)];
+}
+
+type CustomDialogComponent = Component & {
+  dispose?(): void;
+  handleInput?(data: string): void;
+  focused?: boolean;
+  wantsKeyRelease?: boolean;
+};
+
+/** Forwarding wrapper: cap height, keep keyboard focus on the inner dialog. */
+class CappedCustomDialog implements Component {
+  focused = false;
+
+  constructor(
+    private readonly inner: CustomDialogComponent,
+    private readonly termRows: () => number,
+  ) {}
+
+  get wantsKeyRelease(): boolean | undefined {
+    return this.inner.wantsKeyRelease;
+  }
+
+  render(width: number): string[] {
+    return clipDialogKeepingActions(this.inner.render(width), dialogMaxHeight(this.termRows()));
+  }
+
+  handleInput(data: string): void {
+    this.inner.handleInput?.(data);
+  }
+
+  invalidate(): void {
+    this.inner.invalidate();
+  }
+
+  dispose(): void {
+    this.inner.dispose?.();
+  }
+}
+
+function capCustomDialog(component: CustomDialogComponent, termRows: () => number): CustomDialogComponent {
+  return new CappedCustomDialog(component, termRows);
+}
+
+/**
+ * Pi-permission-system (and other extensions) render `ctx.ui.custom` into the
+ * editor dock. E-Pi's dock minSize is 0, so a long bash preview grows until it
+ * covers the transcript and the action rows are clipped. Wrap every custom UI
+ * so height is capped and Yes/No stay visible.
+ */
+function installCappedCustomDialogs(ctx: ExtensionContext): void {
+  const ui = ctx.ui;
+  const originalCustom = ui.custom.bind(ui);
+  try {
+    ui.custom = ((factory, options) =>
+      originalCustom((tui, theme, keybindings, done) => {
+        const created = factory(tui, theme, keybindings, done);
+        const cap = (component: CustomDialogComponent) => capCustomDialog(component, () => tui.terminal.rows);
+        return created instanceof Promise ? created.then(cap) : cap(created);
+      }, options)) as typeof ui.custom;
+  } catch {
+    // ui.custom is non-writable (frozen context) — leave the stock dialog alone.
+  }
 }
 
 class EmptyComponent implements Component {
@@ -534,16 +685,7 @@ export default function ePiBridge(pi: ExtensionAPI): void {
   pi.registerCommand("e-pi-theme", {
     description: "Sync the TUI theme with E-Pi's light/dark mode",
     handler: async (args, ctx) => {
-      // "e-pi-light" is E-Pi's contrast-fixed light theme (muted warm
-      // tones tuned for white backgrounds); "dark" is pi's built-in dark.
-      const themeName = args?.trim() === "light" ? "e-pi-light" : "dark";
-      // setTheme(name) persists the name into settings.json, clobbering the
-      // auto "e-pi-light/dark" setting. Switching by Theme instance keeps
-      // the hot switch in memory only, so future launches still resolve the
-      // variant from COLORFGBG.
-      const themeInstance = ctx.ui.getTheme(themeName);
-      if (themeInstance) ctx.ui.setTheme(themeInstance);
-      else ctx.ui.setTheme(themeName);
+      applyEpiTheme(ctx.ui, args?.trim() === "light" ? "light" : "dark");
     },
   });
 
@@ -566,28 +708,48 @@ export default function ePiBridge(pi: ExtensionAPI): void {
         images: string[];
       };
       const prompt = payload.text || "Review the attached images.";
+      // Read each image independently: a missing/unreadable file (e.g. the
+      // temp paste file was cleaned up before send) must not silently drop
+      // the whole message — report the failure in the text instead.
       const imageBlocks: Array<{ type: "image"; data: string; mimeType: string }> = [];
-      const imageNames: string[] = [];
-      for (const path of payload.images) {
-        const data = (await readFile(path)).toString("base64");
-        const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
-        imageBlocks.push({ type: "image", data, mimeType: imageMime[ext] || "image/png" });
-        imageNames.push(path.slice(path.lastIndexOf("/") + 1));
+      const markers: string[] = [];
+      const failures: string[] = [];
+      for (const imagePath of payload.images) {
+        const resolved = isAbsolute(imagePath) ? imagePath : resolve(imagePath);
+        try {
+          const data = (await readFile(resolved)).toString("base64");
+          const ext = extname(resolved).toLowerCase();
+          imageBlocks.push({ type: "image", data, mimeType: imageMime[ext] || "image/png" });
+          // Full path, not basename: paste files live in OS temp as
+          // e-pi-paste-*.png. A basename-only label makes read tools open
+          // {cwd}/{filename} and ENOENT.
+          markers.push(`Attached image: ${resolved}`);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : String(error);
+          failures.push(`[Image attachment could not be read: ${resolved} (${reason})]`);
+        }
       }
       // The TUI renders user messages as text only (image blocks are sent to
-      // the model but never drawn), so surface the attachment names in the
-      // visible text too.
-      const label = imageNames.length > 0 ? `\n\n[Attached images: ${imageNames.join(", ")}]` : "";
+      // the model but never drawn), so surface each attachment as a path
+      // marker — same idea as the composer's "Attached path:" lines.
+      const text = [...markers, prompt, ...failures].filter(Boolean).join("\n");
       const content: Array<{ type: "text"; text: string } | { type: "image"; data: string; mimeType: string }> = [
-        { type: "text", text: `${prompt}${label}` },
+        { type: "text", text },
         ...imageBlocks,
       ];
-      pi.sendUserMessage(content);
+      // Images cannot use the TUI paste path. sendUserMessage without deliverAs
+      // throws "Agent is already processing" while a turn is in flight; Pi then
+      // labels the failure Extension "<runtime>" error. followUp is ignored when
+      // idle and queues the image message until the current turn settles.
+      pi.sendUserMessage(content, { deliverAs: "followUp" });
     },
   });
 
   pi.on("session_start", (_event, ctx) => {
     activeCtx = ctx;
+    applyThemeFromHint(ctx.ui);
+    startThemeHintWatcher();
+    installCappedCustomDialogs(ctx);
     ctx.ui.setHeader(() => new EmptyComponent());
     ctx.ui.setFooter(() => new EmptyComponent());
     ctx.ui.setEditorComponent((tui, theme, keybindings) => new DesktopEditor(tui, theme, keybindings));
@@ -733,6 +895,7 @@ export default function ePiBridge(pi: ExtensionAPI): void {
 
   pi.on("session_shutdown", (_event, ctx) => {
     stopWorkingTimer();
+    stopThemeHintWatcher();
     activeCtx = undefined;
     void clearActivity(ctx);
   });

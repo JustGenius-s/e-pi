@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-import { markProviderDefaultHidden } from "../../lib/modelVisibility";
+import { emitModelsCatalogChanged } from "../../lib/modelsCatalogBus";
+import { isModelHidden, markProviderDefaultHidden, revealModelsForProvider } from "../../lib/modelVisibility";
 import type {
   CustomProviderConfig,
   ModelAuthType,
@@ -37,6 +38,20 @@ function draftFromProvider(existing?: CustomProviderConfig): CustomProviderDraft
     : { id: "", name: "", baseUrl: "", api: "openai-completions", apiKey: "", authHeader: false, models: [{ id: "" }] };
 }
 
+/** The slug written to models.json may differ from the draft id (new providers). */
+function resolveSavedProviderId(
+  draft: CustomProviderDraft,
+  saved: CustomProviderConfig[],
+  previousIds: Set<string>,
+): string | undefined {
+  const requested = draft.id.trim();
+  if (requested && saved.some((provider) => provider.id === requested)) return requested;
+  const baseUrl = draft.baseUrl.trim();
+  const name = draft.name.trim();
+  const matches = saved.filter((provider) => provider.baseUrl === baseUrl && (provider.name ?? "") === name);
+  return matches.find((provider) => !previousIds.has(provider.id))?.id ?? matches[0]?.id;
+}
+
 export function ModelSettings({ active }: ModelSettingsProps) {
   const [state, setState] = useState<ModelManagementState>();
   const [selectedProviderId, setSelectedProviderId] = useState<string>();
@@ -56,13 +71,13 @@ export function ModelSettings({ active }: ModelSettingsProps) {
     return providers.find((provider) => provider.configured)?.id ?? providers[0]?.id;
   };
 
-  const loadState = async () => {
-    setLoading(true);
+  const loadState = async (options?: { silent?: boolean; selectProviderId?: string }) => {
+    if (!options?.silent) setLoading(true);
     setError(undefined);
     try {
       const next = await window.ePi.models.list();
       setState(next);
-      setSelectedProviderId((current) => selectProvider(next.providers, current));
+      setSelectedProviderId((current) => selectProvider(next.providers, options?.selectProviderId ?? current));
       try {
         setCustomProviders(await window.ePi.models.customList());
       } catch {
@@ -71,7 +86,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
-      setLoading(false);
+      if (!options?.silent) setLoading(false);
     }
   };
 
@@ -132,6 +147,7 @@ export function ModelSettings({ active }: ModelSettingsProps) {
         // turns them on (default-hidden); idempotent, never overrides an
         // explicit choice.
         markProviderDefaultHidden(target.id);
+        emitModelsCatalogChanged();
       })
       .catch((reason: unknown) => {
         const message = errorMessage(reason);
@@ -185,15 +201,30 @@ export function ModelSettings({ active }: ModelSettingsProps) {
       ...customDraft,
       models: customDraft.models.filter((model) => model.id.trim().length > 0),
     };
+    const previousIds = new Set(
+      customProviders.find((item) => item.id === cleanDraft.id)?.models.map((model) => model.id) ?? [],
+    );
+    const previousProviderIds = new Set(customProviders.map((item) => item.id));
     setBusyCustom(true);
     setError(undefined);
     try {
-      await window.ePi.models.customSave({ provider: cleanDraft });
+      const saved = await window.ePi.models.customSave({ provider: cleanDraft });
+      const savedId = resolveSavedProviderId(cleanDraft, saved, previousProviderIds);
       setCustomDraft(undefined);
-      await loadState();
-      // Custom providers are key-configured too: models stay hidden until
-      // the user turns them on.
-      markProviderDefaultHidden(cleanDraft.id);
+      if (savedId) {
+        // Newly added models (and any that were already visible) stay on;
+        // everything else of this provider stays off. Avoids the previous
+        // "save → mark default-hidden → every switch flips off" behavior.
+        const shownRefs = cleanDraft.models
+          .filter((model) => {
+            const id = model.id.trim();
+            return !previousIds.has(id) || !isModelHidden(`${savedId}/${id}`);
+          })
+          .map((model) => `${savedId}/${model.id.trim()}`);
+        revealModelsForProvider(savedId, shownRefs);
+      }
+      await loadState({ silent: true, selectProviderId: savedId });
+      emitModelsCatalogChanged();
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -208,7 +239,8 @@ export function ModelSettings({ active }: ModelSettingsProps) {
     try {
       await window.ePi.models.customRemove({ providerId: customRemove });
       setCustomRemove(undefined);
-      await loadState();
+      await loadState({ silent: true });
+      emitModelsCatalogChanged();
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {

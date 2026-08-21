@@ -24,6 +24,7 @@ import {
   wheelDeltaToTerminalRows,
 } from "../../lib/terminalViewportProtocol";
 import type { PiNavEntry, PiViewportState } from "../../lib/terminalViewportProtocol";
+import { ansiForDocumentTheme } from "../../lib/tui-ansi-light";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 import { fitToTerminalElement } from "../../lib/xtermFit";
 import { createResizeScheduler } from "../../lib/xtermResizeScheduler";
@@ -320,7 +321,8 @@ function OptimizedTerminalPanel({
     let pendingWrites = 0;
     const flushWrite = (data: string, onWritten?: () => void) => {
       pendingWrites += 1;
-      terminal.write(data, () => {
+      const payload = ansiForDocumentTheme(data);
+      terminal.write(payload, () => {
         pendingWrites -= 1;
         onWritten?.();
         settleInitialWrites();

@@ -44,6 +44,7 @@ import {
   serializeComposerReferences,
   type ComposerReference,
 } from "../../lib/mentionReferences";
+import { onModelsCatalogChanged } from "../../lib/modelsCatalogBus";
 import type { QuickCommand } from "../../lib/quickCommands";
 import {
   createTextAttachment,
@@ -247,10 +248,14 @@ export const Composer = memo(function Composer({
   } = useComposerCommands({ cwd, text, skills, textareaRef });
 
   useEffect(() => {
-    window.ePi.models
-      .list()
-      .then(setModels)
-      .catch(() => undefined);
+    const load = () => {
+      window.ePi.models
+        .list()
+        .then(setModels)
+        .catch(() => undefined);
+    };
+    load();
+    return onModelsCatalogChanged(load);
   }, [cwd]);
 
   useEffect(() => {

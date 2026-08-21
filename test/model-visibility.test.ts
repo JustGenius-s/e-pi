@@ -7,6 +7,7 @@ import {
   MODEL_VISIBILITY_STORAGE_KEY,
   normalizeModelVisibility,
   resetModelVisibilityCache,
+  revealModelsForProvider,
   setModelHidden,
   setModelVisibilityStorage,
   subscribeModelVisibility,
@@ -48,6 +49,25 @@ describe("modelVisibility", () => {
     expect(isModelHidden("openai/gpt-5-mini")).toBe(true);
     // Other providers are unaffected.
     expect(isModelHidden("anthropic/claude")).toBe(false);
+  });
+
+  it("reveals chosen models when marking a provider default-hidden", () => {
+    setModelVisibilityStorage(mockStorage);
+    setModelHidden("openai/gpt-5", false);
+    revealModelsForProvider("openai", ["openai/gpt-5", "openai/new-model"]);
+    expect(isModelHidden("openai/gpt-5")).toBe(false);
+    expect(isModelHidden("openai/new-model")).toBe(false);
+    expect(isModelHidden("openai/gpt-5-mini")).toBe(true);
+  });
+
+  it("does not close previously visible models when revealing new ones", () => {
+    setModelVisibilityStorage(mockStorage);
+    // Visible by default (provider not yet marked).
+    expect(isModelHidden("custom/old")).toBe(false);
+    revealModelsForProvider("custom", ["custom/old", "custom/new"]);
+    expect(isModelHidden("custom/old")).toBe(false);
+    expect(isModelHidden("custom/new")).toBe(false);
+    expect(isModelHidden("custom/other")).toBe(true);
   });
 
   it("showing one model overrides the provider default; hiding it again wins", () => {

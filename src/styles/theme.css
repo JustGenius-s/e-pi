@@ -18,11 +18,15 @@
   --border: oklch(0.92 0 0);
   --input: oklch(0.94 0 0);
   --ring: oklch(0 0 0);
-  --chart-1: oklch(0.81 0.17 75.35);
-  --chart-2: oklch(0.55 0.22 264.53);
+  /* Warn gold: dark enough to read on white (the 0.81 yellow is dark-only). */
+  --chart-1: oklch(0.6 0.16 75.35);
+  --chart-2: oklch(0.48 0.15 255);
   --chart-3: oklch(0.72 0 0);
   --chart-4: oklch(0.92 0 0);
   --chart-5: oklch(0.56 0 0);
+  --warning: oklch(0.6 0.16 75.35);
+  --success: oklch(0.5 0.13 155);
+  --info: oklch(0.48 0.15 255);
   --sidebar: oklch(0.99 0 0);
   /* OpenCode/pierre diff palette (light). */
   --diff-add-base: #0dbe4e;
@@ -110,6 +114,9 @@
   --chart-3: oklch(0.56 0 0);
   --chart-4: oklch(0.44 0 0);
   --chart-5: oklch(0.92 0 0);
+  --warning: oklch(0.81 0.17 75.35);
+  --success: #74d6a5;
+  --info: #8db9e8;
   --sidebar: oklch(0.18 0 0);
   /* OpenCode/pierre diff palette (dark). */
   --diff-add-base: #5ecc71;
@@ -167,6 +174,9 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-warning: var(--warning);
+  --color-success: var(--success);
+  --color-info: var(--info);
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);

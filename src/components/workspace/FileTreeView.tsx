@@ -59,7 +59,10 @@ function isImagePath(path: string) {
   return /\.(avif|bmp|gif|ico|jpeg|jpg|png|svg|webp)$/i.test(path);
 }
 
-/** Lazy directory tree (single root, or one collapsible root per project repo) with search, watcher-driven refresh and preview/editor opening. */
+/**
+ * Lazy directory tree (single root, or one collapsible root per project repo) with search, watcher-driven refresh and
+ * preview/editor opening.
+ */
 export const FileTreeView = memo(function FileTreeView({ cwd, roots, onOpenFile }: FileTreeViewProps) {
   /** Multi-root only when the project contributes ≥2 repos; single root otherwise. */
   const multiRoot = (roots?.length ?? 0) > 1;
@@ -149,7 +152,7 @@ export const FileTreeView = memo(function FileTreeView({ cwd, roots, onOpenFile 
       try {
         // The containing root is the workspace root for path validation.
         const index = rootIndexOf(rootsState, path);
-        const rootPath = index >= 0 ? rootsState[index].path : treeRoots.find((r) => path.startsWith(`${r}/`)) ?? cwd;
+        const rootPath = index >= 0 ? rootsState[index].path : (treeRoots.find((r) => path.startsWith(`${r}/`)) ?? cwd);
         onLoaded(await window.ePi.fs.listDir(rootPath, path));
       } catch (reason) {
         onError(reason instanceof Error ? reason.message : String(reason));
@@ -236,9 +239,13 @@ export const FileTreeView = memo(function FileTreeView({ cwd, roots, onOpenFile 
         void loadDir(
           path,
           (entries) =>
-            setRootsState((tree) => updateRoot(tree, path, (root) => refreshDirChildren(root, path, entries.map(treeNode))!)),
+            setRootsState((tree) =>
+              updateRoot(tree, path, (root) => refreshDirChildren(root, path, entries.map(treeNode))!),
+            ),
           (_message) =>
-            setRootsState((tree) => updateRoot(tree, path, (root) => refreshDirChildren(root, path, node.children ?? [])!)),
+            setRootsState((tree) =>
+              updateRoot(tree, path, (root) => refreshDirChildren(root, path, node.children ?? [])!),
+            ),
         );
         return current;
       });
@@ -553,7 +560,9 @@ export const FileTreeView = memo(function FileTreeView({ cwd, roots, onOpenFile 
                 onClick={() => revealResult(entry)}
               >
                 {entry.kind === "dir" ? <Folder size={12} /> : <FileTypeIcon name={entry.name} />}
-                <span className="min-w-0 flex-1 truncate text-left">{displayHitPath(entry.path, entry.root, multiRoot)}</span>
+                <span className="min-w-0 flex-1 truncate text-left">
+                  {displayHitPath(entry.path, entry.root, multiRoot)}
+                </span>
               </button>
             ))
           )}
@@ -621,10 +630,17 @@ function appIcon(app: AppDescriptor) {
   return app.icon ? <img src={app.icon} className="tool-file-app-icon" alt="" /> : null;
 }
 
+function fileExtension(filePath: string): string {
+  const base = filePath.split(/[\\/]/).pop() ?? "";
+  const dot = base.lastIndexOf(".");
+  if (dot <= 0 || dot === base.length - 1) return "";
+  return base.slice(dot + 1);
+}
+
 /**
- * "Open With" submenu. Asks the main process which apps are declared to open
- * the file's extension; falls back to the dev-app list while loading or on
- * failure. "Other…" opens the native macOS app picker.
+ * "Open With" submenu. Asks the main process for apps ranked for this file
+ * type (Preview for png, Keynote/WPS for ppt, editors for css). Falls back to
+ * the header's app list while loading or on failure. "Other…" opens the native picker.
  */
 function OpenWithSubMenu({
   filePath,
@@ -641,7 +657,7 @@ function OpenWithSubMenu({
 
   useEffect(() => {
     let cancelled = false;
-    const extension = filePath.split(".").pop() ?? "";
+    const extension = fileExtension(filePath);
     void window.ePi.app
       .appsForExtension(extension)
       .then((result) => {

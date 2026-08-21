@@ -1,8 +1,7 @@
 diff --git a/dist/components/markdown.js b/dist/components/markdown.js
-index 8f0ef3bef6645d790932cbb9eaf4c2fdb2849b7c..3609908cd982ab3010b44caf4febecbef9baab5b 100644
 --- a/dist/components/markdown.js
 +++ b/dist/components/markdown.js
-@@ -159,6 +159,7 @@ export class Markdown {
+@@ -159,6 +159,7 @@
      cachedText;
      cachedWidth;
      cachedLines;
@@ -10,7 +9,7 @@ index 8f0ef3bef6645d790932cbb9eaf4c2fdb2849b7c..3609908cd982ab3010b44caf4febecbe
      constructor(text, paddingX, paddingY, theme, defaultTextStyle, options) {
          this.text = text;
          this.paddingX = paddingX;
-@@ -172,6 +173,7 @@ export class Markdown {
+@@ -172,6 +173,7 @@
          this.invalidate();
      }
      invalidate() {
@@ -19,7 +18,6 @@ index 8f0ef3bef6645d790932cbb9eaf4c2fdb2849b7c..3609908cd982ab3010b44caf4febecbe
          this.cachedWidth = undefined;
          this.cachedLines = undefined;
 diff --git a/dist/components/scroll-view.js b/dist/components/scroll-view.js
-index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f40607588f1f 100644
 --- a/dist/components/scroll-view.js
 +++ b/dist/components/scroll-view.js
 @@ -1,5 +1,40 @@
@@ -63,7 +61,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
  export class ScrollView extends Container {
      child;
      followEnd;
-@@ -16,6 +51,13 @@ export class ScrollView extends Container {
+@@ -17,6 +52,13 @@
      transientScrollbarVisible = false;
      scrollbarActive = false;
      scrollbarHideTimer;
@@ -77,32 +75,32 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
      constructor(component, options = {}) {
          super();
          if (options.axis !== undefined && options.axis !== "vertical") {
-@@ -99,6 +141,10 @@ export class ScrollView extends Container {
-             return;
+@@ -107,6 +149,10 @@
          this.currentScrollTop = next;
-         this.followingEnd = this.followEnd && next === maxScrollTop;
+         this.followingEnd = nextFollowingEnd;
+         this.followSuppressedAtEnd = nextFollowSuppressedAtEnd;
 +        if (this.followingEnd)
 +            this.virtualAnchor = undefined;
 +        else
 +            this.captureVirtualAnchor(next);
-         this.markScrollbarActivity();
-         this.requestRenderCallback?.();
-     }
-@@ -112,6 +158,10 @@ export class ScrollView extends Container {
-         const moved = next - start;
-         this.currentScrollTop = next;
-         this.followingEnd = this.followEnd && next === maxScrollTop;
-+        if (this.followingEnd)
-+            this.virtualAnchor = undefined;
-+        else
-+            this.captureVirtualAnchor(next);
-         if (moved !== 0) {
+         if (moved)
              this.markScrollbarActivity();
-             this.requestRenderCallback?.();
-@@ -123,6 +173,10 @@ export class ScrollView extends Container {
-             this.followingEnd !== (this.followEnd && this.contentHeight <= this.currentViewportHeight);
+         this.requestRenderCallback?.();
+@@ -123,6 +169,10 @@
+         this.currentScrollTop = next;
+         this.followingEnd = this.followEnd && next === maxScrollTop;
+         this.followSuppressedAtEnd = false;
++        if (this.followingEnd)
++            this.virtualAnchor = undefined;
++        else
++            this.captureVirtualAnchor(next);
+         if (moved !== 0)
+             this.markScrollbarActivity();
+         if (moved !== 0 || this.followingEnd !== wasFollowingEnd)
+@@ -135,6 +185,10 @@
          this.currentScrollTop = 0;
          this.followingEnd = this.followEnd && this.contentHeight <= this.currentViewportHeight;
+         this.followSuppressedAtEnd = false;
 +        if (this.followingEnd)
 +            this.virtualAnchor = undefined;
 +        else
@@ -110,22 +108,20 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
          if (changed) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
-@@ -133,25 +187,419 @@ export class ScrollView extends Container {
-         const changed = this.currentScrollTop !== next || this.followingEnd !== this.followEnd;
+@@ -146,27 +200,408 @@
          this.currentScrollTop = next;
          this.followingEnd = this.followEnd;
+         this.followSuppressedAtEnd = false;
 +        this.virtualAnchor = undefined;
          if (changed) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
          }
-     }
++    }
 +    /**
 +     * E-Pi: absolute row offsets for the given transcript blocks, using the
 +     * latest width's height table (exact for hydrated blocks, estimated for
-+     * the rest). Returns undefined when no virtual layout exists yet. Offsets
-+     * drift as offscreen hydration corrects estimates, matching scrollTop.
-+     * Used by the host app's session navigator.
++     * the rest). Returns undefined when no virtual layout exists yet.
 +     */
 +    getVirtualBlockOffsets(components) {
 +        const layout = this.virtualLastLayout;
@@ -150,8 +146,6 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +            const state = layout.state;
 +            let index = state.blocks.indexOf(component);
 +            if (index < 0) {
-+                // After a width change the layout may hold a stale block list;
-+                // re-flatten and retry against the current children.
 +                const fresh = this.getAllBlocks?.();
 +                if (!fresh)
 +                    return false;
@@ -165,13 +159,11 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +            this.animateScrollTo(target, component);
 +            return true;
 +        }
-+        // Non-virtual transcript: resolve the row from the frame's render cache.
 +        if (!this.ePiLastContext || !this.getAllBlocks)
 +            return false;
 +        const flat = this.getAllBlocks();
 +        if (!flat?.includes(component))
 +            return false;
-+        // Re-derive the width each call: ePiLastContext is replaced on resize.
 +        const contentWidth = this.getContentWidth(this.ePiLastContext.viewport.width);
 +        let cursor = 0;
 +        for (const block of flat) {
@@ -186,9 +178,6 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +    /**
 +     * E-Pi: smooth-scroll to a target row, keeping the destination block
 +     * anchored so hydration above it does not drift the final position.
-+     * The interval only mutates currentScrollTop and calls requestRender();
-+     * intermediate renders are skipped via ePiScrollAnimationActive so the
-+     * animation cannot fight updateLayout's follow-end clamping.
 +     */
 +    animateScrollTo(target, anchorComponent) {
 +        if (this.ePiScrollAnimation) {
@@ -201,6 +190,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +        const distance = target - start;
 +        if (distance === 0) {
 +            this.followingEnd = false;
++            this.followSuppressedAtEnd = true;
 +            this.virtualAnchor = anchorComponent ? { component: anchorComponent, lineOffset: 0 } : undefined;
 +            this.requestRenderCallback?.();
 +            return;
@@ -208,6 +198,7 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +        const steps = Math.max(4, Math.min(24, Math.ceil(Math.abs(distance) / 12)));
 +        let step = 0;
 +        this.followingEnd = false;
++        this.followSuppressedAtEnd = true;
 +        this.ePiScrollAnimationActive = true;
 +        const animation = {
 +            handle: setInterval(() => {
@@ -224,7 +215,6 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +                    this.requestRenderCallback?.();
 +                    return;
 +                }
-+                // ease-out cubic
 +                const t = step / steps;
 +                const eased = 1 - Math.pow(1 - t, 3);
 +                this.currentScrollTop = Math.max(0, Math.min(Math.max(0, this.contentHeight - this.currentViewportHeight), Math.round(start + distance * eased)));
@@ -235,15 +225,11 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +        };
 +        animation.handle.unref?.();
 +        this.ePiScrollAnimation = animation;
-+    }
+     }
      updateLayout(contentHeight, viewportHeight, requestRender) {
          this.contentHeight = Math.max(0, Math.floor(contentHeight));
          this.currentViewportHeight = Math.max(0, Math.floor(viewportHeight));
          this.requestRenderCallback = requestRender;
-+        // Skip intermediate animation frames: applying them would let the
-+        // follow-end logic below yank currentScrollTop back to the tail.
-+        // Keep requestRenderCallback current so the animation can still drive
-+        // renders through the fresh callback.
 +        if (this.ePiScrollAnimationActive)
 +            return;
          const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
@@ -253,14 +239,17 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 -        else
 +        else if (!this.ePiScrollAnimation)
              this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
--        if (this.followEnd && this.currentScrollTop === maxScrollTop)
-+        if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.ePiScrollAnimation)
+         if (this.currentScrollTop < maxScrollTop)
+             this.followSuppressedAtEnd = false;
+-        if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.followSuppressedAtEnd) {
++        if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.followSuppressedAtEnd && !this.ePiScrollAnimation) {
              this.followingEnd = true;
+         }
 +        if (this.followingEnd)
 +            this.virtualAnchor = undefined;
          if (this.contentHeight <= this.currentViewportHeight)
              this.hideTransientScrollbar();
-     }
++    }
 +    getVirtualBlocks() {
 +        if (this.child?.constructor !== Container)
 +            return undefined;
@@ -450,7 +439,6 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +            return undefined;
 +        const state = this.getVirtualWidthState(width, blocks);
 +        this.virtualLastWidth = width;
-+        this.virtualLastLayout = { state, startIndex: 0, endIndex: 0 };
 +        const rendered = new Map();
 +        let startIndex;
 +        let endIndex;
@@ -529,15 +517,13 @@ index 5bfccd17b93dbe0fb00a18d75f94f46208917597..7c867a14f7748afc668512058a92f406
 +        this.virtualLastLayout = undefined;
 +        this.virtualAnchor = undefined;
 +        this.child.invalidate?.();
-+    }
+     }
      addChild(_component) {
          throw new Error("ScrollView has exactly one child");
-     }
 diff --git a/dist/components/text.js b/dist/components/text.js
-index 0d840239c41181e24dfc60237c3338081c6b48d5..4525f5f054d0e0e43444e99062eff54355ded709 100644
 --- a/dist/components/text.js
 +++ b/dist/components/text.js
-@@ -11,6 +11,7 @@ export class Text {
+@@ -11,6 +11,7 @@
      cachedText;
      cachedWidth;
      cachedLines;
@@ -545,7 +531,7 @@ index 0d840239c41181e24dfc60237c3338081c6b48d5..4525f5f054d0e0e43444e99062eff543
      constructor(text = "", paddingX = 1, paddingY = 1, customBgFn) {
          this.text = text;
          this.paddingX = paddingX;
-@@ -19,17 +20,20 @@ export class Text {
+@@ -19,17 +20,20 @@
      }
      setText(text) {
          this.text = text;
@@ -567,10 +553,9 @@ index 0d840239c41181e24dfc60237c3338081c6b48d5..4525f5f054d0e0e43444e99062eff543
          this.cachedWidth = undefined;
          this.cachedLines = undefined;
 diff --git a/dist/layout.js b/dist/layout.js
-index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..aa71eaa70c3ba913e6191024c6917cff9002a392 100644
 --- a/dist/layout.js
 +++ b/dist/layout.js
-@@ -70,15 +70,55 @@ function layoutComponent(context, component, x, y, width, height, clip) {
+@@ -70,15 +70,55 @@
      if (node.type === "scroll") {
          const previousScrollTop = node.state.scrollTop;
          const contentWidth = node.state.getContentWidth(safeWidth);
@@ -629,7 +614,7 @@ index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..aa71eaa70c3ba913e6191024c6917cff
          const childClip = intersect(clip, rect);
          const box = {
              component,
-@@ -237,7 +277,8 @@ function paintBox(box, screen, totalWidth) {
+@@ -244,7 +284,8 @@
      for (const child of box.children)
          paintBox(child, screen, totalWidth);
      if (box.scrollView && box.scrollContentLines && box.scrollView.scrollTop > 0 && box.rect.height > 0) {
@@ -640,10 +625,9 @@ index 07ff0a4fc0aa0850ff952e86139e3bd888f06292..aa71eaa70c3ba913e6191024c6917cff
              const metadata = getKittyImageMetadata(imageLine);
              if (metadata) {
 diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
-index b80391d65a2b72542c4894684e9ebdcd051a7894..6b0ca10bcd042bad844621a96b7537596f6e80ef 100644
 --- a/dist/tui-alt-screen.js
 +++ b/dist/tui-alt-screen.js
-@@ -16,6 +16,10 @@ const FOCUS_IN = "\x1b[I";
+@@ -18,6 +18,10 @@
  const FOCUS_OUT = "\x1b[O";
  const BEGIN_SYNCHRONIZED_OUTPUT = "\x1b[?2026h";
  const END_SYNCHRONIZED_OUTPUT = "\x1b[?2026l";
@@ -654,22 +638,21 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..6b0ca10bcd042bad844621a96b753759
  const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
  const OSC133_PROMPT_START = /^\x1b\]133;A(?:\x07|\x1b\\)/;
  const PAGE_SCROLL_OVERLAP = 4;
-@@ -63,7 +67,7 @@ export class TuiAltScreen extends TuiBase {
+@@ -75,7 +79,7 @@
          };
          this.implicitScrollView = new ScrollView(this.implicitDocument, { follow: "end", primary: true });
          this.flashes = new AltScreenFlashContainer(() => this.requestRender());
 -        this.wheelScrollLines = Math.max(1, Math.floor(options.wheelScrollLines ?? 1));
 +        this.wheelScrollLines = Math.max(1, Math.floor(options.wheelScrollLines ?? (process.env.E_PI_TUI_OPTIMIZATIONS === "true" ? 3 : 1)));
          this.mouseEnabled = options.mouse ?? true;
-         this.openUrl = options.openUrl;
-         this.addInputListener((data) => this.handleViewportInput(data));
-@@ -237,6 +241,32 @@ export class TuiAltScreen extends TuiBase {
-         this.flashes.flash(message, durationMs);
+         this.searchMatchStyle = options.searchMatchStyle ?? ((text) => `\x1b[4m${text}\x1b[24m`);
+         this.searchCurrentMatchStyle = options.searchCurrentMatchStyle ?? ((text) => `\x1b[1;7m${text}\x1b[22;27m`);
+@@ -379,6 +383,31 @@
+         return this.isOverlayFocused() && this.activeSearch?.overlay?.isFocused() !== true;
      }
      handleViewportInput(data) {
 +        const scrollToRow = EPI_SCROLL_TO_ROW_PATTERN.exec(data);
 +        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true" && scrollToRow) {
-+            // E-Pi session navigator: jump to a transcript row (user message block).
 +            const row = Number.parseInt(scrollToRow[1], 10) - 1;
 +            const scrollView = this.currentLayout?.primaryScrollView ?? this.implicitScrollView;
 +            const target = this.ePiNavBlocks?.[row];
@@ -695,8 +678,8 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..6b0ca10bcd042bad844621a96b753759
 +            return { consume: true };
          if (data === FOCUS_OUT) {
              const hadActiveSelection = this.selectionPressActive;
-             this.selectionPressActive = false;
-@@ -336,8 +366,54 @@ export class TuiAltScreen extends TuiBase {
+             const hadNonEmptyActiveSelection = hadActiveSelection && this.getSelectionBounds() !== undefined;
+@@ -531,8 +560,51 @@
          }
          return undefined;
      }
@@ -704,9 +687,7 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..6b0ca10bcd042bad844621a96b753759
 +     * E-Pi session navigator payload. InteractiveMode registers the ordered
 +     * user-message transcript blocks (ePiNavBlocks) and their labels
 +     * (ePiNavLabels); each frame reports the blocks' absolute rows so the
-+     * host app can draw a clickable navigation rail. Deduped: the OSC is only
-+     * re-emitted when the payload changes, including a final clear when the
-+     * transcript no longer has user messages.
++     * host app can draw a clickable navigation rail.
 +     */
 +    buildEPiNavOsc(primaryScrollView) {
 +        const blocks = this.ePiNavBlocks;
@@ -715,7 +696,6 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..6b0ca10bcd042bad844621a96b753759
 +        if (blocks && labels && blocks.length > 0) {
 +            let offsets = primaryScrollView.getVirtualBlockOffsets?.(blocks);
 +            if ((!offsets || offsets.size !== blocks.length) && primaryScrollView.getAllBlocks && primaryScrollView.ePiLastContext) {
-+                // Non-virtual transcript: resolve rows from the frame's render cache.
 +                const flat = primaryScrollView.getAllBlocks();
 +                const context = primaryScrollView.ePiLastContext;
 +                const contentWidth = primaryScrollView.getContentWidth(context.viewport.width);
@@ -752,7 +732,7 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..6b0ca10bcd042bad844621a96b753759
          const seen = new Set();
          for (const scrollView of this.currentLayout ? getScrollViewsAt(this.currentLayout, event.x, event.y) : []) {
              seen.add(scrollView);
-@@ -757,6 +833,13 @@ export class TuiAltScreen extends TuiBase {
+@@ -1133,6 +1205,13 @@
          else {
              buffer += "\x1b[?25l";
          }
@@ -767,10 +747,9 @@ index b80391d65a2b72542c4894684e9ebdcd051a7894..6b0ca10bcd042bad844621a96b753759
          this.terminal.write(buffer);
          this.previousScreen = screen;
 diff --git a/dist/tui.js b/dist/tui.js
-index b140190a2443a579fb89324b853c9ccba9fc125e..aabb5d7be3047dc5e0145f247ce54131ccfc90d6 100644
 --- a/dist/tui.js
 +++ b/dist/tui.js
-@@ -38,19 +38,24 @@ function parseSizeValue(value, referenceSize) {
+@@ -38,19 +38,24 @@
   */
  export class Container {
      children = [];

@@ -16,6 +16,7 @@ import { ToolPanel } from "@/components/workspace/ToolPanel";
 import type { PanelState, PanelTab, PanelView } from "@/components/workspace/ToolPanel";
 import { WorkspaceOverlayHost } from "@/components/workspace/WorkspaceOverlayHost";
 import { clearAllTerminalBuffers, clearTerminalBuffer } from "@/lib/terminalReplayStore";
+import { sessionRenameDraft } from "@/lib/format";
 
 import { useGlobalShortcuts } from "./hooks/useGlobalShortcuts";
 import { useSessionRuntime } from "./hooks/useSessionRuntime";
@@ -294,7 +295,8 @@ export function App() {
 
   const renameSession = useCallback(async (session: SessionSummary) => {
     setRenameTarget(session);
-    setRenameName(session.name || session.firstMessage);
+    // Never dump a multi-KB firstMessage into the dialog input — draft a short name.
+    setRenameName(sessionRenameDraft(session));
   }, []);
 
   const commitRename = async () => {

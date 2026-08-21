@@ -68,6 +68,10 @@ export function SessionRow({
    */
   const [moreOpen, setMoreOpen] = useState(false);
   const title = sessionTitle(session);
+  const openSession = () => onSelect(session);
+  // Same rename dialog as the context menu / ⋯ item. Single-click still
+  // selects; the first click of a double-click selects, then this opens rename.
+  const renameOnDoubleClick = () => onRename(session);
   // The run-finished dot replaces the relative time so the cue can't be
   // missed; selecting the session consumes it (useUnseenRunCompletions).
   const trailing = completedRun ? (
@@ -86,7 +90,8 @@ export function SessionRow({
               data-active={active ? "true" : undefined}
               aria-current={active ? "page" : undefined}
               title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
-              onClick={() => onSelect(session)}
+              onClick={openSession}
+              onDoubleClick={renameOnDoubleClick}
             >
               <ActivityIndicator runtime={runtime} />
               <span className={labelClassName}>{title}</span>
@@ -98,7 +103,8 @@ export function SessionRow({
               isActive={active}
               tooltip={title}
               title={compactPath(session.cwd || UNKNOWN_FOLDER, 70)}
-              onClick={() => onSelect(session)}
+              onClick={openSession}
+              onDoubleClick={renameOnDoubleClick}
             >
               <ActivityIndicator runtime={runtime} />
               <span className={labelClassName}>{title}</span>

@@ -647,7 +647,7 @@ export interface EPiApi {
     chooseApp(): Promise<string | undefined>;
     /** Apps scanned from the system that can be used to open files ([] on non-macOS). */
     listApps(): Promise<AppDescriptor[]>;
-    /** Apps declared to open the given file extension (fallback: dev apps). */
+    /** Apps ranked for the given file extension (macOS Open With). */
     appsForExtension(extension: string): Promise<AppDescriptor[]>;
     /** Persist the default "open with" app; undefined restores the system default. */
     setOpenWithApp(appPath: string | undefined): Promise<AppInfo>;

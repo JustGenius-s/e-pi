@@ -32,7 +32,12 @@ export function applyThemeClass(theme: Theme): void {
  * of the wrong theme on startup (stored choice, else the OS setting).
  */
 export function applyInitialTheme(): void {
-  applyThemeClass(resolveTheme(getStoredTheme()));
+  const theme = resolveTheme(getStoredTheme());
+  applyThemeClass(theme);
+  // Tell main before React mounts so the first session spawn gets the right
+  // COLORFGBG / e-pi-light theme. Otherwise [Skill conflicts] and Update
+  // Available bake dark-theme #ffff00 into the transcript.
+  void window.ePi?.app.setTheme(theme);
 }
 
 /**

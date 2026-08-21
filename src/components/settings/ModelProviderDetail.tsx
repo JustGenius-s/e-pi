@@ -213,6 +213,9 @@ export function ModelProviderDetail({
                   disabled={!model.available || Boolean(busyModel)}
                   onClick={() => onSetDefaultModel(model.provider, model.id)}
                   type="button"
+                  title={selected ? "Default model" : "Set as default model"}
+                  aria-label={selected ? `${model.name} is the default model` : `Set ${model.name} as default model`}
+                  aria-pressed={selected}
                 >
                   <span className="model-row-check">
                     {busyModel === ref ? <LoaderCircle className="spin" /> : selected ? <Check /> : null}
