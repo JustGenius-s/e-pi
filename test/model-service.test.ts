@@ -354,6 +354,37 @@ describe("ModelService custom providers", () => {
         ],
       );
     });
+
+    it("prefers context and max-out from the models endpoint over the official catalog", async () => {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(
+          async () =>
+            new Response(
+              JSON.stringify({
+                data: [
+                  {
+                    id: "gpt-5.6-sol",
+                    context_length: 1_000_000,
+                    max_output_tokens: 32000,
+                  },
+                ],
+              }),
+              { status: 200 },
+            ),
+        ),
+      );
+
+      await expect(service.fetchModels({ baseUrl: "https://relay.example.com/v1", apiKey: "secret" })).resolves.toEqual(
+        [
+          expect.objectContaining({
+            id: "gpt-5.6-sol",
+            contextWindow: 1_000_000,
+            maxTokens: 32000,
+          }),
+        ],
+      );
+    });
   });
 
   describe("catalogMeta (models.dev)", () => {

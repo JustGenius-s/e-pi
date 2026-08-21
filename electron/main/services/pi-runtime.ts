@@ -3,7 +3,7 @@ import type { FSWatcher } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 
-import { app } from "electron";
+import { app, nativeTheme } from "electron";
 import type { IPty } from "node-pty";
 import { spawn } from "node-pty";
 
@@ -86,13 +86,15 @@ function themeHintPath(): string {
   return join(app.getPath("userData"), "theme-hint.json");
 }
 
-/** Last theme the renderer reported; defaults to dark when unknown. */
+/** Last theme the renderer reported; OS appearance when the hint is missing. */
 function readThemeHint(): "dark" | "light" {
   try {
-    return readFileSync(themeHintPath(), "utf8").trim() === "light" ? "light" : "dark";
+    const saved = readFileSync(themeHintPath(), "utf8").trim();
+    if (saved === "light" || saved === "dark") return saved;
   } catch {
-    return "dark";
+    // First launch — follow the OS until the renderer reports.
   }
+  return nativeTheme.shouldUseDarkColors ? "dark" : "light";
 }
 
 function copyState(state: PiRuntimeState): PiRuntimeState {
@@ -424,9 +426,9 @@ export class PiRuntime {
           TERM: "xterm-256color",
           COLORTERM: "truecolor",
           // Lets pi pick the right variant of an auto theme setting
-          // ("dark/light") at launch: fg/bg white on white for light, black
-          // on black for dark.
-          COLORFGBG: this.#themeHint === "light" ? "15;7" : "15;0",
+          // ("e-pi-light/dark") at launch. Index 7 (#c0c0c0) is only barely
+          // "light" under pi's luminance check; 15 is unambiguously white.
+          COLORFGBG: this.#themeHint === "light" ? "0;15" : "15;0",
           E_PI: "true",
           E_PI_TUI_OPTIMIZATIONS: tuiOptimizationsEnabled ? "true" : "false",
           // Where the bridge extension can find the editor's project registry

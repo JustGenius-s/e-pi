@@ -5,6 +5,7 @@ import { basename, dirname, join } from "node:path";
 import type { SessionInfo } from "@earendil-works/pi-coding-agent";
 import { app, shell } from "electron";
 
+import { SESSION_NAME_MAX_LENGTH } from "../../../src/lib/format";
 import type { ArchivedSessionSummary, SessionSummary } from "../../../src/types/contracts";
 import { loadPiAgent } from "./pi-agent-loader";
 
@@ -86,7 +87,9 @@ export class SessionService {
   async rename(path: string, name: string): Promise<void> {
     const normalized = normalizeText(name);
     if (!normalized) throw new Error("Session name cannot be empty.");
-    if (normalized.length > 120) throw new Error("Session name must be 120 characters or fewer.");
+    if (normalized.length > SESSION_NAME_MAX_LENGTH) {
+      throw new Error(`Session name must be ${SESSION_NAME_MAX_LENGTH} characters or fewer.`);
+    }
 
     const { SessionManager } = await loadPiAgent();
     const manager = SessionManager.open(path);

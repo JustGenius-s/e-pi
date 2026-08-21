@@ -200,6 +200,52 @@ function officialFor(id: string, catalog: Map<string, OfficialModelMetadata>): O
   return catalog.get(id) ?? catalog.get(id.replace(/-ioa$/, ""));
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value != null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function firstPositiveNumber(values: unknown[]): number | undefined {
+  for (const value of values) {
+    if (typeof value === "number" && Number.isFinite(value) && value > 0) return Math.round(value);
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number(value);
+      if (Number.isFinite(parsed) && parsed > 0) return Math.round(parsed);
+    }
+  }
+  return undefined;
+}
+
+/** Pull context / max-out from an OpenAI-compatible `/models` row when present. */
+function limitsFromEndpointModel(item: Record<string, unknown>): {
+  contextWindow?: number;
+  maxTokens?: number;
+} {
+  const topProvider = asRecord(item.top_provider);
+  const limit = asRecord(item.limit);
+  return {
+    contextWindow: firstPositiveNumber([
+      item.contextWindow,
+      item.context_window,
+      item.context_length,
+      item.max_context_length,
+      item.max_model_len,
+      limit?.context,
+      item.context,
+    ]),
+    maxTokens: firstPositiveNumber([
+      item.maxTokens,
+      item.max_output_tokens,
+      item.max_completion_tokens,
+      item.max_output,
+      topProvider?.max_completion_tokens,
+      limit?.output,
+      item.max_tokens,
+    ]),
+  };
+}
+
 function toCustomModel(model: RawModelEntry): CustomModelDefinition {
   return {
     id: typeof model.id === "string" ? model.id : "",
@@ -579,22 +625,26 @@ export class ModelService {
           lastError = new Error(`HTTP ${response.status} ${response.statusText} from ${url}`);
           continue;
         }
-        const payload = (await response.json()) as { data?: Array<{ id?: unknown }> };
+        const payload = (await response.json()) as { data?: Array<Record<string, unknown>> };
         if (!Array.isArray(payload.data)) {
           throw new Error(`Unexpected response shape from ${url}`);
         }
         const catalog = await officialModels();
         return payload.data
-          .filter((item): item is { id: string } => typeof item.id === "string" && item.id.length > 0)
+          .filter(
+            (item): item is Record<string, unknown> & { id: string } =>
+              typeof item.id === "string" && item.id.length > 0,
+          )
           .map((item) => {
             const official = officialFor(item.id, catalog);
+            const fromApi = limitsFromEndpointModel(item);
             return {
               id: item.id,
               name: official?.name,
               reasoning: official?.reasoning,
               vision: official?.input?.includes("image") || undefined,
-              contextWindow: official?.contextWindow,
-              maxTokens: official?.maxTokens,
+              contextWindow: fromApi.contextWindow ?? official?.contextWindow,
+              maxTokens: fromApi.maxTokens ?? official?.maxTokens,
               thinkingLevels: thinkingLevelsFromMap(official?.thinkingLevelMap),
             };
           });

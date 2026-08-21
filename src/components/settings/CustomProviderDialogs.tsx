@@ -1,5 +1,5 @@
-import { LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, LoaderCircle, Plus, RefreshCw, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import {
   AlertDialog,
@@ -26,6 +26,13 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+import {
+  compactTokenLabel,
+  CONTEXT_WINDOW_PRESETS,
+  MAX_OUTPUT_PRESETS,
+  parseTokenInput,
+  tokenPresetLabel,
+} from "../../lib/tokenPreset";
 import type { CustomModelDefinition, CustomProviderConfig, ModelCatalogMeta } from "../../types/contracts";
 
 const API_TYPES = ["openai-completions", "anthropic-messages", "openai-responses", "google-generative-ai"] as const;
@@ -41,11 +48,91 @@ function toggleLevel(levels: string[] | undefined, level: string, on: boolean): 
   return next.size > 0 ? [...next] : undefined;
 }
 
-/** 262144 → "256K", 1000000 → "1M". */
-function formatTokens(tokens: number): string {
-  if (tokens >= 1_000_000) return `${Math.round(tokens / 100_000) / 10}M`;
-  if (tokens >= 1_000) return `${Math.round(tokens / 1_000)}K`;
-  return String(tokens);
+function TokenPresetField({
+  value,
+  presets,
+  placeholder,
+  ariaLabel,
+  onChange,
+}: {
+  value?: number;
+  presets: number[];
+  placeholder: string;
+  ariaLabel: string;
+  onChange: (next?: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => (value != null ? String(value) : ""));
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    setDraft(value != null ? String(value) : "");
+  }, [value]);
+
+  const commit = (raw: string) => {
+    if (!raw.trim()) {
+      onChange(undefined);
+      setDraft("");
+      return;
+    }
+    const parsed = parseTokenInput(raw);
+    if (parsed == null) {
+      setDraft(value != null ? String(value) : "");
+      return;
+    }
+    onChange(parsed);
+    setDraft(String(parsed));
+  };
+
+  return (
+    <div className="custom-model-token-field">
+      <Input
+        value={draft}
+        placeholder={placeholder}
+        spellCheck={false}
+        autoComplete="off"
+        inputMode="decimal"
+        aria-label={ariaLabel}
+        title="Number of tokens, or shorthand like 128k / 1M"
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={() => commit(draft)}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            event.preventDefault();
+            commit(draft);
+          }
+        }}
+      />
+      <Popover open={open} onOpenChange={setOpen}>
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="custom-model-token-chevron"
+            aria-label={`${ariaLabel} presets`}
+            title="Choose a preset"
+          >
+            <ChevronDown size={12} />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent align="end" className="custom-model-token-presets">
+          {presets.map((tokens) => (
+            <button
+              key={tokens}
+              type="button"
+              className="custom-model-token-preset"
+              data-selected={value === tokens ? "true" : "false"}
+              onClick={() => {
+                onChange(tokens);
+                setDraft(String(tokens));
+                setOpen(false);
+              }}
+            >
+              {tokenPresetLabel(tokens)}
+            </button>
+          ))}
+        </PopoverContent>
+      </Popover>
+    </div>
+  );
 }
 
 export interface CustomProviderDraft {
@@ -100,11 +187,10 @@ export function CustomProviderDialogs({
     setFetchError(undefined);
     try {
       const fetched = await window.ePi.models.fetchModels({ baseUrl: draft.baseUrl, apiKey: draft.apiKey });
-      const existingIds = new Set(draft.models.map((model) => model.id));
-      // Everything not already configured is pre-selected; rows that are
-      // already in the list are shown disabled so they cannot be duplicated.
+      // Start with nothing selected — the user picks what to add. Rows that
+      // are already in the list are shown disabled so they cannot be duplicated.
       setFetchedModels(fetched);
-      setSelectedIds(new Set(fetched.filter((model) => !existingIds.has(model.id)).map((model) => model.id)));
+      setSelectedIds(new Set());
       // Enrich in the background; the popover is already usable meanwhile.
       void window.ePi.models
         .catalogMeta({ baseUrl: draft.baseUrl, modelIds: fetched.map((model) => model.id) })
@@ -152,16 +238,17 @@ export function CustomProviderDialogs({
           ? {
               ...model,
               name: model.name || meta.name || model.id,
-              reasoning: meta.reasoning ?? model.reasoning,
-              vision: meta.vision ?? model.vision,
-              contextWindow: meta.contextWindow ?? model.contextWindow,
-              maxTokens: meta.maxTokens ?? model.maxTokens,
+              reasoning: model.reasoning ?? meta.reasoning,
+              vision: model.vision ?? meta.vision,
+              contextWindow: model.contextWindow ?? meta.contextWindow,
+              maxTokens: model.maxTokens ?? meta.maxTokens,
               thinkingLevels: model.thinkingLevels,
             }
           : model;
       });
     if (toAdd.length > 0) updateDraft({ models: [...draft.models, ...toAdd] });
     setFetchedModels(undefined);
+    setSelectedIds(new Set());
   };
   return (
     <>
@@ -237,7 +324,10 @@ export function CustomProviderDialogs({
                     <Popover
                       open={fetchedModels !== undefined}
                       onOpenChange={(open) => {
-                        if (!open) setFetchedModels(undefined);
+                        if (!open) {
+                          setFetchedModels(undefined);
+                          setSelectedIds(new Set());
+                        }
                       }}
                     >
                       <PopoverTrigger asChild>
@@ -255,11 +345,30 @@ export function CustomProviderDialogs({
                         <div className="model-fetch-heading">
                           <span>Select models to add</span>
                           <small>{fetchedModels?.length ?? 0} found</small>
+                          <button
+                            type="button"
+                            className="model-fetch-select-all"
+                            onClick={() => {
+                              const existingIds = new Set(draft?.models.map((model) => model.id));
+                              setSelectedIds(
+                                new Set(
+                                  (fetchedModels ?? [])
+                                    .filter((model) => !existingIds.has(model.id))
+                                    .map((model) => model.id),
+                                ),
+                              );
+                            }}
+                          >
+                            Select all
+                          </button>
                         </div>
                         <div className="model-fetch-list" onWheel={onListWheel}>
                           {(fetchedModels ?? []).map((model) => {
                             const alreadyAdded = draft?.models.some((current) => current.id === model.id);
                             const meta = catalogMeta[model.id];
+                            const vision = Boolean(model.vision ?? meta?.vision);
+                            const reasoning = Boolean(model.reasoning ?? meta?.reasoning);
+                            const contextWindow = model.contextWindow ?? meta?.contextWindow;
                             return (
                               <label
                                 className="model-fetch-row"
@@ -267,21 +376,21 @@ export function CustomProviderDialogs({
                                 key={model.id}
                               >
                                 <Checkbox
-                                  checked={alreadyAdded || selectedIds.has(model.id)}
+                                  checked={selectedIds.has(model.id)}
                                   disabled={alreadyAdded}
-                                  onCheckedChange={() => toggleSelected(model.id)}
+                                  onCheckedChange={() => {
+                                    if (!alreadyAdded) toggleSelected(model.id);
+                                  }}
                                 />
                                 <span className="model-fetch-id" title={model.id}>
                                   {model.id}
                                 </span>
-                                {meta ? (
+                                {vision || reasoning || contextWindow ? (
                                   <span className="model-fetch-badges">
-                                    {meta.vision ? <small title="Accepts image input">vision</small> : null}
-                                    {meta.reasoning ? (
-                                      <small title="Supports extended thinking">reasoning</small>
-                                    ) : null}
-                                    {meta.contextWindow ? (
-                                      <small title="Context window">{formatTokens(meta.contextWindow)}</small>
+                                    {vision ? <small title="Accepts image input">vision</small> : null}
+                                    {reasoning ? <small title="Supports extended thinking">reasoning</small> : null}
+                                    {contextWindow ? (
+                                      <small title="Context window">{compactTokenLabel(contextWindow)}</small>
                                     ) : null}
                                   </span>
                                 ) : null}
@@ -294,7 +403,14 @@ export function CustomProviderDialogs({
                           ) : null}
                         </div>
                         <div className="model-fetch-footer">
-                          <Button size="sm" variant="outline" onClick={() => setFetchedModels(undefined)}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => {
+                              setFetchedModels(undefined);
+                              setSelectedIds(new Set());
+                            }}
+                          >
                             Cancel
                           </Button>
                           <Button size="sm" onClick={addSelected} disabled={selectedIds.size === 0}>
@@ -346,30 +462,22 @@ export function CustomProviderDialogs({
                       <div className="custom-model-meta">
                         <label className="custom-model-num">
                           <span>Context</span>
-                          <Input
-                            type="number"
-                            value={model.contextWindow ?? ""}
-                            placeholder="128000"
-                            aria-label={`Model ${index + 1} context window`}
-                            onChange={(event) =>
-                              updateModel(index, {
-                                contextWindow: event.target.value ? Number(event.target.value) : undefined,
-                              })
-                            }
+                          <TokenPresetField
+                            value={model.contextWindow}
+                            presets={CONTEXT_WINDOW_PRESETS}
+                            placeholder="128k or 128000"
+                            ariaLabel={`Model ${index + 1} context window`}
+                            onChange={(contextWindow) => updateModel(index, { contextWindow })}
                           />
                         </label>
                         <label className="custom-model-num">
                           <span>Max out</span>
-                          <Input
-                            type="number"
-                            value={model.maxTokens ?? ""}
-                            placeholder="8192"
-                            aria-label={`Model ${index + 1} max tokens`}
-                            onChange={(event) =>
-                              updateModel(index, {
-                                maxTokens: event.target.value ? Number(event.target.value) : undefined,
-                              })
-                            }
+                          <TokenPresetField
+                            value={model.maxTokens}
+                            presets={MAX_OUTPUT_PRESETS}
+                            placeholder="8k or 8192"
+                            ariaLabel={`Model ${index + 1} max tokens`}
+                            onChange={(maxTokens) => updateModel(index, { maxTokens })}
                           />
                         </label>
                         <label className="custom-check" title="Supports extended thinking">

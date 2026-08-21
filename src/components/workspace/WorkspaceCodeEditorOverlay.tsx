@@ -1031,7 +1031,7 @@ export const WorkspaceCodeEditorOverlay = memo(function WorkspaceCodeEditorOverl
             >
               <button type="button" className="workspace-editor-tab-main" onClick={() => setActiveKey(tab.key)}>
                 {tab.status === "conflict" ? (
-                  <AlertTriangle size={12} className="text-amber-500" />
+                  <AlertTriangle size={12} className="text-warning" />
                 ) : (
                   <FilePenLine size={12} />
                 )}

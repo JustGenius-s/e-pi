@@ -9,6 +9,7 @@ import { useTerminalTheme } from "../../hooks/useTerminalTheme";
 import { getAppearance, subscribeAppearance } from "../../lib/appearance";
 import { ensureTerminalBufferFeeder } from "../../lib/terminalBufferFeeder";
 import { consumeTerminalModeReset, getReplayContent, isAwaitingCheckpoint } from "../../lib/terminalReplayStore";
+import { ansiForDocumentTheme } from "../../lib/tui-ansi-light";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
 import { createStockResizeScheduler } from "../../lib/xtermResizeSchedulerStock";
 import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
@@ -173,10 +174,11 @@ export function StockTerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpen
     const eraseScrollbackGuard = guardEraseScrollback(terminal);
     const flushWrite = (data: string, onWritten?: () => void) => {
       pendingWrites += 1;
-      pendingWriteBytes += data.length;
-      terminal.write(data, () => {
+      const payload = ansiForDocumentTheme(data);
+      pendingWriteBytes += payload.length;
+      terminal.write(payload, () => {
         pendingWrites -= 1;
-        pendingWriteBytes -= data.length;
+        pendingWriteBytes -= payload.length;
         onWritten?.();
         settleInitialWrites();
       });

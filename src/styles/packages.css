@@ -347,7 +347,17 @@
 }
 
 .package-update-action svg {
-  color: var(--chart-2);
+  color: var(--info);
+}
+
+.package-update-all {
+  height: 26px;
+  padding: 0 8px;
+  font-size: var(--fs-small);
+}
+
+.package-update-all svg {
+  color: var(--info);
 }
 
 .package-row-actions {
