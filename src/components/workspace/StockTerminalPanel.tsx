@@ -11,6 +11,7 @@ import { ensureTerminalBufferFeeder } from "../../lib/terminalBufferFeeder";
 import { consumeTerminalModeReset, getReplayContent, isAwaitingCheckpoint } from "../../lib/terminalReplayStore";
 import { ansiForDocumentTheme } from "../../lib/tui-ansi-light";
 import { createXterm, getTerminalBackground } from "../../lib/xterm";
+import { fitToTerminalElement } from "../../lib/xtermFit";
 import { createStockResizeScheduler } from "../../lib/xtermResizeSchedulerStock";
 import { guardEraseScrollback } from "../../lib/xtermScrollbackGuard";
 import { createViewportWatchdog } from "../../lib/xtermViewportWatchdog";
@@ -85,6 +86,7 @@ export function StockTerminalPanel({ sessionKey, autoFocus, onFirstPaint, onOpen
     });
     const fit = new FitAddon();
     terminal.loadAddon(fit);
+    fitToTerminalElement(fit, terminal);
     let webgl: WebglAddon | undefined;
     try {
       webgl = new WebglAddon();

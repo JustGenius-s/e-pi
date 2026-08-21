@@ -811,6 +811,13 @@ export interface EPiApi {
     write(id: string, data: string): void;
     resize(id: string, size: ResizeTerminalRequest): void;
     kill(id: string): void;
+    /**
+     * True while the overlay editor owns line editing: the pty switches to
+     * no-echo/non-canonical mode (the overlay paints the glyphs, the kernel
+     * must not also echo them). False restores the kernel's cooked mode for
+     * interactive programs.
+     */
+    setEditorMode(id: string, active: boolean): void;
     onData(listener: (id: string, data: string) => void): () => void;
   };
 }

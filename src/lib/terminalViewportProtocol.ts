@@ -1,10 +1,18 @@
 export const PI_VIEWPORT_OSC_ID = 6973;
+export const PI_NAV_OSC_ID = 6974;
 
 const PI_VIEWPORT_PAYLOAD_PREFIX = "e-pi:viewport:v1;";
+const PI_NAV_PAYLOAD_PREFIX = "e-pi:nav:v1;";
 const PI_VIEWPORT_WHEEL_MAX_LINES = 9_999;
 const PI_VIEWPORT_WHEEL_MAX_COORDINATE = 99_999;
 
 export const PI_SCROLL_TO_BOTTOM_INPUT = "\x1b_e-pi:viewport:bottom\x1b\\";
+
+/** Encode a session-navigator jump to a 1-based user-message row. */
+export function encodePiScrollToRowInput(row: number): string {
+  if (!Number.isSafeInteger(row) || row < 1 || row > 9_999_999) throw new RangeError("Invalid Pi nav row");
+  return `\x1b_e-pi:viewport:scrollto:v1;${row}\x1b\\`;
+}
 
 export interface PiViewportState {
   scrollTop: number;
@@ -41,8 +49,46 @@ export function encodePiViewportStatePayload(state: PiViewportState): string {
   return `${PI_VIEWPORT_PAYLOAD_PREFIX}${state.scrollTop};${state.maxScrollTop};${state.followingEnd ? 1 : 0}`;
 }
 
-/** Decode the authoritative application-owned viewport emitted by Pi fullscreen mode. */
-export function decodePiViewportStatePayload(payload: string): PiViewportState | null {
+export interface PiNavEntry {
+  /** 1-based index of the user message in the transcript. */
+  row: number;
+  /** Absolute transcript line where the message block starts. */
+  offset: number;
+  /** First ~80 chars of the user message text. */
+  label: string;
+  /** First ~160 chars of the following assistant reply (empty while streaming). */
+  reply: string;
+}
+
+/**
+ * Decode the session-navigator payload emitted alongside each viewport frame.
+ * Format: `offset,label|reply;offset,label|reply;...` — offsets are integers,
+ * labels/replies are pre-sanitized by Pi (no control chars, `;`, `,`, `|`).
+ * An empty payload clears the navigator.
+ */
+export function decodePiNavPayload(payload: string): PiNavEntry[] | null {
+  if (!payload.startsWith(PI_NAV_PAYLOAD_PREFIX)) return null;
+  const body = payload.slice(PI_NAV_PAYLOAD_PREFIX.length);
+  if (body === "") return [];
+  const entries: PiNavEntry[] = [];
+  for (const part of body.split(";")) {
+    const comma = part.indexOf(",");
+    if (comma <= 0) return null;
+    const offset = Number(part.slice(0, comma));
+    if (!Number.isSafeInteger(offset) || offset < 0) return null;
+    const rest = part.slice(comma + 1);
+    const pipe = rest.indexOf("|");
+    entries.push({
+      row: entries.length + 1,
+      offset,
+      label: pipe < 0 ? rest : rest.slice(0, pipe),
+      reply: pipe < 0 ? "" : rest.slice(pipe + 1),
+    });
+  }
+  return entries;
+}
+
+/** Decode the authoritative application-owned viewport emitted by Pi fullscreen mode. */export function decodePiViewportStatePayload(payload: string): PiViewportState | null {
   if (!payload.startsWith(PI_VIEWPORT_PAYLOAD_PREFIX)) return null;
 
   const match = /^(0|[1-9]\d*);(0|[1-9]\d*);([01])$/.exec(payload.slice(PI_VIEWPORT_PAYLOAD_PREFIX.length));

@@ -36,11 +36,16 @@ const COMPATIBILITY_PROBES = [
   ["dist/modes/interactive/interactive-mode.js", "externalComposer ? new Container() : this.documentContainer"],
   ["dist/modes/interactive/interactive-mode.js", "fullscreenTranscriptContainer.addChild(new Spacer(4))"],
   ["dist/modes/interactive/interactive-mode.js", "component.ePiVirtualRenderVolatile = true"],
+  ["dist/modes/interactive/interactive-mode.js", "component.ePiNavUserMessage = true"],
   ["node_modules/@earendil-works/pi-tui/dist/components/markdown.js", "renderInvalidationRevision"],
   ["node_modules/@earendil-works/pi-tui/dist/components/scroll-view.js", "renderVirtualViewport(width"],
+  ["node_modules/@earendil-works/pi-tui/dist/components/scroll-view.js", "scrollToVirtualBlock(component)"],
+  ["node_modules/@earendil-works/pi-tui/dist/components/scroll-view.js", "getVirtualBlockOffsets(components)"],
   ["node_modules/@earendil-works/pi-tui/dist/components/text.js", "renderInvalidationRevision"],
   ["node_modules/@earendil-works/pi-tui/dist/layout.js", "scrollVirtualStart"],
   ["node_modules/@earendil-works/pi-tui/dist/tui-alt-screen.js", "EPI_VIEWPORT_OSC_PREFIX"],
+  ["node_modules/@earendil-works/pi-tui/dist/tui-alt-screen.js", "EPI_NAV_OSC_PREFIX"],
+  ["node_modules/@earendil-works/pi-tui/dist/tui-alt-screen.js", "buildEPiNavOsc(primaryScrollView)"],
   ["node_modules/@earendil-works/pi-tui/dist/tui.js", "renderInvalidationRevision"],
 ] as const;
 

@@ -108,7 +108,7 @@ diff --git a/dist/components/scroll-view.js b/dist/components/scroll-view.js
          if (changed) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
-@@ -146,6 +200,7 @@
+@@ -146,27 +200,408 @@
          this.currentScrollTop = next;
          this.followingEnd = this.followEnd;
          this.followSuppressedAtEnd = false;
@@ -116,8 +116,133 @@ diff --git a/dist/components/scroll-view.js b/dist/components/scroll-view.js
          if (changed) {
              this.markScrollbarActivity();
              this.requestRenderCallback?.();
-@@ -165,8 +220,270 @@
-         if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.followSuppressedAtEnd) {
+         }
++    }
++    /**
++     * E-Pi: absolute row offsets for the given transcript blocks, using the
++     * latest width's height table (exact for hydrated blocks, estimated for
++     * the rest). Returns undefined when no virtual layout exists yet.
++     */
++    getVirtualBlockOffsets(components) {
++        const layout = this.virtualLastLayout;
++        if (!layout)
++            return undefined;
++        const prefix = this.ensureVirtualPrefix(layout.state);
++        const offsets = new Map();
++        for (const component of components) {
++            const index = layout.state.blocks.indexOf(component);
++            if (index >= 0)
++                offsets.set(component, prefix[index]);
++        }
++        return offsets;
++    }
++    /**
++     * E-Pi: scroll so the given transcript block sits at the viewport top.
++     * Uses the component anchor so hydration above it keeps the block stable.
++     */
++    scrollToVirtualBlock(component) {
++        const layout = this.virtualLastLayout;
++        if (layout) {
++            const state = layout.state;
++            let index = state.blocks.indexOf(component);
++            if (index < 0) {
++                const fresh = this.getAllBlocks?.();
++                if (!fresh)
++                    return false;
++                index = fresh.indexOf(component);
++                if (index < 0)
++                    return false;
++                state.blocks = fresh;
++            }
++            const prefix = this.ensureVirtualPrefix(state);
++            const target = Math.max(0, Math.min(Math.max(0, this.contentHeight - this.currentViewportHeight), prefix[index]));
++            this.animateScrollTo(target, component);
++            return true;
++        }
++        if (!this.ePiLastContext || !this.getAllBlocks)
++            return false;
++        const flat = this.getAllBlocks();
++        if (!flat?.includes(component))
++            return false;
++        const contentWidth = this.getContentWidth(this.ePiLastContext.viewport.width);
++        let cursor = 0;
++        for (const block of flat) {
++            if (block === component)
++                break;
++            const lines = this.ePiLastContext.renderCache.get(block)?.get(Math.max(1, Math.floor(contentWidth)));
++            cursor += lines ? lines.length : 1;
++        }
++        this.animateScrollTo(cursor, component);
++        return true;
++    }
++    /**
++     * E-Pi: smooth-scroll to a target row, keeping the destination block
++     * anchored so hydration above it does not drift the final position.
++     */
++    animateScrollTo(target, anchorComponent) {
++        if (this.ePiScrollAnimation) {
++            clearInterval(this.ePiScrollAnimation.handle);
++            this.ePiScrollAnimation = undefined;
++        }
++        const start = this.followingEnd
++            ? Math.max(0, this.contentHeight - this.currentViewportHeight)
++            : this.currentScrollTop;
++        const distance = target - start;
++        if (distance === 0) {
++            this.followingEnd = false;
++            this.followSuppressedAtEnd = true;
++            this.virtualAnchor = anchorComponent ? { component: anchorComponent, lineOffset: 0 } : undefined;
++            this.requestRenderCallback?.();
++            return;
++        }
++        const steps = Math.max(4, Math.min(24, Math.ceil(Math.abs(distance) / 12)));
++        let step = 0;
++        this.followingEnd = false;
++        this.followSuppressedAtEnd = true;
++        this.ePiScrollAnimationActive = true;
++        const animation = {
++            handle: setInterval(() => {
++                step += 1;
++                if (this.ePiScrollAnimation !== animation)
++                    return;
++                if (step >= steps) {
++                    clearInterval(animation.handle);
++                    this.ePiScrollAnimation = undefined;
++                    this.ePiScrollAnimationActive = false;
++                    this.currentScrollTop = target;
++                    this.virtualAnchor = anchorComponent ? { component: anchorComponent, lineOffset: 0 } : undefined;
++                    this.markScrollbarActivity();
++                    this.requestRenderCallback?.();
++                    return;
++                }
++                const t = step / steps;
++                const eased = 1 - Math.pow(1 - t, 3);
++                this.currentScrollTop = Math.max(0, Math.min(Math.max(0, this.contentHeight - this.currentViewportHeight), Math.round(start + distance * eased)));
++                this.virtualAnchor = undefined;
++                this.markScrollbarActivity();
++                this.requestRenderCallback?.();
++            }, 16),
++        };
++        animation.handle.unref?.();
++        this.ePiScrollAnimation = animation;
+     }
+     updateLayout(contentHeight, viewportHeight, requestRender) {
+         this.contentHeight = Math.max(0, Math.floor(contentHeight));
+         this.currentViewportHeight = Math.max(0, Math.floor(viewportHeight));
+         this.requestRenderCallback = requestRender;
++        if (this.ePiScrollAnimationActive)
++            return;
+         const maxScrollTop = Math.max(0, this.contentHeight - this.currentViewportHeight);
+-        if (this.followingEnd)
++        if (this.followingEnd && !this.ePiScrollAnimation)
+             this.currentScrollTop = maxScrollTop;
+-        else
++        else if (!this.ePiScrollAnimation)
+             this.currentScrollTop = Math.max(0, Math.min(this.currentScrollTop, maxScrollTop));
+         if (this.currentScrollTop < maxScrollTop)
+             this.followSuppressedAtEnd = false;
+-        if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.followSuppressedAtEnd) {
++        if (this.followEnd && this.currentScrollTop === maxScrollTop && !this.followSuppressedAtEnd && !this.ePiScrollAnimation) {
              this.followingEnd = true;
          }
 +        if (this.followingEnd)
@@ -131,6 +256,14 @@ diff --git a/dist/components/scroll-view.js b/dist/components/scroll-view.js
 +        const blocks = [];
 +        flattenVirtualBlocks(this.child, blocks);
 +        return blocks.length >= VIRTUALIZE_MIN_BLOCKS ? blocks : undefined;
++    }
++    /** E-Pi: flattened transcript blocks regardless of the virtualization threshold. */
++    getAllBlocks() {
++        if (this.child?.constructor !== Container)
++            return undefined;
++        const blocks = [];
++        flattenVirtualBlocks(this.child, blocks);
++        return blocks;
 +    }
 +    estimateHeight(component, width) {
 +        const hint = this.virtualHeightHints.get(component);
@@ -422,7 +555,7 @@ diff --git a/dist/components/text.js b/dist/components/text.js
 diff --git a/dist/layout.js b/dist/layout.js
 --- a/dist/layout.js
 +++ b/dist/layout.js
-@@ -70,15 +70,52 @@
+@@ -70,15 +70,55 @@
      if (node.type === "scroll") {
          const previousScrollTop = node.state.scrollTop;
          const contentWidth = node.state.getContentWidth(safeWidth);
@@ -474,11 +607,14 @@ diff --git a/dist/layout.js b/dist/layout.js
          if (node.state.primary || !context.primaryScrollView)
              context.primaryScrollView = scrollView;
 -        const rect = { x, y, width: safeWidth, height: viewportHeight };
++        // E-Pi: expose the layout context so the navigator can resolve block
++        // offsets for non-virtual transcripts from the render cache.
++        scrollView.ePiLastContext = context;
 +        const rect = { x, y, width: safeWidth, height: resolvedViewportHeight };
          const childClip = intersect(clip, rect);
          const box = {
              component,
-@@ -244,7 +281,8 @@
+@@ -244,7 +284,8 @@
      for (const child of box.children)
          paintBox(child, screen, totalWidth);
      if (box.scrollView && box.scrollContentLines && box.scrollView.scrollTop > 0 && box.rect.height > 0) {
@@ -491,16 +627,18 @@ diff --git a/dist/layout.js b/dist/layout.js
 diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
 --- a/dist/tui-alt-screen.js
 +++ b/dist/tui-alt-screen.js
-@@ -18,6 +18,8 @@
+@@ -18,6 +18,10 @@
  const FOCUS_OUT = "\x1b[O";
  const BEGIN_SYNCHRONIZED_OUTPUT = "\x1b[?2026h";
  const END_SYNCHRONIZED_OUTPUT = "\x1b[?2026l";
 +const EPI_SCROLL_TO_BOTTOM_INPUT = "\x1b_e-pi:viewport:bottom\x1b\\";
++const EPI_SCROLL_TO_ROW_PATTERN = /^\x1b_e-pi:viewport:scrollto:v1;([1-9]\d{0,6})\x1b\\$/;
 +const EPI_VIEWPORT_OSC_PREFIX = "\x1b]6973;e-pi:viewport:v1;";
++const EPI_NAV_OSC_PREFIX = "\x1b]6974;e-pi:nav:v1;";
  const OSC133_ZONE_PREFIX = /^(?:\x1b\]133;[ABC](?:\x07|\x1b\\))+/;
  const OSC133_PROMPT_START = /^\x1b\]133;A(?:\x07|\x1b\\)/;
  const PAGE_SCROLL_OVERLAP = 4;
-@@ -75,7 +77,7 @@
+@@ -75,7 +79,7 @@
          };
          this.implicitScrollView = new ScrollView(this.implicitDocument, { follow: "end", primary: true });
          this.flashes = new AltScreenFlashContainer(() => this.requestRender());
@@ -509,10 +647,19 @@ diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
          this.mouseEnabled = options.mouse ?? true;
          this.searchMatchStyle = options.searchMatchStyle ?? ((text) => `\x1b[4m${text}\x1b[24m`);
          this.searchCurrentMatchStyle = options.searchCurrentMatchStyle ?? ((text) => `\x1b[1;7m${text}\x1b[22;27m`);
-@@ -379,6 +381,22 @@
+@@ -379,6 +383,31 @@
          return this.isOverlayFocused() && this.activeSearch?.overlay?.isFocused() !== true;
      }
      handleViewportInput(data) {
++        const scrollToRow = EPI_SCROLL_TO_ROW_PATTERN.exec(data);
++        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true" && scrollToRow) {
++            const row = Number.parseInt(scrollToRow[1], 10) - 1;
++            const scrollView = this.currentLayout?.primaryScrollView ?? this.implicitScrollView;
++            const target = this.ePiNavBlocks?.[row];
++            if (target && scrollView.scrollToVirtualBlock?.(target))
++                this.requestRender?.();
++            return { consume: true };
++        }
 +        const exactWheel = /^\x1b_e-pi:viewport:wheel:v1;(-?[1-9]\d{0,3});(0|[1-9]\d{0,4});(0|[1-9]\d{0,4})\x1b\\$/.exec(data);
 +        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true" && exactWheel) {
 +            this.routeWheel({
@@ -532,16 +679,60 @@ diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
          if (data === FOCUS_OUT) {
              const hadActiveSelection = this.selectionPressActive;
              const hadNonEmptyActiveSelection = hadActiveSelection && this.getSelectionBounds() !== undefined;
-@@ -532,7 +550,7 @@
+@@ -531,8 +560,51 @@
+         }
          return undefined;
      }
++    /**
++     * E-Pi session navigator payload. InteractiveMode registers the ordered
++     * user-message transcript blocks (ePiNavBlocks) and their labels
++     * (ePiNavLabels); each frame reports the blocks' absolute rows so the
++     * host app can draw a clickable navigation rail.
++     */
++    buildEPiNavOsc(primaryScrollView) {
++        const blocks = this.ePiNavBlocks;
++        const labels = this.ePiNavLabels;
++        let payload = "";
++        if (blocks && labels && blocks.length > 0) {
++            let offsets = primaryScrollView.getVirtualBlockOffsets?.(blocks);
++            if ((!offsets || offsets.size !== blocks.length) && primaryScrollView.getAllBlocks && primaryScrollView.ePiLastContext) {
++                const flat = primaryScrollView.getAllBlocks();
++                const context = primaryScrollView.ePiLastContext;
++                const contentWidth = primaryScrollView.getContentWidth(context.viewport.width);
++                offsets = new Map();
++                let cursor = 0;
++                for (const block of flat) {
++                    if (blocks.includes(block))
++                        offsets.set(block, cursor);
++                    const cached = context.renderCache.get(block);
++                    const lines = cached?.get(Math.max(1, Math.floor(contentWidth)));
++                    cursor += lines ? lines.length : 1;
++                }
++            }
++            if (offsets && offsets.size === blocks.length) {
++                const replies = this.ePiNavReplies;
++                const parts = [];
++                for (let index = 0; index < blocks.length; index += 1) {
++                    const row = offsets.get(blocks[index]);
++                    const label = (labels[index] ?? "").replace(/[\x00-\x1f\x7f;,|]/g, " ").slice(0, 80);
++                    const reply = (replies?.[index] ?? "").replace(/[\x00-\x1f\x7f;,|]/g, " ").slice(0, 160);
++                    parts.push(`${row},${label}|${reply}`);
++                }
++                payload = parts.join(";");
++            }
++        }
++        if (payload === this.ePiNavLastPayload)
++            return "";
++        this.ePiNavLastPayload = payload;
++        return `${EPI_NAV_OSC_PREFIX}${payload}\x07`;
++    }
      routeWheel(event) {
 -        let remaining = event.direction * this.wheelScrollLines;
 +        let remaining = event.lines ?? event.direction * this.wheelScrollLines;
          const seen = new Set();
          for (const scrollView of this.currentLayout ? getScrollViewsAt(this.currentLayout, event.x, event.y) : []) {
              seen.add(scrollView);
-@@ -1133,6 +1151,11 @@
+@@ -1133,6 +1205,13 @@
          else {
              buffer += "\x1b[?25l";
          }
@@ -550,6 +741,8 @@ diff --git a/dist/tui-alt-screen.js b/dist/tui-alt-screen.js
 +        buffer += process.env.E_PI_TUI_OPTIMIZATIONS === "true"
 +            ? `${EPI_VIEWPORT_OSC_PREFIX}${primaryScrollView.scrollTop};${maxScrollTop};${primaryScrollView.isFollowingEnd ? 1 : 0}\x07`
 +            : "";
++        if (process.env.E_PI_TUI_OPTIMIZATIONS === "true")
++            buffer += this.buildEPiNavOsc(primaryScrollView);
          buffer += END_SYNCHRONIZED_OUTPUT;
          this.terminal.write(buffer);
          this.previousScreen = screen;

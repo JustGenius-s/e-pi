@@ -487,6 +487,9 @@ function registerHandlers(): void {
   ipcMain.handle("side-terminal:spawn", async (_event, cwd: string) => sideTerminals.spawn(cwd || activeCwd()));
   ipcMain.handle("side-terminal:status", async (_event, id: string) => sideTerminals.getStatus(id));
   ipcMain.on("side-terminal:write", (_event, id: string, data: string) => sideTerminals.write(id, data));
+  ipcMain.on("side-terminal:editor-mode", (_event, id: string, active: boolean) =>
+    sideTerminals.setEditorMode(id, active),
+  );
   ipcMain.on("side-terminal:resize", (_event, id: string, size: ResizeTerminalRequest) =>
     sideTerminals.resize(id, size.cols, size.rows),
   );

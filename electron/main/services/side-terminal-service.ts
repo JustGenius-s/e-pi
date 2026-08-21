@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 
 import type { IPty } from "node-pty";
 import * as pty from "node-pty";
@@ -11,12 +12,32 @@ interface SideTerminal {
   cwd: string;
   /** Shell binary this pty was spawned with (used for foreground detection). */
   shell: string;
+  /** Slave device path (/dev/ttysNNN) resolved after spawn; stty -f target. */
+  tty?: string;
+  /**
+   * True while the renderer's overlay editor owns line editing. The pty's
+   * echo/icanon flags are kept in sync: the editor mode needs a raw-ish tty
+   * (no kernel echo — the overlay paints the glyphs), interactive mode needs
+   * the kernel's canonical line discipline back.
+   */
+  editorMode: boolean;
 }
 
 interface SideTerminalStatus {
   cwd: string;
   foregroundProcess: string;
   interactive: boolean;
+}
+
+/** Resolve a pty's slave tty path via its shell's controlling terminal. */
+function resolveTtyFor(id: string, terminal: SideTerminal): void {
+  execFile("/bin/ps", ["-o", "tty=", "-p", String(terminal.pty.pid)], (error, stdout) => {
+    const tty = stdout.trim();
+    if (!error && tty && tty !== "??" && !tty.includes(" ")) {
+      terminal.tty = `/dev/${tty}`;
+      debugLog("[side-terminal] tty resolved", { id, tty: terminal.tty });
+    }
+  });
 }
 
 /**
@@ -40,7 +61,11 @@ export class SideTerminalService {
     // program like vim/ssh owns the tty this reports its name. Only known
     // keystroke-driven programs flip the renderer into raw-input mode — a
     // long-running plain command (sleep, a build) must not.
-    const processName = terminal.pty.process.trim();
+    // pty.process becomes undefined once the shell exits; the 400ms status
+    // poll can land in that window before the exit handler drops the record.
+    const rawProcess = terminal.pty.process;
+    if (!rawProcess) return undefined;
+    const processName = rawProcess.trim();
     const interactive = isInteractiveForeground(processName);
     const foregroundProcess = processName.split(/[\\/]/).pop()?.replace(/^-+/, "").trim() || processName;
     return { cwd: terminal.cwd, foregroundProcess, interactive };
@@ -70,9 +95,58 @@ export class SideTerminalService {
       debugLog("[side-terminal] exit", { id, exitCode });
       this.#terminals.delete(id);
     });
-    this.#terminals.set(id, { pty: terminal, cwd, shell });
+    const record: SideTerminal = { pty: terminal, cwd, shell, editorMode: false };
+    this.#terminals.set(id, record);
+    // node-pty doesn't expose the slave device path; resolve it from the
+    // spawned shell's controlling terminal so stty can target it with -f.
+    resolveTtyFor(id, record);
     debugLog("[side-terminal] spawned", { id, cwd });
     return id;
+  }
+
+  /**
+   * Toggle the pty between the overlay editor's raw mode and the kernel's
+   * canonical line discipline. The overlay paints typed glyphs itself, so
+   * the tty must not also echo them (double characters, phantom cursor
+   * moves); interactive programs (vim, ssh, fzf) expect the kernel's cooked
+   * mode back. Best-effort: stty runs against the pty's controlling
+   * terminal, so it only applies while this process group is in the
+   * foreground — a background pty keeps its previous flags.
+   */
+  setEditorMode(id: string, active: boolean): void {
+    const terminal = this.#terminals.get(id);
+    if (!terminal || terminal.editorMode === active) return;
+    terminal.editorMode = active;
+    if (process.platform === "win32") return;
+    if (!terminal.tty) resolveTtyFor(id, terminal);
+    const apply = () => {
+      if (!terminal.tty) {
+        debugLog("[side-terminal] stty skipped, no tty", { id, active });
+        return;
+      }
+      const flags = active ? "-echo -icanon min 1 time 0" : "sane";
+      execFile("/bin/stty", ["-f", terminal.tty, ...flags.split(" ")], (error) => {
+        if (error) debugLog("[side-terminal] stty failed", { id, active, error: String(error) });
+        else debugLog("[side-terminal] stty applied", { id, active, tty: terminal.tty });
+      });
+    };
+    // The tty path resolves asynchronously after spawn; retry briefly so an
+    // early setEditorMode(true) right after spawn still lands.
+    if (!terminal.tty) {
+      let attempts = 0;
+      const retry = () => {
+        if (terminal.tty || attempts >= 10 || !this.#terminals.has(id)) {
+          apply();
+          return;
+        }
+        attempts += 1;
+        resolveTtyFor(id, terminal);
+        setTimeout(retry, 100);
+      };
+      retry();
+      return;
+    }
+    apply();
   }
 
   write(id: string, data: string): void {

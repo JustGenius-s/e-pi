@@ -37,6 +37,8 @@ import {
 
 /** Drag-resized max-height of the expanded PINNED section (px). */
 const PINNED_HEIGHT_KEY = "sidebar-pinned-height-v1";
+/** sessionOrderRef key for the default-folder "Recent" flat list. */
+const RECENT_ORDER_KEY = "__recent__";
 /** Smallest the PINNED section can be dragged to (label + one row). */
 const PINNED_SECTION_MIN = 32;
 /** Space (px) the PROJECTS group keeps when the pinned section is resized. */
@@ -159,14 +161,43 @@ export const SessionSidebar = memo(function SessionSidebar({
     updatePins({ ...pins, projects: nextProjects });
   };
   /**
-   * Stable project order. Sessions arrive sorted by recent activity (so
-   * sessions within a project stay recency-ordered), but the project GROUP
-   * order is frozen from the first load and never reshuffled when sessions
-   * are created — otherwise creating a session would jump its project to the
-   * top. Brand-new projects (e.g. a fresh folder) are inserted at the top;
-   * existing projects keep their position.
+   * Stable project order. The project GROUP order is frozen from the first
+   * load and never reshuffled when sessions are created — otherwise creating
+   * a session would jump its project to the top. Brand-new projects (e.g. a
+   * fresh folder) are inserted at the top; existing projects keep their
+   * position.
    */
   const groupOrderRef = useRef<string[] | null>(null);
+
+  /**
+   * Stable per-group session order. Sessions arrive sorted by recent
+   * activity, but reshuffling rows under the cursor on every message is
+   * disorienting, so each group's session order is frozen from the first
+   * load (same rule as project groups): brand-new sessions are inserted at
+   * the top of their group, existing sessions keep their position.
+   */
+  const sessionOrderRef = useRef<Map<string, string[]>>(new Map());
+
+  /**
+   * Freeze `list` into the stored order for `key`: unseen sessions go to the
+   * top, the rest keep the position they had on first load. Returns the
+   * stably-ordered list and persists the merged order back into the ref.
+   */
+  const freezeSessionOrder = (key: string, list: SessionSummary[]): SessionSummary[] => {
+    const sessionOrder = sessionOrderRef.current;
+    const paths = list.map((session) => session.path);
+    const known = sessionOrder.get(key);
+    if (!known) {
+      sessionOrder.set(key, paths);
+      return list;
+    }
+    const fresh = paths.filter((path) => !known.includes(path));
+    const kept = known.filter((path) => paths.includes(path));
+    const merged = [...fresh, ...kept];
+    sessionOrder.set(key, merged);
+    const rank = new Map(merged.map((path, index) => [path, index]));
+    return [...list].sort((a, b) => rank.get(a.path)! - rank.get(b.path)!);
+  };
 
   /** Sessions join a project when their cwd is one of its folders; the rest form implicit cwd groups. */
   const projectByCwd = useMemo(() => {
@@ -207,6 +238,13 @@ export const SessionSidebar = memo(function SessionSidebar({
     }
     const newProjects = [...byKey.keys()].filter((key) => !knownOrder.includes(key));
     groupOrderRef.current = [...newProjects, ...knownOrder.filter((key) => byKey.has(key))];
+    // Freeze each group's session order: unseen sessions go to the top of
+    // their group, the rest keep the position they had on first load.
+    // Groups whose order array no longer matches any live group (renamed
+    // folders, removed projects) leave stale entries behind; harmless.
+    for (const group of byKey.values()) {
+      group.sessions = freezeSessionOrder(group.key, group.sessions);
+    }
     return groupOrderRef.current.map((key) => byKey.get(key)!);
   }, [sessions, projectByCwd, homeCwd]);
 
@@ -233,11 +271,13 @@ export const SessionSidebar = memo(function SessionSidebar({
     [orderedProjects, pinnedProjects],
   );
 
-  /** Default-folder sessions, listed flat under "Recent" (recency order). */
-  const recentSessions = useMemo(
-    () => (homeCwd ? sessions.filter((session) => session.cwd === homeCwd) : []),
-    [sessions, homeCwd],
-  );
+  /** Default-folder sessions, listed flat under "Recent". Same frozen-order
+   * rule as project groups: new sessions go to the top, existing ones keep
+   * their position (recency order reshuffles under the cursor). */
+  const recentSessions = useMemo(() => {
+    const list = homeCwd ? sessions.filter((session) => session.cwd === homeCwd) : [];
+    return freezeSessionOrder(RECENT_ORDER_KEY, list);
+  }, [sessions, homeCwd]);
   /** Collapsed-mode flyout entry for the default folder ("Home"). */
   const homeProject: ProjectGroup | undefined =
     homeCwd && recentSessions.length > 0 ? { key: homeCwd, cwd: homeCwd, sessions: recentSessions } : undefined;

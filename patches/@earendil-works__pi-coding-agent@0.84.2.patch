@@ -70,3 +70,79 @@ diff --git a/dist/modes/interactive/interactive-mode.js b/dist/modes/interactive
          this.renderWidgetContainer(this.widgetContainerBelow, this.extensionWidgetsBelow, false, false);
          this.ui.requestRender();
      }
+@@ -2905,11 +2925,13 @@
+                             this.chatContainer.addChild(new Spacer(1));
+                             const userComponent = new UserMessageComponent(skillBlock.userMessage, this.getMarkdownThemeWithSettings(), this.outputPad, this.getMarkdownTransformers());
+                             this.chatContainer.addChild(userComponent);
++                            this.ePiRegisterUserMessageNav(userComponent, skillBlock.userMessage);
+                         }
+                     }
+                     else {
+                         const userComponent = new UserMessageComponent(textContent, this.getMarkdownThemeWithSettings(), this.outputPad, this.getMarkdownTransformers());
+                         this.chatContainer.addChild(userComponent);
++                        this.ePiRegisterUserMessageNav(userComponent, textContent);
+                     }
+                     if (options?.populateHistory) {
+                         this.editor.addToHistory?.(textContent);
+@@ -3055,6 +3077,7 @@
+             populateHistory: true,
+         });
+         this.renderProjectTrustWarningIfNeeded();
++        this.ePiSyncNav();
+         // Show compaction info if session was compacted
+         const allEntries = this.sessionManager.getEntries();
+         const compactionCount = allEntries.filter((e) => e.type === "compaction").length;
+@@ -3087,6 +3110,53 @@
+     rebuildChatFromMessages() {
+         this.chatContainer.clear();
+         this.renderSessionEntries(this.sessionManager.buildContextEntries());
++        this.ePiSyncNav();
++    }
++    // =========================================================================
++    // E-Pi session navigator
++    // =========================================================================
++    get ePiNavEnabled() {
++        return process.env.E_PI === "true" && process.env.E_PI_TUI_OPTIMIZATIONS === "true";
++    }
++    /** Register a rendered user message for the host app's navigation rail. */
++    ePiRegisterUserMessageNav(component, textContent) {
++        if (!this.ePiNavEnabled)
++            return;
++        if (!this.ePiNavComponents)
++            this.ePiNavComponents = [];
++        component.ePiNavUserMessage = true;
++        this.ePiNavComponents.push(component);
++        this.ePiSyncNav();
++    }
++    /** Re-collect the surviving user message blocks after any transcript change. */
++    ePiSyncNav() {
++        if (!this.ePiNavEnabled || !this.ePiNavComponents)
++            return;
++        const order = new Map(this.chatContainer.children.map((child, index) => [child, index]));
++        const survivors = this.ePiNavComponents
++            .filter((component) => order.has(component))
++            .sort((a, b) => order.get(a) - order.get(b));
++        this.ePiNavComponents = survivors;
++        if (this.renderer?.mode === "fullscreen") {
++            this.renderer.ePiNavBlocks = survivors;
++            this.renderer.ePiNavLabels = survivors.map((component) => component.text ?? "");
++            // AI reply preview under each user message title in the nav tooltip:
++            // first text content of the next AssistantMessageComponent.
++            this.renderer.ePiNavReplies = survivors.map((component) => {
++                const index = this.chatContainer.children.indexOf(component);
++                for (let next = index + 1; next < this.chatContainer.children.length; next += 1) {
++                    const sibling = this.chatContainer.children[next];
++                    if (sibling instanceof UserMessageComponent)
++                        break;
++                    if (sibling instanceof AssistantMessageComponent) {
++                        const message = sibling.lastMessage;
++                        const text = message?.content?.find((c) => c.type === "text" && c.text.trim())?.text ?? "";
++                        return text.replace(/\s+/g, " ").trim().slice(0, 160);
++                    }
++                }
++                return "";
++            });
++        }
+     }
+     // =========================================================================
+     // Key handlers
